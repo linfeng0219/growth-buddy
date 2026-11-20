@@ -224,7 +224,6 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "当前已静音，点右上角声音图标即可开启", Toast.LENGTH_SHORT).show()
             } else if (!sound.speak(txt)) {
                 sound.playPat()
-                Toast.makeText(this, "系统语音引擎未就绪，请检查系统 TTS 设置", Toast.LENGTH_SHORT).show()
             }
         }
         binding.btnRenamePet.setOnClickListener { showRenamePetDialog() }

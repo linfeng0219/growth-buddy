@@ -3,6 +3,7 @@ package com.growthbuddy.child
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Bundle
 import android.os.SystemClock
@@ -41,6 +42,7 @@ class NativeSoundEngine(context: Context) {
 
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady: Boolean = false
+    private var voicePlayer: MediaPlayer? = null
 
     init {
         val attrs = AudioAttributes.Builder()
@@ -79,7 +81,10 @@ class NativeSoundEngine(context: Context) {
 
     fun setMuted(isMuted: Boolean) {
         muted = isMuted
-        if (isMuted) tts?.stop()
+        if (isMuted) {
+            tts?.stop()
+            stopVoicePlayer()
+        }
     }
 
     fun isMuted(): Boolean = muted
@@ -108,7 +113,12 @@ class NativeSoundEngine(context: Context) {
     fun playError() = playId(sfxError, 0.90f)
 
     fun speak(text: String, flush: Boolean = true): Boolean {
-        if (muted || text.isBlank() || !ttsReady) return false
+        if (muted || text.isBlank()) return false
+        val builtIn = resolveBuiltInVoice(text)
+        if (builtIn != null && playBuiltInVoice(builtIn)) {
+            return true
+        }
+        if (!ttsReady) return false
         val params = Bundle().apply {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
             putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
@@ -116,6 +126,72 @@ class NativeSoundEngine(context: Context) {
         val mode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
         val res = tts?.speak(text, mode, params, "gb_${SystemClock.elapsedRealtime()}")
         return res == TextToSpeech.SUCCESS
+    }
+
+    private fun resolveBuiltInVoice(text: String): String? {
+        val t = text.trim()
+        return when {
+            t.contains("摸头好舒服") -> "pat_0.wav"
+            t.contains("元气满满") -> "pat_1.wav"
+            t.contains("一直陪着你") -> "pat_2.wav"
+            t.contains("喂我吃零食") -> "pat_3.wav"
+            t.contains("下一阶进化") -> "pat_4.wav"
+            t.contains("慢慢破壳") -> "lv_0.wav"
+            t.contains("世界好暖和") -> "lv_1.wav"
+            t.contains("长出小耳朵") -> "lv_2.wav"
+            t.contains("带一位出来陪我玩") -> "lv_3.wav"
+            t.contains("神秘蛋也解锁") -> "lv_4.wav"
+            t.contains("守护兽达成") -> "lv_5.wav"
+            t.contains("没见到你了") -> "sleep.wav"
+            t.contains("有点虚弱了") -> "weak.wav"
+            t.contains("我生病了") -> "sick.wav"
+            t.contains("开始专注") -> "focus_start.wav"
+            t.contains("专注挑战完成") || t.contains("分钟专注") -> "focus_win.wav"
+            t.contains("拖延怪被击败") -> "adv_win.wav"
+            t == "开始" -> "rope_start.wav"
+            t.contains("已达标") -> "rope_pass.wav"
+            t.contains("最后十秒") -> "rope_last10.wav"
+            else -> null
+        }
+    }
+
+    private fun playBuiltInVoice(assetName: String): Boolean {
+        return try {
+            stopVoicePlayer()
+            val afd = appContext.assets.openFd("voices/$assetName")
+            val mp = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                afd.close()
+                setVolume(1.0f, 1.0f)
+                setOnCompletionListener {
+                    it.release()
+                    if (voicePlayer === it) voicePlayer = null
+                }
+                prepare()
+                start()
+            }
+            voicePlayer = mp
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun stopVoicePlayer() {
+        try {
+            voicePlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+        } catch (_: Exception) {
+        }
+        voicePlayer = null
     }
 
     private fun playId(soundId: Int, volume: Float) {
@@ -211,6 +287,7 @@ class NativeSoundEngine(context: Context) {
     }
 
     fun release() {
+        stopVoicePlayer()
         soundPool.release()
         tts?.stop()
         tts?.shutdown()

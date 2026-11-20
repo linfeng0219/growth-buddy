@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - 内置离线中文语音包：将 20 段常用宠物对话、状态提醒与专注/跳绳/冒险语音直接内置进 APK（`assets/voices/*.wav`），不依赖手机系统 TTS 即可稳定发声。
   - 修复 Android 11+ 无法绑定系统 TTS 语音引擎的问题：在 `AndroidManifest.xml` 中补充 `<queries>` `TTS_SERVICE` 声明。
   - 优化安卓主界面布局：移除登录后头像旁版本号文本，修复宠物名字旁「✏️ 改名」按钮文字底部被裁切问题。
   - 安卓儿童端固定服务器地址为 `https://linuu.xyz`，移除登录页服务器地址编辑入口。
