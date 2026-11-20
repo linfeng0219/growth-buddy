@@ -1,0 +1,24 @@
+# Environment & runtime data
+.env
+*.db
+*.db-wal
+*.db-shm
+server/data/
+server/growth-buddy-server
+server/server.log
+
+# Android & Gradle build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Archives & OS files
+*.tar.gz
+.DS_Store
+Thumbs.db

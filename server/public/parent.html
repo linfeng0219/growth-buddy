@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成长小伙伴 · 家长管理台</title>
+<link rel="stylesheet" href="/shared/styles.css">
+<style>
+  .fam-banner{
+    background:linear-gradient(135deg,#e7efe9 0%,#f5f0e4 100%);
+    border:1px solid #cadcd0;border-radius:18px;padding:14px 16px;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;
+  }
+  .fam-code{font-family:Consolas,monospace;font-size:20px;font-weight:700;letter-spacing:.14em;color:var(--accent);background:#fff;padding:3px 12px;border-radius:10px;border:1px solid #c5ddd0}
+  .kid-overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.kid-overview-grid{grid-template-columns:1fr}}
+  .kid-box{
+    background:#fff;border:1px solid var(--hair);border-radius:18px;padding:16px;
+    box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:10px;
+  }
+  .kid-box-top{display:flex;align-items:center;gap:12px}
+  .kid-box-top .pet-thumb{width:86px;flex:none}
+  .kid-box-top .info{flex:1}
+  .kid-box-top h3{font-family:var(--serif);font-size:18px;font-weight:400;display:flex;align-items:center;gap:6px}
+  .kid-stats{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin-top:4px}
+  .kid-stats span{background:#f7f4ee;padding:2px 8px;border-radius:999px}
+  .recent-logs{font-size:12px;color:var(--muted);border-top:1px dashed var(--hair);padding-top:8px}
+
+  .scope-box{
+    background:#fbf8f2;border:1px solid var(--hair);border-radius:12px;padding:12px;margin:8px 0 12px;
+  }
+  .check-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .check-pill{
+    display:inline-flex;align-items:center;gap:6px;
+    background:#fff;border:1px solid var(--hair-2);border-radius:999px;
+    padding:5px 12px;font-size:13px;cursor:pointer;user-select:none;
+  }
+  .check-pill input{accent-color:var(--accent)}
+
+  .child-filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .child-filter-bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  .task-item{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 0;border-bottom:1px solid var(--hair);flex-wrap:wrap;
+  }
+  .task-item:last-child{border-bottom:none}
+  .task-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1}
+  .tag-all{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .tag-sel{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--amber-soft);color:#9c5812;font-weight:600}
+  .tag-off{font-size:11px;padding:2px 8px;border-radius:999px;background:#eee;color:#777}
+
+  .studio-preview{display:flex;align-items:center;gap:16px;background:#fbf8f2;border:1px dashed var(--hair-2);border-radius:14px;padding:12px 14px;margin-bottom:14px}
+  .studio-preview .pv-svg{width:120px;flex:none}
+  .avpick{width:38px;height:38px;border-radius:10px;padding:2px;background:#fdfcfa}
+  .avpick.on{border-color:var(--accent);background:var(--accent-soft)}
+  .log-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px dashed #f0eae0}
+  .log-row:last-child{border-bottom:none}
+  .photo-pill{
+    display:inline-flex;align-items:center;gap:4px;background:#edf5f0;color:var(--accent);
+    border:1px solid #c5ddd0;border-radius:999px;padding:2px 8px;font-size:11.5px;
+    font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none;
+  }
+  .photo-pill:hover{background:#dfeee5}
+  .photo-wall-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-top:8px}
+  .photo-card{
+    background:#fdfbf7;border:1px solid var(--hair);border-radius:14px;padding:8px;
+    cursor:pointer;transition:transform .15s,box-shadow .15s;display:flex;flex-direction:column;gap:6px;
+  }
+  .photo-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+  .photo-card img{width:100%;height:128px;object-fit:cover;border-radius:10px;background:#efeae0;border:1px solid var(--hair)}
+  .photo-card .pc-meta{font-size:12px;color:var(--ink);font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:4px}
+  .photo-card .pc-sub{font-size:11px;color:var(--muted)}
+  .user-avatar-chip{
+    display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #c6dcd0;
+    border-radius:999px;padding:3px 12px 3px 4px;font-size:13px;font-weight:600;color:var(--ink);
+    cursor:pointer;box-shadow:var(--shadow-sm);
+  }
+  .user-avatar-chip:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .avatar-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0 12px}
+  @media(max-width:420px){.avatar-grid{grid-template-columns:repeat(4,1fr)}}
+  .avatar-grid button{height:48px;border-radius:12px;padding:3px;background:#fdfcfa;display:flex;align-items:center;justify-content:center}
+  .avatar-grid button.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px rgba(47,107,79,.16)}
+</style>
+</head>
+<body>
+<div class="wrap wide">
+
+  <!-- 未登录视图 -->
+  <div id="authView" style="display:none;max-width:420px;margin:20px auto">
+    <header>
+      <div class="top-bar"><a href="/" class="pill ghost" style="text-decoration:none">← 返回首页</a><span class="kicker">家长管理台</span></div>
+      <h1 id="authTitle">家长登录</h1>
+    </header>
+    <div class="panel">
+      <div class="tabs" style="margin:0 0 14px">
+        <button id="tabPLogin" class="on" type="button">家长登录</button>
+        <button id="tabPReg" type="button">注册新家庭</button>
+      </div>
+      <div id="pLoginBox">
+        <div class="field"><label>家长账号</label><input type="text" id="pLoginUser" placeholder="输入家长账号"></div>
+        <div class="field"><label>登录密码</label><input type="password" id="pLoginPass" placeholder="输入密码"></div>
+        <button class="primary" id="btnPLogin" style="width:100%">登录家长端</button>
+      </div>
+      <div id="pRegBox" style="display:none">
+        <div class="row2">
+          <div class="field"><label>家庭名称</label><input type="text" id="regFamily" placeholder="如：幸福小家"></div>
+          <div class="field"><label>家长称呼</label><input type="text" id="regDisplay" placeholder="如：妈妈"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>家长账号</label><input type="text" id="regUser" placeholder="至少3位，如 mama01"></div>
+          <div class="field"><label>家长密码</label><input type="password" id="regPass" placeholder="至少4位"></div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin:6px 0 8px;padding-top:8px;border-top:1px dashed var(--hair)">👇 第一个孩子（之后可在「家庭与档案」中继续添加）</div>
+        <div class="row2">
+          <div class="field"><label>孩子昵称</label><input type="text" id="regChild" placeholder="如：大宝"></div>
+          <div class="field"><label>孩子登录账号</label><input type="text" id="regChildUser" placeholder="如 dabao01"></div>
+        </div>
+        <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="regChildPass" placeholder="孩子在安卓 App 中登录使用"></div>
+        <button class="primary" id="btnPReg" style="width:100%">创建家庭并进入 →</button>
+      </div>
+      <div class="msg" id="pLoginMsg"></div>
+    </div>
+  </div>
+
+  <!-- 家长端主界面 -->
+  <div id="mainView" style="display:none">
+    <header>
+      <div class="top-bar">
+        <button class="user-avatar-chip" id="btnParentAvatarChip" type="button" title="点击设置/上传我的头像">
+          <span id="parentAvatarSlot"></span>
+          <span id="parentGreeting">家长管理台</span>
+          <span style="font-size:11px;color:var(--muted)">✎</span>
+        </button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="pill ghost" id="btnLogout">退出登录</button>
+        </div>
+      </div>
+      <h1 id="famTitle">成长小伙伴 · 家长端</h1>
+    </header>
+
+    <div class="fam-banner">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">🏠 点击下方孩子卡片上的「进入小屋」即可查看并代孩子操作其专属页面</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号与密码登录</span>
+        </div>
+      </div>
+      <a id="apkDownloadLink" href="/api/app/latest.apk" class="pill" style="display:none;text-decoration:none;background:#2f6b4f;color:#fff;border-color:#2f6b4f">📥 下载儿童端 App</a>
+    </div>
+
+    <nav class="tabs">
+      <button data-tab="overview" class="on">孩子总览与发蛋</button>
+      <button data-tab="tasks">任务分配中心</button>
+      <button data-tab="studio">伙伴工作室</button>
+      <button data-tab="family">家庭与档案</button>
+    </nav>
+
+    <!-- 1. 孩子总览与发蛋 -->
+    <section id="tab-overview">
+      <div class="kid-overview-grid" id="kidOverviewGrid"></div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>📸 孩子打卡完成情况 · 实拍照片墙</h2>
+          <span class="pill" id="photoWallCount">0 张照片</span>
+        </div>
+        <div id="checkinPhotoWall" class="photo-wall-grid"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>最近领养蛋发放记录</h2></div>
+        <div id="grantLogList" style="font-size:12.5px;color:var(--ink-soft)"></div>
+      </div>
+    </section>
+
+    <!-- 2. 任务分配中心 -->
+    <section id="tab-tasks" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h2>发布新任务（支持全体通用 / 多孩勾选 / 单孩专有）</h2></div>
+        <div class="row3">
+          <div class="field"><label>图标 Emoji</label><input type="text" id="tEmoji" value="✨" maxlength="4"></div>
+          <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="18" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>奖励成长值</label><input type="number" id="tPts" value="4" min="1" max="50"></div>
+          <div class="field"><label>任务类型</label>
+            <select id="tType">
+              <option value="normal">普通习惯打卡</option>
+              <option value="rope_jump">🪢 定时跳绳挑战（安卓摄像头计数）</option>
+            </select>
+          </div>
+        </div>
+        <div class="scope-box" id="tRopeBox" style="display:none">
+          <div style="font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:6px">跳绳挑战达标条件：</div>
+          <div class="row2">
+            <div class="field" style="margin-bottom:0"><label>计时秒数（10~600秒）</label><input type="number" id="tDuration" value="60" min="10" max="600"></div>
+            <div class="field" style="margin-bottom:0"><label>达标个数（1~500个）</label><input type="number" id="tTarget" value="60" min="1" max="500"></div>
+          </div>
+        </div>
+        <div class="field"><label>适用范围</label>
+          <select id="tScope">
+            <option value="all">全体孩子都有（含以后新增孩子）</option>
+            <option value="selected">指定孩子（勾选多个或单个专有）</option>
+          </select>
+        </div>
+        <div class="scope-box" id="tAssignBox" style="display:none">
+          <div style="font-size:12.5px;color:var(--ink-soft);font-weight:600">勾选能看到并完成该任务的孩子：</div>
+          <div class="check-pills" id="tChildChecks"></div>
+        </div>
+        <button class="primary" id="btnCreateTask" style="width:100%">发布任务</button>
+        <div class="msg" id="taskMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>按孩子查看「个人专属任务列表」</h2></div>
+        <div class="child-filter-bar" id="kidPreviewTabs"></div>
+        <div id="kidPreviewList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>全部任务管理（可随时修改分配对象）</h2></div>
+        <div id="allTaskList"></div>
+      </div>
+    </section>
+
+    <!-- 3. 伙伴工作室 -->
+    <section id="tab-studio" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>上新糖霜伙伴到图鉴</h2>
+          <button class="ghost" id="btnPreviewSilo">切换剪影/真容</button>
+        </div>
+        <div class="studio-preview">
+          <div class="pv-svg" id="studioPreviewSvg"></div>
+          <div style="font-size:12.5px;color:var(--ink-soft)">
+            <div style="font-weight:600;font-size:14px" id="pvName">星芽</div>
+            <div style="color:var(--muted);margin-top:3px">可设为全家庭通用图鉴，也可指定为某个孩子的专属惊喜奖励！</div>
+          </div>
+        </div>
+        <div class="row3">
+          <div class="field"><label>伙伴名字</label><input type="text" id="spName" maxlength="10" placeholder="例如：星芽"></div>
+          <div class="field"><label>解锁提示</label><input type="text" id="spHint" maxlength="16" placeholder="例如：期末满分解锁"></div>
+          <div class="field"><label>开放范围</label><select id="spTargetChild"></select></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label>身体颜色</label><input type="color" id="spColor" value="#7fa8c9"></div>
+          <div class="field"><label>耳朵 / 头顶</label>
+            <select id="spEar"><option value="round">圆耳朵</option><option value="tall">长耳朵</option><option value="pointy">尖耳朵</option><option value="horn">小犄角</option><option value="unicorn">独角</option><option value="none">光头</option></select>
+          </div>
+          <div class="field"><label>特征配件</label>
+            <select id="spAcc"><option value="none">无</option><option value="scarf">小围巾</option><option value="star">耳上星星</option><option value="crown">小王冠</option><option value="bow">小领结</option></select>
+          </div>
+        </div>
+        <div class="row3">
+          <div class="field"><label>尾巴 / 翅膀</label>
+            <select id="spTail"><option value="puff">绒球尾</option><option value="fox">蓬松大尾</option><option value="wing">小翅膀</option><option value="dragon">尖尖尾</option><option value="none">无</option></select>
+          </div>
+          <div class="field"><label>嘴型</label>
+            <select id="spMouth"><option value="smile">微笑</option><option value="cat">猫咪嘴</option><option value="buck">小龅牙</option><option value="fang">小虎牙</option></select>
+          </div>
+          <div class="field"><label>底座</label>
+            <select id="spBase"><option value="grass">青青草地</option><option value="snow">冬日雪地</option><option value="sand">暖阳沙地</option><option value="cloud">软绵云朵</option></select>
+          </div>
+        </div>
+        <button class="primary" id="btnAddSpecies" style="width:100%">发布到云端图鉴</button>
+        <div class="msg" id="studioMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>图鉴伙伴列表</h2></div>
+        <div id="speciesMgmtList"></div>
+      </div>
+    </section>
+
+    <!-- 4. 家庭与档案 -->
+    <section id="tab-family" style="display:none">
+      <div class="panel">
+        <div class="panel-head"><h2>添加一位孩子档案</h2></div>
+        <div class="row3">
+          <div class="field"><label>孩子昵称</label><input type="text" id="newKidName" maxlength="10" placeholder="例如：二宝"></div>
+          <div class="field"><label>孩子登录账号（至少3位）</label><input type="text" id="newKidUser" maxlength="32" placeholder="如 erbao01"></div>
+          <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="newKidPass" placeholder="供孩子登录儿童端"></div>
+        </div>
+        <div class="field">
+          <label>选择头像</label>
+          <div id="newKidAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <button class="primary" id="btnAddChild" style="width:100%">+ 添加孩子档案</button>
+        <div class="msg" id="kidAddMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>现有孩子档案管理</h2></div>
+        <div id="childManageList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>添加共同管理家长（如爸爸/妈妈）</h2></div>
+        <div class="row3">
+          <div class="field"><label>家长账号</label><input type="text" id="coUser" placeholder="英文/数字"></div>
+          <div class="field"><label>称呼</label><input type="text" id="coName" placeholder="如：爸爸"></div>
+          <div class="field"><label>密码</label><input type="password" id="coPass" placeholder="至少4位"></div>
+        </div>
+        <button id="btnAddParent" style="width:100%">+ 添加家长账号</button>
+        <div class="msg" id="coMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>导入单机旧版备份码（GB1| / GB2|）</h2></div>
+        <div class="field"><label>导入到哪位孩子名下</label><select id="impChildSelect"></select></div>
+        <div class="field"><label>粘贴备份码</label><textarea id="impCode" rows="3" placeholder="粘贴 GB1| 或 GB2| 开头的备份码"></textarea></div>
+        <button id="btnImportBackup" style="width:100%">导入到云端</button>
+        <div class="msg" id="impMsg"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- 编辑任务弹窗 -->
+<div class="modal-backdrop" id="editTaskModal">
+  <div class="modal-card" style="text-align:left;max-width:430px">
+    <h3 style="font-family:var(--serif);margin-bottom:10px">编辑任务与分配对象</h3>
+    <div class="row3">
+      <div class="field"><label>Emoji</label><input type="text" id="etEmoji" maxlength="4"></div>
+      <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="18"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>成长值</label><input type="number" id="etPts" min="1" max="50"></div>
+      <div class="field"><label>任务类型</label>
+        <select id="etType"><option value="normal">普通习惯打卡</option><option value="rope_jump">🪢 定时跳绳挑战</option></select>
+      </div>
+    </div>
+    <div class="scope-box" id="etRopeBox" style="display:none">
+      <div class="row2">
+        <div class="field" style="margin-bottom:0"><label>计时秒数</label><input type="number" id="etDuration" min="10" max="600"></div>
+        <div class="field" style="margin-bottom:0"><label>达标个数</label><input type="number" id="etTarget" min="1" max="500"></div>
+      </div>
+    </div>
+    <div class="field"><label>适用范围</label>
+      <select id="etScope"><option value="all">全体孩子都有</option><option value="selected">指定孩子</option></select>
+    </div>
+    <div class="scope-box" id="etAssignBox" style="display:none">
+      <div style="font-size:12px;color:var(--ink-soft)">勾选分配的孩子：</div>
+      <div class="check-pills" id="etChildChecks"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="primary" id="btnSaveEditTask" style="flex:1">保存修改</button>
+      <button class="ghost" id="btnCancelEditTask">取消</button>
+    </div>
+    <div class="msg" id="etMsg"></div>
+  </div>
+</div>
+
+<!-- 孩子账号密码弹窗 -->
+<div class="modal-backdrop" id="kidAuthModal">
+  <div class="modal-card" style="text-align:left;max-width:400px">
+    <h3 id="kaTitle" style="font-family:var(--serif);margin-bottom:6px">设置孩子登录账号与密码</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">孩子在安卓儿童端 App（或网页端）直接使用这里的账号和密码登录。</p>
+    <div class="field"><label>孩子登录账号（英文/数字，至少3位）</label><input type="text" id="kaUser" maxlength="32" placeholder="例如：dabao01"></div>
+    <div class="field"><label>登录密码（至少4位；重置时填写，不改密码可留空）</label><input type="password" id="kaPass" placeholder="请输入新密码"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="primary" id="btnSaveKidAuth" style="flex:1">保存设置</button>
+      <button class="ghost" id="btnCancelKidAuth">取消</button>
+    </div>
+    <div class="msg" id="kaMsg"></div>
+  </div>
+</div>
+
+<!-- 头像设置与上传弹窗 -->
+<div class="modal-backdrop" id="avatarModal">
+  <div class="modal-card" style="max-width:420px">
+    <h3 id="avModalTitle" style="font-family:var(--serif);margin-bottom:6px">设置头像</h3>
+    <div id="avModalPreview" style="margin:6px auto 10px"></div>
+    <input type="file" id="avFileInput" accept="image/*" style="display:none">
+    <button class="amber" id="btnAvUpload" type="button" style="width:100%;margin-bottom:8px">📷 上传本地照片作头像</button>
+    <div style="font-size:12px;color:var(--muted);text-align:left;margin-top:6px">或选择一个内置头像：</div>
+    <div class="avatar-grid" id="avModalGrid"></div>
+    <button class="ghost" id="btnAvClose" type="button" style="width:100%">关闭</button>
+    <div class="msg" id="avModalMsg"></div>
+  </div>
+</div>
+
+<!-- 打卡照片大图查看弹窗 -->
+<div class="modal-backdrop" id="photoPreviewModal">
+  <div class="modal-card" style="max-width:480px">
+    <h3 id="ppTitle" style="font-family:var(--serif);margin-bottom:4px">打卡完成照片</h3>
+    <p id="ppSub" style="font-size:12.5px;color:var(--muted);margin-bottom:10px"></p>
+    <div style="background:#f6f2ea;border:1px solid var(--hair);border-radius:14px;padding:6px;margin-bottom:12px">
+      <img id="ppImg" src="" alt="打卡照片" style="width:100%;max-height:62vh;object-fit:contain;border-radius:10px;display:block">
+    </div>
+    <button class="primary" id="btnClosePhotoPreview" style="width:100%">关闭预览</button>
+  </div>
+</div>
+
+<script src="/shared/pet-art.js"></script>
+<script>
+(function(){
+  GBArt.enableEyeTracking();
+  var $id=function(id){return document.getElementById(id);};
+  var data=null, previewKidId=null, newKidAv=0, previewSilo=false, editingTaskId=null;
+
+  function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  function token(){return localStorage.getItem("gb_parent_token")||"";}
+  function note(id,t,err){var m=$id(id);m.textContent=t;m.className="msg"+(err?" err":"");clearTimeout(m._t);m._t=setTimeout(function(){m.textContent="";},4200);}
+  function fmtTime(ms){
+    if(!ms)return "";
+    var dt=new Date(ms);
+    return String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+  }
+  function openPhotoPreview(url,kidName,taskLabel,dateStr,createdAt){
+    $id("ppTitle").textContent=kidName+" · "+taskLabel;
+    var tm=fmtTime(createdAt);
+    $id("ppSub").textContent="打卡时间："+dateStr+(tm?(" "+tm):"");
+    $id("ppImg").src=url;
+    $id("photoPreviewModal").classList.add("show");
+  }
+  $id("btnClosePhotoPreview").addEventListener("click",function(){
+    $id("photoPreviewModal").classList.remove("show");
+    $id("ppImg").src="";
+  });
+  $id("photoPreviewModal").addEventListener("click",function(e){
+    if(e.target===$id("photoPreviewModal")){
+      $id("photoPreviewModal").classList.remove("show");
+      $id("ppImg").src="";
+    }
+  });
+
+  async function api(path,opts){
+    opts=opts||{};
+    opts.headers=Object.assign({"Content-Type":"application/json"},opts.headers||{});
+    if(token()) opts.headers["Authorization"]="Bearer "+token();
+    var r=await fetch(path,opts);
+    var d=await r.json();
+    if(r.status===401||r.status===403){
+      localStorage.removeItem("gb_parent_token");
+      showAuth();
+      throw new Error(d.error||"请重新登录家长账号");
+    }
+    if(!r.ok) throw new Error(d.error||"操作失败");
+    return d;
+  }
+
+  function showAuth(){
+    $id("authView").style.display="block";
+    $id("mainView").style.display="none";
+  }
+
+  $id("btnPLogin").addEventListener("click",async function(){
+    try{
+      var r=await fetch("/api/auth/parent-login",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username:$id("pLoginUser").value.trim(),password:$id("pLoginPass").value})
+      });
+      var d=await r.json();
+      if(!r.ok) throw new Error(d.error||"登录失败");
+      localStorage.setItem("gb_parent_token",d.token);
+      await loadOverview();
+    }catch(e){note("pLoginMsg",e.message,true);}
+  });
+
+  $id("pLoginPass").addEventListener("keydown",function(e){if(e.key==="Enter")$id("btnPLogin").click();});
+  function setAuthTab(reg){
+    $id("tabPLogin").classList.toggle("on",!reg);$id("tabPReg").classList.toggle("on",reg);
+    $id("pLoginBox").style.display=reg?"none":"";$id("pRegBox").style.display=reg?"":"none";
+    $id("authTitle").textContent=reg?"注册新家庭":"家长登录";
+  }
+  $id("tabPLogin").addEventListener("click",function(){setAuthTab(false);});
+  $id("tabPReg").addEventListener("click",function(){setAuthTab(true);});
+  if(new URLSearchParams(location.search).get("register")==="1") setAuthTab(true);
+  $id("btnPReg").addEventListener("click",async function(){
+    try{
+      var r=await fetch("/api/auth/register-family",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          familyName:$id("regFamily").value.trim(),
+          displayName:$id("regDisplay").value.trim(),
+          username:$id("regUser").value.trim(),
+          password:$id("regPass").value,
+          childName:$id("regChild").value.trim(),
+          childUsername:$id("regChildUser").value.trim(),
+          childPassword:$id("regChildPass").value
+        })
+      });
+      var d=await r.json();
+      if(!r.ok) throw new Error(d.error||"注册失败");
+      localStorage.setItem("gb_parent_token",d.token);
+      await loadOverview();
+    }catch(e){note("pLoginMsg",e.message,true);}
+  });
+
+  fetch("/api/app/version?platform=android").then(function(r){return r.json();}).then(function(d){
+    if(d&&d.hasRelease&&d.release){
+      var a=$id("apkDownloadLink");
+      a.style.display="";
+      a.textContent="📥 下载儿童端 App（v"+d.release.version_name+"）";
+      a.href=d.release.download_url||"/api/app/latest.apk";
+    }
+  }).catch(function(){});
+
+  $id("btnLogout").addEventListener("click",function(){
+    localStorage.removeItem("gb_parent_token");
+    showAuth();
+  });
+
+  async function loadOverview(){
+    try{
+      data=await api("/api/parent/overview?date="+encodeURIComponent(today()));
+      $id("authView").style.display="none";
+      $id("mainView").style.display="block";
+      if(!previewKidId&&data.children.length) previewKidId=data.children[0].id;
+      if(previewKidId&&!data.children.some(function(c){return c.id===previewKidId;})){
+        previewKidId=data.children.length?data.children[0].id:null;
+      }
+      renderAll();
+    }catch(e){showAuth();}
+  }
+
+  function childNameById(id){
+    var c=data.children.filter(function(x){return x.id===id;})[0];
+    return c?c.name:"已删除";
+  }
+
+  function renderAll(){
+    if(!data)return;
+    $id("parentAvatarSlot").innerHTML=GBArt.avatarHtml(data.parent.avatar_idx,data.parent.avatar_url,28);
+    $id("parentGreeting").textContent=data.parent.display_name+" · 家长管理台";
+    $id("famTitle").textContent=data.family.name;
+
+    renderOverview();
+    renderTasksTab();
+    renderStudioTab();
+    renderFamilyTab();
+  }
+
+  function renderOverview(){
+    var g=$id("kidOverviewGrid");g.innerHTML="";
+    var allPhotos=[];
+    data.children.forEach(function(c){
+      var box=document.createElement("div");box.className="kid-box";
+      var lvName=GBArt.LEVELS[c.level]?GBArt.LEVELS[c.level].name:"一颗蛋";
+      (c.recent_logs||[]).forEach(function(l){
+        if(l.has_photo&&l.photo_url){
+          allPhotos.push({kidName:c.name,avatarIdx:c.avatar_idx,log:l});
+        }
+      });
+      var logsHtml=(c.recent_logs||[]).slice(0,5).map(function(l,idx){
+        var metric=(l.actual_count!==null&&l.actual_count!==undefined)?" · "+l.actual_count+"个/"+(l.actual_duration||60)+"秒":"";
+        var tm=fmtTime(l.created_at);
+        var phBtn=(l.has_photo&&l.photo_url)?('<button type="button" class="photo-pill view-log-photo" data-idx="'+idx+'">📷 查看照片</button>'):"";
+        return '<div class="log-row"><span>· '+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+" "+GBArt.esc(l.task_label)+metric+" (+"+l.pts+")</span>"+phBtn+"</div>";
+      }).join("")||"<div>暂无打卡记录</div>";
+      box.innerHTML='<div class="kid-box-top">'
+        +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
+        +'<div class="info">'
+        +'<h3>'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)+GBArt.esc(c.name)+(c.pet_name?'<small style="color:var(--muted);font-size:12px"> · '+GBArt.esc(c.pet_name)+'</small>':"")+'</h3>'
+        +'<div class="kid-stats">'
+        +'<span>'+lvName+' ('+c.xp+' XP)</span>'
+        +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
+        +'<span>领养蛋 '+c.coupons+' 枚</span>'
+        +'<span>图鉴 '+c.owned_count+' 只</span>'
+        +'</div></div></div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +'<a class="pill enter-kid" style="text-decoration:none;background:var(--accent);color:#fff;border-color:var(--accent)" href="/child.html?childId='+encodeURIComponent(c.id)+'">🏠 进入 '+GBArt.esc(c.name)+' 的小屋 →</a>'
+        +'<button class="primary sm grant-btn" style="flex:1">🥚 确认扣25分 → 奖1枚领养蛋</button>'
+        +'<button class="sm undo-btn">↩ 撤销最近打卡</button>'
+        +'</div>'
+        +'<div class="recent-logs"><strong>近期动态：</strong>'+logsHtml+'</div>';
+
+      box.querySelectorAll(".view-log-photo").forEach(function(btn){
+        btn.addEventListener("click",function(){
+          var l=c.recent_logs[parseInt(btn.getAttribute("data-idx"),10)];
+          if(l&&l.photo_url) openPhotoPreview(l.photo_url,c.name,l.task_label,l.checkin_date,l.created_at);
+        });
+      });
+      var gb=box.querySelector(".grant-btn");
+      gb.addEventListener("click",async function(){
+        if(!gb._arm){gb._arm=true;gb.textContent="确认发放给 "+c.name+"？（再点一次）";setTimeout(function(){gb._arm=false;gb.textContent="🥚 确认扣25分 → 奖1枚领养蛋";},4000);return;}
+        try{await api("/api/parent/grant-egg",{method:"POST",body:JSON.stringify({childId:c.id,amount:1})});await loadOverview();}
+        catch(e){alert(e.message);}
+      });
+      box.querySelector(".undo-btn").addEventListener("click",async function(){
+        try{await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:c.id})});await loadOverview();}
+        catch(e){alert(e.message);}
+      });
+      g.appendChild(box);
+    });
+
+    allPhotos.sort(function(a,b){return (b.log.created_at||0)-(a.log.created_at||0);});
+    $id("photoWallCount").textContent=allPhotos.length+" 张照片";
+    var pw=$id("checkinPhotoWall");pw.innerHTML="";
+    if(!allPhotos.length){
+      pw.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px">孩子在打卡时点击「📷 拍照打卡」上传作业或完成成果后，照片会实时展示在这里供家长查验。</div>';
+    }else{
+      allPhotos.forEach(function(item){
+        var l=item.log, tm=fmtTime(l.created_at);
+        var card=document.createElement("div");card.className="photo-card";
+        card.innerHTML='<img src="'+GBArt.esc(l.photo_url)+'" alt="打卡照片" loading="lazy">'
+          +'<div class="pc-meta"><span>'+GBArt.esc(item.kidName)+' · '+GBArt.esc(l.task_label)+'</span><span style="color:var(--amber)">+'+l.pts+'</span></div>'
+          +'<div class="pc-sub">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+' · 点击放大</div>';
+        card.addEventListener("click",function(){
+          openPhotoPreview(l.photo_url,item.kidName,l.task_label,l.checkin_date,l.created_at);
+        });
+        pw.appendChild(card);
+      });
+    }
+
+    var gl=$id("grantLogList");
+    if(!data.egg_grants.length){gl.textContent="还没有发放记录。";}
+    else{
+      gl.innerHTML=data.egg_grants.map(function(eg){
+        var dt=new Date(eg.created_at);
+        var ds=dt.getFullYear()+"-"+(dt.getMonth()+1)+"-"+dt.getDate()+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+        return '<div style="padding:4px 0;border-bottom:1px solid var(--hair)">'+ds+" · "+GBArt.esc(eg.parent_name)+" 为 <strong>"+GBArt.esc(eg.child_name)+"</strong> 发放 "+eg.amount+" 枚领养蛋（"+GBArt.esc(eg.reason)+"）</div>";
+      }).join("");
+    }
+  }
+
+  function renderChildCheckboxes(containerId, selectedIds){
+    var box=$id(containerId);box.innerHTML="";
+    var set={};(selectedIds||[]).forEach(function(id){set[id]=1;});
+    data.children.forEach(function(c){
+      var lb=document.createElement("label");lb.className="check-pill";
+      lb.innerHTML='<input type="checkbox" value="'+c.id+'"'+(set[c.id]?" checked":"")+'>'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,20)+'<span>'+GBArt.esc(c.name)+'</span>';
+      box.appendChild(lb);
+    });
+  }
+  function getCheckedChildIds(containerId){
+    return Array.from($id(containerId).querySelectorAll("input[type=checkbox]:checked")).map(function(el){return el.value;});
+  }
+
+  $id("tScope").addEventListener("change",function(){
+    $id("tAssignBox").style.display=this.value==="selected"?"block":"none";
+  });
+  $id("etScope").addEventListener("change",function(){
+    $id("etAssignBox").style.display=this.value==="selected"?"block":"none";
+  });
+  $id("tType").addEventListener("change",function(){
+    var isRope=this.value==="rope_jump";
+    $id("tRopeBox").style.display=isRope?"block":"none";
+    if(isRope&&$id("tEmoji").value==="✨") $id("tEmoji").value="🪢";
+    if(isRope&&!$id("tLabel").value.trim()) $id("tLabel").value="定时跳绳挑战";
+  });
+  $id("etType").addEventListener("change",function(){
+    $id("etRopeBox").style.display=this.value==="rope_jump"?"block":"none";
+  });
+
+  function ropeBadgeHtml(t){
+    if(t.task_type!=="rope_jump") return "";
+    return '<span class="tag-sel" style="background:#e9f1fb;color:#275d9c">🪢 '+t.duration_sec+'秒/'+t.target_count+'个</span>';
+  }
+
+  function renderTasksTab(){
+    renderChildCheckboxes("tChildChecks",[]);
+    // 按孩子预览
+    var tabs=$id("kidPreviewTabs");tabs.innerHTML="";
+    data.children.forEach(function(c){
+      var b=document.createElement("button");b.className="sm"+(c.id===previewKidId?" on":"");
+      b.textContent=c.name+" ("+c.tasks.length+"项)";
+      b.addEventListener("click",function(){previewKidId=c.id;renderTasksTab();});
+      tabs.appendChild(b);
+    });
+    var plist=$id("kidPreviewList");plist.innerHTML="";
+    var curKid=data.children.filter(function(c){return c.id===previewKidId;})[0];
+    if(curKid){
+      if(!curKid.tasks.length){plist.innerHTML='<div style="color:var(--muted);font-size:13px">该孩子当前没有启用中的任务。</div>';}
+      else{
+        var doneSet={};curKid.today_done_ids.forEach(function(id){doneSet[id]=1;});
+        var todayPhotoByTask={};
+        (curKid.recent_logs||[]).forEach(function(l){
+          if(l.checkin_date===today()&&l.has_photo&&l.photo_url){
+            if(l.task_id) todayPhotoByTask[l.task_id]=l;
+            todayPhotoByTask["lbl:"+l.task_label]=l;
+          }
+        });
+        curKid.tasks.forEach(function(t){
+          var row=document.createElement("div");row.className="task-item";
+          var tag=t.scope==="all"?'<span class="tag-all">全体通用</span>':'<span class="tag-sel">指定/专有</span>';
+          var pLog=todayPhotoByTask[t.id]||todayPhotoByTask["lbl:"+t.label]||null;
+          var phBtn=pLog?' <button type="button" class="photo-pill task-photo-btn">📷 查看今日完成照片</button>':"";
+          var st=doneSet[t.id]?('<span style="color:var(--accent);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ 今日已完成'+phBtn+'</span>'):'<span style="color:var(--muted);font-size:12px">待打卡</span>';
+          row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+tag+'</div>'+st;
+          var tpb=row.querySelector(".task-photo-btn");
+          if(tpb&&pLog){
+            tpb.addEventListener("click",function(){
+              openPhotoPreview(pLog.photo_url,curKid.name,t.label,pLog.checkin_date,pLog.created_at);
+            });
+          }
+          plist.appendChild(row);
+        });
+      }
+    }
+
+    // 全部任务列表
+    var al=$id("allTaskList");al.innerHTML="";
+    data.tasks.forEach(function(t){
+      var row=document.createElement("div");row.className="task-item";
+      var scopeBadge="";
+      if(t.scope==="all") scopeBadge='<span class="tag-all">全体孩子</span>';
+      else{
+        var names=t.assigned_child_ids.map(childNameById).join("、")||"未指定";
+        scopeBadge='<span class="tag-sel">'+(t.assigned_child_ids.length===1?"专有：":"指定：")+GBArt.esc(names)+'</span>';
+      }
+      var offBadge=t.enabled?"":'<span class="tag-off">已停用</span>';
+      row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+scopeBadge+offBadge+'</div>'
+        +'<div style="display:flex;gap:6px"><button class="sm edit-t">分配/编辑</button><button class="sm toggle-t">'+(t.enabled?"停用":"启用")+'</button><button class="sm danger del-t">删除</button></div>';
+      row.querySelector(".edit-t").addEventListener("click",function(){openEditTask(t);});
+      row.querySelector(".toggle-t").addEventListener("click",async function(){
+        await api("/api/parent/tasks/"+t.id,{method:"PATCH",body:JSON.stringify({enabled:!t.enabled})});
+        await loadOverview();
+      });
+      row.querySelector(".del-t").addEventListener("click",async function(){
+        if(!this._arm){this._arm=true;this.textContent="确认删除？";var self=this;setTimeout(function(){self._arm=false;self.textContent="删除";},3000);return;}
+        await api("/api/parent/tasks/"+t.id,{method:"DELETE"});
+        await loadOverview();
+      });
+      al.appendChild(row);
+    });
+  }
+
+  $id("btnCreateTask").addEventListener("click",async function(){
+    try{
+      var scope=$id("tScope").value;
+      var taskType=$id("tType").value;
+      var childIds=scope==="selected"?getCheckedChildIds("tChildChecks"):[];
+      await api("/api/parent/tasks",{
+        method:"POST",
+        body:JSON.stringify({
+          emoji:$id("tEmoji").value.trim()||(taskType==="rope_jump"?"🪢":"✨"),
+          label:$id("tLabel").value.trim(),
+          pts:$id("tPts").value,
+          scope:scope,
+          task_type:taskType,
+          duration_sec:$id("tDuration").value,
+          target_count:$id("tTarget").value,
+          childIds:childIds
+        })
+      });
+      $id("tLabel").value="";
+      note("taskMsg","任务已发布并同步到对应孩子的任务列表！");
+      await loadOverview();
+    }catch(e){note("taskMsg",e.message,true);}
+  });
+
+  function openEditTask(t){
+    editingTaskId=t.id;
+    $id("etEmoji").value=t.emoji||"✨";
+    $id("etLabel").value=t.label;
+    $id("etPts").value=t.pts;
+    $id("etType").value=t.task_type||"normal";
+    $id("etDuration").value=t.duration_sec||60;
+    $id("etTarget").value=t.target_count||60;
+    $id("etRopeBox").style.display=(t.task_type==="rope_jump")?"block":"none";
+    $id("etScope").value=t.scope;
+    $id("etAssignBox").style.display=t.scope==="selected"?"block":"none";
+    renderChildCheckboxes("etChildChecks",t.assigned_child_ids);
+    $id("etMsg").textContent="";
+    $id("editTaskModal").classList.add("show");
+  }
+  $id("btnCancelEditTask").addEventListener("click",function(){$id("editTaskModal").classList.remove("show");});
+  $id("btnSaveEditTask").addEventListener("click",async function(){
+    try{
+      var scope=$id("etScope").value;
+      var taskType=$id("etType").value;
+      var childIds=scope==="selected"?getCheckedChildIds("etChildChecks"):[];
+      await api("/api/parent/tasks/"+editingTaskId,{
+        method:"PATCH",
+        body:JSON.stringify({
+          emoji:$id("etEmoji").value.trim(),
+          label:$id("etLabel").value.trim(),
+          pts:$id("etPts").value,
+          scope:scope,
+          task_type:taskType,
+          duration_sec:$id("etDuration").value,
+          target_count:$id("etTarget").value,
+          childIds:childIds
+        })
+      });
+      $id("editTaskModal").classList.remove("show");
+      await loadOverview();
+    }catch(e){note("etMsg",e.message,true);}
+  });
+
+  /* Studio */
+  function draftSpecies(){
+    return {id:"pv",name:$id("spName").value.trim()||"星芽",color:$id("spColor").value,ear:$id("spEar").value,acc:$id("spAcc").value,tail:$id("spTail").value,mouth:$id("spMouth").value,base:$id("spBase").value,hint:$id("spHint").value.trim()};
+  }
+  function updateStudioPreview(){
+    var sp=draftSpecies();
+    $id("studioPreviewSvg").innerHTML=GBArt.speciesSVG(sp,{w:116,silo:previewSilo});
+    $id("pvName").textContent=previewSilo?"？？？ ("+sp.name+")":sp.name;
+  }
+  ["spName","spColor","spEar","spAcc","spTail","spMouth","spBase","spHint"].forEach(function(id){
+    $id(id).addEventListener("input",updateStudioPreview);
+    $id(id).addEventListener("change",updateStudioPreview);
+  });
+  $id("btnPreviewSilo").addEventListener("click",function(){previewSilo=!previewSilo;updateStudioPreview();});
+
+  function renderStudioTab(){
+    updateStudioPreview();
+    var sel=$id("spTargetChild");
+    var prev=sel.value;
+    sel.innerHTML='<option value="">全家庭孩子通用</option>'+data.children.map(function(c){
+      return '<option value="'+c.id+'">仅 '+GBArt.esc(c.name)+' 专属</option>';
+    }).join("");
+    if(prev) sel.value=prev;
+
+    var list=$id("speciesMgmtList");list.innerHTML="";
+    data.catalog.forEach(function(sp){
+      var isB=sp.id.charAt(0)==="b";
+      var scopeTxt=sp.target_child_id?("仅 "+childNameById(sp.target_child_id)+" 专属"):"全家庭通用";
+      var row=document.createElement("div");row.className="task-item";
+      row.innerHTML='<div class="task-meta"><span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:'+sp.color+';border:1px solid var(--hair-2)"></span><strong>'+GBArt.esc(sp.name)+'</strong><span class="'+(isB?"tag-all":"tag-sel")+'">'+(isB?"内置":scopeTxt)+'</span></div>'
+        +(isB?'<span style="font-size:12px;color:var(--muted)">内置保留</span>':'<button class="sm danger del-sp">下架</button>');
+      var db=row.querySelector(".del-sp");
+      if(db) db.addEventListener("click",async function(){await api("/api/parent/species/"+sp.id,{method:"DELETE"});await loadOverview();});
+      list.appendChild(row);
+    });
+  }
+
+  $id("btnAddSpecies").addEventListener("click",async function(){
+    try{
+      var sp=draftSpecies();
+      sp.target_child_id=$id("spTargetChild").value||null;
+      await api("/api/parent/species",{method:"POST",body:JSON.stringify(sp)});
+      $id("spName").value="";$id("spHint").value="";
+      note("studioMsg","新伙伴已上新到云端图鉴！");
+      await loadOverview();
+    }catch(e){note("studioMsg",e.message,true);}
+  });
+
+  /* Family Tab */
+  function buildNewKidAvatars(){
+    var box=$id("newKidAvatars");box.innerHTML="";
+    GBArt.AVATARS.forEach(function(a,i){
+      var b=document.createElement("button");b.className="avpick"+(i===newKidAv?" on":"");b.innerHTML=GBArt.avatarSVG(i,{w:30});
+      b.addEventListener("click",function(){newKidAv=i;buildNewKidAvatars();});box.appendChild(b);
+    });
+  }
+  var editingKidAuthId=null;
+  function openKidAuthModal(c){
+    editingKidAuthId=c.id;
+    $id("kaTitle").textContent="设置 "+c.name+" 的登录账号与密码";
+    $id("kaUser").value=c.username||"";
+    $id("kaPass").value="";
+    $id("kaMsg").textContent="";
+    $id("kidAuthModal").classList.add("show");
+  }
+  $id("btnCancelKidAuth").addEventListener("click",function(){$id("kidAuthModal").classList.remove("show");editingKidAuthId=null;});
+  $id("btnSaveKidAuth").addEventListener("click",async function(){
+    if(!editingKidAuthId)return;
+    try{
+      var payload={username:$id("kaUser").value.trim()};
+      var pw=$id("kaPass").value;
+      if(pw!=="") payload.password=pw;
+      await api("/api/parent/children/"+editingKidAuthId,{method:"PATCH",body:JSON.stringify(payload)});
+      $id("kidAuthModal").classList.remove("show");
+      editingKidAuthId=null;
+      await loadOverview();
+    }catch(e){note("kaMsg",e.message,true);}
+  });
+
+  var avatarCtx=null; // { kind: 'parent' } or { kind: 'child', child: c }
+  function openAvatarModal(ctx){
+    avatarCtx=ctx;
+    var isPar=(ctx.kind==="parent");
+    var obj=isPar?data.parent:ctx.child;
+    $id("avModalTitle").textContent=isPar?"设置我的家长头像":("设置 "+obj.name+" 的头像");
+    $id("avModalPreview").innerHTML=GBArt.avatarHtml(obj.avatar_idx,obj.avatar_url,72);
+    $id("avModalMsg").textContent="";
+    var grid=$id("avModalGrid");grid.innerHTML="";
+    GBArt.AVATARS.forEach(function(a,i){
+      var b=document.createElement("button");b.type="button";
+      b.className=(!obj.avatar_url&&i===obj.avatar_idx)?"on":"";
+      b.innerHTML=GBArt.avatarSVG(i,{w:34});
+      b.addEventListener("click",async function(){
+        try{
+          await saveTargetAvatar({avatarIdx:i});
+          $id("avatarModal").classList.remove("show");
+          await loadOverview();
+        }catch(e){note("avModalMsg",e.message,true);}
+      });
+      grid.appendChild(b);
+    });
+    $id("avatarModal").classList.add("show");
+  }
+  async function saveTargetAvatar(payload){
+    if(!avatarCtx)return;
+    if(avatarCtx.kind==="parent"){
+      await api("/api/parent/avatar",{method:"POST",body:JSON.stringify(payload)});
+    }else{
+      var body={};
+      if(payload.avatarIdx!==undefined) body.avatar_idx=payload.avatarIdx;
+      if(payload.avatarData!==undefined) body.avatar_data=payload.avatarData;
+      await api("/api/parent/children/"+avatarCtx.child.id,{method:"PATCH",body:JSON.stringify(body)});
+    }
+  }
+  $id("btnParentAvatarChip").addEventListener("click",function(){if(data)openAvatarModal({kind:"parent"});});
+  $id("btnAvClose").addEventListener("click",function(){$id("avatarModal").classList.remove("show");});
+  $id("btnAvUpload").addEventListener("click",function(){$id("avFileInput").click();});
+  $id("avFileInput").addEventListener("change",function(){
+    var f=this.files&&this.files[0];this.value="";
+    if(!f)return;
+    GBArt.compressAvatarFile(f,async function(dataUrl){
+      try{
+        await saveTargetAvatar({avatarData:dataUrl});
+        $id("avatarModal").classList.remove("show");
+        await loadOverview();
+      }catch(e){note("avModalMsg",e.message,true);}
+    });
+  });
+
+  function renderFamilyTab(){
+    buildNewKidAvatars();
+    var cm=$id("childManageList");cm.innerHTML="";
+    data.children.forEach(function(c){
+      var row=document.createElement("div");row.className="task-item";
+      var accTxt=c.username?("账号 @"+GBArt.esc(c.username)+(c.has_password?"":"(未设密码)")):"未设独立账号";
+      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,28)+'<strong>'+GBArt.esc(c.name)+'</strong><span style="font-size:12px;color:var(--muted)">'+accTxt+' · '+c.xp+' XP</span></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-avatar">设头像</button><button class="sm set-auth">设/改账号密码</button><button class="sm danger del-kid">删除</button></div>';
+      row.querySelector(".set-avatar").addEventListener("click",function(){openAvatarModal({kind:"child",child:c});});
+      row.querySelector(".set-auth").addEventListener("click",function(){openKidAuthModal(c);});
+      row.querySelector(".del-kid").addEventListener("click",async function(){
+        if(!this._arm){this._arm=true;this.textContent="确认删除档案？";var self=this;setTimeout(function(){self._arm=false;self.textContent="删除";},3500);return;}
+        try{await api("/api/parent/children/"+c.id,{method:"DELETE"});await loadOverview();}
+        catch(e){alert(e.message);}
+      });
+      cm.appendChild(row);
+    });
+    $id("impChildSelect").innerHTML=data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
+  }
+
+  $id("btnAddChild").addEventListener("click",async function(){
+    try{
+      await api("/api/parent/children",{
+        method:"POST",
+        body:JSON.stringify({
+          name:$id("newKidName").value.trim(),
+          avatar_idx:newKidAv,
+          username:$id("newKidUser").value.trim(),
+          password:$id("newKidPass").value
+        })
+      });
+      $id("newKidName").value="";$id("newKidUser").value="";$id("newKidPass").value="";
+      note("kidAddMsg","孩子档案已创建！");await loadOverview();
+    }catch(e){note("kidAddMsg",e.message,true);}
+  });
+  $id("btnAddParent").addEventListener("click",async function(){
+    try{
+      await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:$id("coName").value.trim(),password:$id("coPass").value})});
+      $id("coUser").value="";$id("coName").value="";$id("coPass").value="";
+      note("coMsg","共同管理家长添加成功！");
+    }catch(e){note("coMsg",e.message,true);}
+  });
+  $id("btnImportBackup").addEventListener("click",async function(){
+    try{
+      var res=await api("/api/parent/import-backup",{method:"POST",body:JSON.stringify({childId:$id("impChildSelect").value,backupCode:$id("impCode").value.trim()})});
+      $id("impCode").value="";
+      note("impMsg","导入成功！当前成长值 "+res.xp+"，领养蛋 "+res.coupons+" 枚");
+      await loadOverview();
+    }catch(e){note("impMsg",e.message,true);}
+  });
+
+  document.querySelectorAll(".tabs button").forEach(function(t){
+    t.addEventListener("click",function(){
+      document.querySelectorAll(".tabs button").forEach(function(x){x.classList.remove("on");});
+      t.classList.add("on");
+      var tg=t.getAttribute("data-tab");
+      ["overview","tasks","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+    });
+  });
+
+  if(token()) loadOverview(); else showAuth();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成长小伙伴 · 陪孩子养成好习惯</title>
+<link rel="stylesheet" href="/shared/styles.css">
+<style>
+  .hero{
+    display:grid;grid-template-columns:1.2fr .8fr;gap:18px;align-items:center;
+    background:linear-gradient(180deg,#fffdf9 0%,#fcf7ee 100%);
+    border:1px solid var(--hair);border-radius:22px;padding:24px 22px;box-shadow:var(--shadow-md);margin-top:16px;
+  }
+  @media(max-width:680px){.hero{grid-template-columns:1fr;text-align:center}}
+  .hero p{font-size:14px;color:var(--ink-soft);line-height:1.75;margin:8px 0 16px}
+  .hero-pet{width:180px;margin:0 auto}
+  .cta{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-size:15px;font-weight:600;
+    background:var(--accent);color:#fff;border-radius:14px;padding:12px 22px;box-shadow:var(--shadow-sm)}
+  .cta:hover{filter:brightness(1.05)}
+  .cta-sub{display:block;font-size:12px;color:var(--muted);margin-top:8px}
+  .apk-box{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;text-align:left;
+    background:#eef6f0;border:1px solid #c6dfc9;border-radius:14px;padding:12px 14px;margin-top:14px}
+  .sec-title{font-family:var(--serif);font-size:20px;font-weight:400;margin:26px 0 12px;color:var(--ink)}
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:680px){.feat-grid{grid-template-columns:1fr}}
+  .feat{background:#fff;border:1px solid var(--hair);border-radius:16px;padding:16px;box-shadow:var(--shadow-sm)}
+  .feat .ic{font-size:24px}
+  .feat h3{font-size:15px;margin:6px 0 4px}
+  .feat p{font-size:12.8px;color:var(--ink-soft);line-height:1.65}
+  .steps{counter-reset:st;display:flex;flex-direction:column;gap:10px}
+  .step{position:relative;background:#fff;border:1px solid var(--hair);border-radius:14px;padding:14px 14px 14px 56px;box-shadow:var(--shadow-sm)}
+  .step::before{counter-increment:st;content:counter(st);position:absolute;left:14px;top:14px;width:28px;height:28px;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);font-weight:700;display:flex;align-items:center;justify-content:center}
+  .step h4{font-size:14.5px;margin-bottom:3px}
+  .step p{font-size:12.8px;color:var(--ink-soft);line-height:1.65}
+  .tree{background:#fbf8f2;border:1px dashed var(--hair-2);border-radius:14px;padding:14px 16px;font-size:13px;color:var(--ink-soft);line-height:1.9}
+  .tree b{color:var(--ink)}
+  .faq{background:#fff;border:1px solid var(--hair);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+  .faq summary{cursor:pointer;font-weight:600;font-size:13.8px}
+  .faq p{font-size:12.8px;color:var(--ink-soft);margin-top:6px;line-height:1.65}
+</style>
+</head>
+<body>
+<div class="wrap wide">
+  <header>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="kicker">GROWTH BUDDY · 家庭习惯养成</div>
+      <span class="pill" id="sysVerBadge" style="font-size:12px;color:#2f6b4f;background:#eef6f0;border-color:#c6dfc9">系统版本 v2.3.0</span>
+    </div>
+    <h1>成长小伙伴</h1>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h2 style="font-family:var(--serif);font-size:22px;font-weight:400">每完成一件小事，小伙伴就长大一点</h2>
+      <p>成长小伙伴是一款面向家庭的习惯养成工具：家长布置每日任务，孩子打卡喂养专属电子宠物，宠物随成长值一路进化；拍照打卡让家长随时查看完成情况，积分还能兑换领养蛋解锁更多伙伴。</p>
+      <a class="cta" href="/parent.html">👨‍👩‍👧 进入家长端 →</a>
+      <span class="cta-sub">首次使用？进入后点击「注册新家庭」即可创建</span>
+      <div class="apk-box">
+        <div>
+          <div style="font-size:13.5px;font-weight:600;color:#2f6b4f" id="apkVerTitle">📥 儿童端安卓 App</div>
+          <div style="font-size:12px;color:var(--muted)" id="apkVerMeta">孩子使用家长分配的账号密码登录</div>
+        </div>
+        <a id="apkDownloadLink" href="/api/app/latest.apk" class="pill" style="text-decoration:none;background:#2f6b4f;color:#fff;border-color:#2f6b4f">下载 APK ↓</a>
+      </div>
+    </div>
+    <div class="hero-pet" id="heroPet"></div>
+  </section>
+
+  <h2 class="sec-title">系统介绍</h2>
+  <div class="feat-grid">
+    <div class="feat"><div class="ic">📋</div><h3>灵活的任务布置</h3><p>普通习惯打卡与定时跳绳挑战两种任务；可对全体孩子通用，也可指定给某一个或几个孩子。</p></div>
+    <div class="feat"><div class="ic">🐣</div><h3>宠物陪伴成长</h3><p>打卡获得成长值，宠物从一颗蛋逐步进化为守护兽；连续打卡、陪伴天数一目了然。</p></div>
+    <div class="feat"><div class="ic">📸</div><h3>拍照打卡留证</h3><p>孩子完成任务时可拍下作业或成果照片，家长在照片墙中随时查验完成质量。</p></div>
+    <div class="feat"><div class="ic">🪢</div><h3>AI 跳绳计数</h3><p>安卓 App 通过摄像头识别动作，自动计时计数，达标后才能完成挑战。</p></div>
+    <div class="feat"><div class="ic">🥚</div><h3>积分兑换领养蛋</h3><p>家长确认积分后发放领养蛋，孩子可孵化神秘伙伴、收集图鉴、拍摄纪念合影。</p></div>
+    <div class="feat"><div class="ic">👨‍👩‍👧‍👦</div><h3>多孩多家长</h3><p>一个家庭可添加多个孩子与多位共同管理的家长，数据云端同步。</p></div>
+  </div>
+
+  <h2 class="sec-title">使用层级</h2>
+  <div class="tree">
+    <b>家长端</b>（登录 / 注册家庭）<br>
+    &nbsp;&nbsp;├─ 布置任务、查看打卡照片、发放领养蛋、管理孩子账号<br>
+    &nbsp;&nbsp;└─ <b>孩子小屋</b>：在孩子卡片上点「进入小屋」，查看或代孩子操作<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 孩子日常使用：在 <b>安卓 App</b> 中用家长分配的账号密码登录
+  </div>
+
+  <h2 class="sec-title">使用说明</h2>
+  <div class="steps">
+    <div class="step"><h4>注册家庭</h4><p>点击「进入家长端」→「注册新家庭」，填写家庭名称、家长账号，并为第一个孩子设置登录账号与密码。</p></div>
+    <div class="step"><h4>添加孩子与布置任务</h4><p>在「家庭与档案」中继续添加孩子；在「任务分配中心」发布每日习惯或跳绳挑战，并选择分配给哪些孩子。</p></div>
+    <div class="step"><h4>孩子安装 App 并登录</h4><p>在本页或家长端下载儿童端安卓 App 安装包，孩子使用家长分配的账号和密码登录，每天完成任务并拍照打卡。</p></div>
+    <div class="step"><h4>家长查看与奖励</h4><p>在「孩子总览」查看每个孩子的进度和打卡照片墙，必要时撤销误打卡；积分足够时确认发放领养蛋作为奖励。</p></div>
+  </div>
+
+  <h2 class="sec-title">常见问题</h2>
+  <details class="faq"><summary>孩子忘记密码怎么办？</summary><p>家长登录后在「家庭与档案」中点击该孩子的「设/改账号密码」即可重置。</p></details>
+  <details class="faq"><summary>没有安卓设备可以用吗？</summary><p>可以。家长在家长端点击孩子卡片上的「进入小屋」，即可在浏览器里查看并代孩子完成打卡。</p></details>
+  <details class="faq"><summary>爸爸妈妈都想管理怎么办？</summary><p>在「家庭与档案」中添加共同管理家长，各自使用自己的账号登录同一个家庭。</p></details>
+
+  <div style="text-align:center;margin:26px 0 8px">
+    <a class="cta" href="/parent.html">👨‍👩‍👧 进入家长端 →</a>
+  </div>
+  <div class="foot" id="sysFoot">成长小伙伴 · Growth Buddy · 系统版本 v2.3.0</div>
+</div>
+
+<script src="/shared/pet-art.js"></script>
+<script>
+  document.getElementById("heroPet").innerHTML=GBArt.mainPetSVG(3,{w:176});
+  GBArt.enableEyeTracking();
+  fetch("/api/health").then(function(r){return r.json();}).then(function(d){
+    if(d&&d.version){
+      document.getElementById("sysVerBadge").textContent="系统版本 "+d.version;
+      document.getElementById("sysFoot").textContent="成长小伙伴 · Growth Buddy · 系统版本 "+d.version;
+    }
+  }).catch(function(){});
+  fetch("/api/app/version?platform=android").then(function(r){return r.json();}).then(function(d){
+    if(d&&d.hasRelease&&d.release){
+      var rel=d.release;
+      document.getElementById("apkVerTitle").textContent="📥 儿童端安卓 App（v"+rel.version_name+"）";
+      var sz=rel.file_size?((rel.file_size/(1024*1024)).toFixed(1)+" MB · "):"";
+      document.getElementById("apkVerMeta").textContent=sz+(rel.release_notes||"孩子使用家长分配的账号密码登录");
+      document.getElementById("apkDownloadLink").href=rel.download_url||"/api/app/latest.apk";
+    }
+  }).catch(function(){});
+</script>
+</body>
+</html>

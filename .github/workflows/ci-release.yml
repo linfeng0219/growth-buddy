@@ -1,0 +1,139 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  server-build:
+    name: Go + SQLite Server (Test & Package)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SQLite static dev libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc libsqlite3-dev
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Run Go unit & integration tests
+        working-directory: server
+        run: go test -v ./...
+
+      - name: Build static-SQLite Linux binary
+        working-directory: server
+        run: |
+          CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-Bstatic -lsqlite3 -Wl,-Bdynamic -lm -ldl -lpthread" \
+            go build -trimpath -ldflags="-s -w" -o growth-buddy-server .
+          ls -lh growth-buddy-server
+          ldd growth-buddy-server
+
+      - name: Package Aliyun deployment tarball (with prebuilt binary)
+        run: |
+          STAGE="$(mktemp -d)"
+          cp -a server/. "$STAGE/"
+          rm -rf "$STAGE/data" "$STAGE/.env"
+          # Replace Dockerfile in release tarball with ultra-fast prebuilt binary image
+          printf '%s\n' \
+            'FROM debian:12-slim' \
+            'WORKDIR /app' \
+            'RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*' \
+            'ENV TZ=Asia/Shanghai' \
+            'COPY growth-buddy-server /app/growth-buddy-server' \
+            'RUN chmod +x /app/growth-buddy-server && mkdir -p /app/data/releases' \
+            'EXPOSE 3000' \
+            'CMD ["/app/growth-buddy-server"]' \
+            > "$STAGE/Dockerfile"
+          mkdir -p dist
+          tar -czf dist/growth-buddy-go-aliyun.tar.gz -C "$STAGE" .
+          sha256sum dist/growth-buddy-go-aliyun.tar.gz > dist/server.sha256
+          ls -lh dist/growth-buddy-go-aliyun.tar.gz
+
+      - name: Upload server deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-aliyun-package
+          path: |
+            dist/growth-buddy-go-aliyun.tar.gz
+            dist/server.sha256
+
+  android-build:
+    name: Android Child App (Test & Build APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Run Android unit tests & assemble APK
+        working-directory: android
+        run: gradle testDebugUnitTest assembleDebug --no-daemon
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p dist
+          VER="$(grep -E 'versionName\s*=' android/app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          VER="${VER:-dev}"
+          APK_NAME="GrowthBuddyChild-v${VER}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/${APK_NAME}"
+          sha256sum "dist/${APK_NAME}" > dist/android.sha256
+          ls -lh "dist/${APK_NAME}"
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-child-apk
+          path: |
+            dist/*.apk
+            dist/android.sha256
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ server-build, android-build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Combine SHA256SUMS
+        working-directory: release-files
+        run: |
+          cat server.sha256 android.sha256 > SHA256SUMS.txt
+          rm -f server.sha256 android.sha256
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release-files/growth-buddy-go-aliyun.tar.gz
+            release-files/*.apk
+            release-files/SHA256SUMS.txt

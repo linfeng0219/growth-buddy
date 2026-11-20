@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">成长小伙伴</string>
+    <string name="settings_server">服务器设置</string>
+    <string name="refresh_page">刷新页面</string>
+</resources>

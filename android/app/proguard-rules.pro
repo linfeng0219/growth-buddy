@@ -1,0 +1,3 @@
+-keep class com.growthbuddy.child.** { *; }
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**

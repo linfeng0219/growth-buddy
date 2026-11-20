@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>成长小伙伴 · 系统管理端</title>
+<link rel="stylesheet" href="/shared/styles.css">
+<style>
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+  @media(max-width:680px){.stats-grid{grid-template-columns:1fr 1fr}}
+  .stat-card{
+    background:linear-gradient(180deg,#fffdf9 0%,#fcf7ee 100%);
+    border:1px solid var(--hair);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow-sm);
+  }
+  .stat-card .k{font-size:12px;color:var(--muted)}
+  .stat-card .v{font-family:var(--serif);font-size:28px;color:var(--ink);margin-top:4px;line-height:1.1}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .toolbar input{flex:1;min-width:200px}
+  .fam-card{
+    background:#fff;border:1px solid var(--hair);border-radius:18px;padding:16px;
+    box-shadow:var(--shadow-sm);margin-bottom:14px;
+  }
+  .fam-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px dashed var(--hair)}
+  .fam-name{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sub-section{margin-top:12px}
+  .sub-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--ink-soft);font-weight:600}
+  .user-row{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+    padding:8px 10px;border:1px solid var(--hair);border-radius:12px;background:#fdfbf7;margin-bottom:6px;
+  }
+  .user-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+  .tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:500}
+  .tag.amber{background:var(--amber-soft);color:#9f5c13}
+  .tag.gray{background:#f1ece2;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap wide">
+
+  <!-- 未登录视图 -->
+  <div id="authView" style="display:none;max-width:420px;margin:28px auto">
+    <header>
+      <div class="top-bar"><a href="/" class="pill ghost" style="text-decoration:none">← 返回首页</a><span class="kicker">系统管理端 · Web</span></div>
+      <h1>管理员登录</h1>
+    </header>
+    <div class="panel">
+      <div class="field"><label>管理员账号</label><input type="text" id="aLoginUser" placeholder="默认：admin"></div>
+      <div class="field"><label>登录密码</label><input type="password" id="aLoginPass" placeholder="请输入管理员密码"></div>
+      <button class="primary" id="btnALogin" style="width:100%">登录系统管理端</button>
+      <div class="msg" id="aLoginMsg"></div>
+      <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:12px">
+        管理全平台所有家庭、家长与儿童账号；首次默认账号密码可通过服务器环境变量 <code>ADMIN_USERNAME / ADMIN_PASSWORD</code> 配置。
+      </p>
+    </div>
+  </div>
+
+  <!-- 管理主视图 -->
+  <div id="mainView" style="display:none">
+    <header>
+      <div class="top-bar">
+        <span class="kicker" id="adminGreeting">系统管理端</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <a href="/parent.html" class="pill ghost" style="text-decoration:none">家长端 ↗</a>
+          <button class="pill ghost" id="btnOpenAdminPwd">修改管理员密码</button>
+          <button class="pill ghost" id="btnLogout">退出登录</button>
+        </div>
+      </div>
+      <h1>全平台家庭与用户管理</h1>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="k">家庭总数</div><div class="v" id="stFam">0</div></div>
+      <div class="stat-card"><div class="k">家长用户数</div><div class="v" id="stParent">0</div></div>
+      <div class="stat-card"><div class="k">儿童用户数</div><div class="v" id="stChild">0</div></div>
+      <div class="stat-card"><div class="k">今日全平台打卡</div><div class="v" id="stToday">0</div></div>
+    </div>
+
+    <div class="tabs" style="margin:0 0 14px">
+      <button id="tabFamilies" class="on">🏠 家庭与用户管理</button>
+      <button id="tabReleases">📱 App 远程升级发布</button>
+    </div>
+    <div class="msg" id="globalMsg"></div>
+
+    <div id="secFamilies">
+      <div class="toolbar">
+        <input type="text" id="searchInput" placeholder="搜索家庭名称、家长账号/称呼、儿童昵称/登录账号...">
+        <button class="primary" id="btnNewFamily">+ 新建家庭</button>
+        <button class="ghost" id="btnRefresh">🔄 刷新数据</button>
+      </div>
+      <div id="familiesContainer"></div>
+    </div>
+
+    <div id="secReleases" style="display:none">
+      <div class="panel" style="margin-bottom:14px">
+        <h3 style="font-family:var(--serif);margin-bottom:6px">发布新版安卓儿童端（OTA 远程升级）</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">
+          上传新版本 APK 后，儿童端 App 启动时或点击「检查更新」将自动发现新版本、校验 SHA-256 并下载安装。
+        </p>
+        <div class="row2">
+          <div class="field"><label>版本名（如 2.2.0）</label><input type="text" id="relVerName" placeholder="例如：2.2.0"></div>
+          <div class="field"><label>内部版本号 versionCode（须大于旧版）</label><input type="number" id="relVerCode" min="1" placeholder="例如：4"></div>
+        </div>
+        <div class="field"><label>更新日志（会直接展示在 App 升级弹窗中）</label><textarea id="relNotes" rows="2" placeholder="例如：优化跳绳防漏计与界面流畅度"></textarea></div>
+        <div class="row2">
+          <div class="field"><label>方式一：直接上传 .apk 安装包（推荐，最大 150 MB）</label><input type="file" id="relApkFile" accept=".apk"></div>
+          <div class="field"><label>方式二：或填写外部 APK 直链（不上传文件时生效）</label><input type="text" id="relExtUrl" placeholder="https://..."></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="relForce" style="width:auto"> 强制升级（不显示“稍后再说”）
+          </label>
+          <button class="primary" id="btnPublishRelease">🚀 发布新版本</button>
+        </div>
+        <div id="relUploadProg" style="display:none;margin-top:8px;font-size:12.5px;color:var(--accent)">正在上传 APK...</div>
+        <div class="msg" id="relMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="sub-head" style="margin-bottom:10px">
+          <span>📦 已发布的版本历史</span>
+          <a href="/api/app/latest.apk" class="pill ghost" style="text-decoration:none;font-size:12px">最新版直链 /api/app/latest.apk</a>
+        </div>
+        <div id="releasesContainer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新建家庭弹窗 -->
+<div class="modal-backdrop" id="newFamilyModal">
+  <div class="modal-card" style="text-align:left;max-width:460px">
+    <h3 style="font-family:var(--serif);margin-bottom:8px">新建家庭（含初始家长与儿童账号）</h3>
+    <div class="row2">
+      <div class="field"><label>家庭名称</label><input type="text" id="nfName" placeholder="如：林家小院"></div>
+      <div class="field"><label>家长称呼</label><input type="text" id="nfDisplay" placeholder="如：妈妈"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>家长登录账号</label><input type="text" id="nfUser" placeholder="至少3位"></div>
+      <div class="field"><label>家长登录密码</label><input type="password" id="nfPass" placeholder="至少4位"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>首位儿童昵称</label><input type="text" id="nfChildName" placeholder="如：大宝"></div>
+      <div class="field"><label>儿童登录账号（推荐）</label><input type="text" id="nfChildUser" placeholder="如 dabao01"></div>
+    </div>
+    <div class="field"><label>儿童登录密码（填账号时必填，至少4位）</label><input type="password" id="nfChildPass" placeholder="给孩子在 App 登录用"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="primary" id="btnSaveNewFamily" style="flex:1">创建家庭</button>
+      <button class="ghost" id="btnCancelNewFamily">取消</button>
+    </div>
+    <div class="msg" id="nfMsg"></div>
+  </div>
+</div>
+
+<!-- 新增/编辑家长弹窗 -->
+<div class="modal-backdrop" id="parentModal">
+  <div class="modal-card" style="text-align:left;max-width:420px">
+    <h3 id="pmTitle" style="font-family:var(--serif);margin-bottom:8px">家长账号</h3>
+    <div class="field"><label>家长账号（至少3位）</label><input type="text" id="pmUser"></div>
+    <div class="field"><label>家长称呼</label><input type="text" id="pmDisplay"></div>
+    <div class="field"><label id="pmPassLabel">登录密码（留空表示不修改）</label><input type="password" id="pmPass" placeholder="至少4位"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="primary" id="btnSaveParent" style="flex:1">保存</button>
+      <button class="ghost" id="btnCancelParent">取消</button>
+    </div>
+    <div class="msg" id="pmMsg"></div>
+  </div>
+</div>
+
+<!-- 新增/编辑儿童弹窗 -->
+<div class="modal-backdrop" id="childModal">
+  <div class="modal-card" style="text-align:left;max-width:440px">
+    <h3 id="cmTitle" style="font-family:var(--serif);margin-bottom:8px">儿童账号</h3>
+    <div class="row2">
+      <div class="field"><label>儿童昵称</label><input type="text" id="cmName" maxlength="12"></div>
+      <div class="field"><label>儿童登录账号（App登录）</label><input type="text" id="cmUser" maxlength="32" placeholder="至少3位"></div>
+    </div>
+    <div class="field"><label id="cmPassLabel">儿童登录密码（留空表示不修改）</label><input type="password" id="cmPass" placeholder="至少4位"></div>
+    <div class="row2" id="cmExtraRow">
+      <div class="field"><label>成长值 XP</label><input type="number" id="cmXp" min="0"></div>
+      <div class="field"><label>领养蛋数量</label><input type="number" id="cmCoupons" min="0"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="primary" id="btnSaveChild" style="flex:1">保存</button>
+      <button class="ghost" id="btnCancelChild">取消</button>
+    </div>
+    <div class="msg" id="cmMsg"></div>
+  </div>
+</div>
+
+<!-- 修改管理员密码弹窗 -->
+<div class="modal-backdrop" id="adminPwdModal">
+  <div class="modal-card" style="text-align:left;max-width:400px">
+    <h3 style="font-family:var(--serif);margin-bottom:8px">修改当前管理员密码</h3>
+    <div class="field"><label>原密码</label><input type="password" id="apOld"></div>
+    <div class="field"><label>新密码（至少4位）</label><input type="password" id="apNew"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="primary" id="btnSaveAdminPwd" style="flex:1">确认修改</button>
+      <button class="ghost" id="btnCancelAdminPwd">取消</button>
+    </div>
+    <div class="msg" id="apMsg"></div>
+  </div>
+</div>
+
+<script src="/shared/pet-art.js"></script>
+<script>
+(function(){
+  var $id=function(id){return document.getElementById(id);};
+  var data=null;
+  var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }
+  var childCtx=null;  // { mode: 'create'|'edit', familyId, child }
+
+  function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  function token(){return localStorage.getItem("gb_admin_token")||"";}
+  function setToken(t){localStorage.setItem("gb_admin_token",t);}
+  function clearToken(){localStorage.removeItem("gb_admin_token");}
+  function note(id,t,err){var el=$id(id);el.textContent=t;el.className="msg"+(err?" err":"");if(!err&&t){clearTimeout(el._t);el._t=setTimeout(function(){el.textContent="";},4000);}}
+
+  async function api(path,opts){
+    opts=opts||{};
+    opts.headers=Object.assign({"Content-Type":"application/json"},opts.headers||{});
+    if(token()) opts.headers["Authorization"]="Bearer "+token();
+    var r=await fetch(path,opts);
+    var d=await r.json();
+    if(r.status===401||r.status===403){
+      clearToken();
+      showAuth();
+      throw new Error(d.error||"请重新登录系统管理端");
+    }
+    if(!r.ok) throw new Error(d.error||"操作失败");
+    return d;
+  }
+
+  function showAuth(){$id("authView").style.display="block";$id("mainView").style.display="none";}
+  function showMain(){$id("authView").style.display="none";$id("mainView").style.display="block";}
+
+  async function doLogin(){
+    try{
+      var r=await fetch("/api/auth/admin-login",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username:$id("aLoginUser").value.trim(),password:$id("aLoginPass").value})
+      });
+      var d=await r.json();
+      if(!r.ok) throw new Error(d.error||"登录失败");
+      setToken(d.token);
+      $id("aLoginPass").value="";
+      await loadOverview();
+    }catch(e){note("aLoginMsg",e.message,true);}
+  }
+  $id("btnALogin").addEventListener("click",doLogin);
+  $id("aLoginPass").addEventListener("keydown",function(e){if(e.key==="Enter")doLogin();});
+  $id("btnLogout").addEventListener("click",function(){clearToken();showAuth();});
+
+  async function loadOverview(){
+    try{
+      data=await api("/api/admin/overview?date="+encodeURIComponent(today()));
+      showMain();
+      renderAll();
+    }catch(e){note("globalMsg",e.message,true);}
+  }
+
+  function renderAll(){
+    if(!data) return;
+    $id("adminGreeting").textContent="系统管理端 · "+(data.admin?(data.admin.display_name+" (@"+data.admin.username+")"):"admin");
+    $id("stFam").textContent=data.stats.family_count;
+    $id("stParent").textContent=data.stats.parent_count;
+    $id("stChild").textContent=data.stats.child_count;
+    $id("stToday").textContent=data.stats.today_checkins;
+    renderFamilies();
+  }
+
+  function renderFamilies(){
+    var q=$id("searchInput").value.trim().toLowerCase();
+    var box=$id("familiesContainer");
+    box.innerHTML="";
+    var list=data.families.filter(function(f){
+      if(!q) return true;
+      if((f.name||"").toLowerCase().includes(q)||(f.family_code||"").toLowerCase().includes(q)) return true;
+      if(f.parents.some(function(p){return (p.username||"").toLowerCase().includes(q)||(p.display_name||"").toLowerCase().includes(q);})) return true;
+      if(f.children.some(function(c){return (c.name||"").toLowerCase().includes(q)||(c.username||"").toLowerCase().includes(q);})) return true;
+      return false;
+    });
+    if(!list.length){
+      box.innerHTML='<div class="panel" style="text-align:center;color:var(--muted)">暂无匹配的家庭记录</div>';
+      return;
+    }
+    list.forEach(function(f){
+      var card=document.createElement("div");
+      card.className="fam-card";
+
+      var parentRows=f.parents.map(function(p){
+        return '<div class="user-row" data-pid="'+p.id+'">'
+          +'<div class="user-meta">'+GBArt.avatarHtml(p.avatar_idx,p.avatar_url,24)
+          +'<strong>'+GBArt.esc(p.display_name)+'</strong><span class="tag">@'+GBArt.esc(p.username)+'</span></div>'
+          +'<div style="display:flex;gap:6px"><button class="sm edit-par" data-pid="'+p.id+'">编辑/改密</button><button class="sm danger del-par" data-pid="'+p.id+'">删除</button></div>'
+          +'</div>';
+      }).join("");
+
+      var childRows=f.children.map(function(c){
+        var accTag=c.username
+          ? '<span class="tag amber">App账号 @'+GBArt.esc(c.username)+'</span>'
+          : '<span class="tag gray">未设App账号</span>';
+        return '<div class="user-row" data-cid="'+c.id+'">'
+          +'<div class="user-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)
+          +'<strong>'+GBArt.esc(c.name)+'</strong>'+accTag
+          +'<span style="font-size:12px;color:var(--muted)">Lv.'+(c.level+1)+' · '+c.xp+' XP · 🥚'+c.coupons+' · 今日打卡 '+c.today_checkins+'</span></div>'
+          +'<div style="display:flex;gap:6px"><button class="sm edit-kid" data-cid="'+c.id+'">编辑/设账号密码</button><button class="sm danger del-kid" data-cid="'+c.id+'">删除</button></div>'
+          +'</div>';
+      }).join("");
+
+      card.innerHTML=
+        '<div class="fam-head">'
+          +'<div class="fam-name">🏠 '+GBArt.esc(f.name)
+            +'<span class="tag">'+f.task_count+' 项任务</span>'
+          +'</div>'
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+            +'<button class="sm rename-fam">改家庭名</button>'
+            +'<button class="sm danger del-fam">删除家庭</button>'
+          +'</div>'
+        +'</div>'
+        +'<div class="sub-section">'
+          +'<div class="sub-head"><span>👨‍👩‍👧 家长用户（'+f.parents.length+'）</span><button class="sm add-par">+ 添加家长</button></div>'
+          +parentRows
+        +'</div>'
+        +'<div class="sub-section">'
+          +'<div class="sub-head"><span>🧒 儿童用户（'+f.children.length+'）</span><button class="sm add-kid">+ 添加儿童</button></div>'
+          +childRows
+        +'</div>';
+
+      card.querySelector(".rename-fam").addEventListener("click",async function(){
+        var nn=prompt("输入新的家庭名称：",f.name);
+        if(nn===null||!nn.trim()) return;
+        try{await api("/api/admin/families/"+f.id,{method:"PATCH",body:JSON.stringify({name:nn.trim()})});await loadOverview();}
+        catch(e){note("globalMsg",e.message,true);}
+      });
+      card.querySelector(".del-fam").addEventListener("click",async function(){
+        if(!this._arm){this._arm=true;this.textContent="确认删除整户？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除家庭";},3500);return;}
+        try{await api("/api/admin/families/"+f.id,{method:"DELETE"});note("globalMsg","已删除家庭："+f.name);await loadOverview();}
+        catch(e){note("globalMsg",e.message,true);}
+      });
+      card.querySelector(".add-par").addEventListener("click",function(){openParentModal("create",f.id,null);});
+      card.querySelector(".add-kid").addEventListener("click",function(){openChildModal("create",f.id,null);});
+
+      card.querySelectorAll(".edit-par").forEach(function(btn){
+        btn.addEventListener("click",function(){
+          var p=f.parents.find(function(x){return x.id===btn.getAttribute("data-pid");});
+          if(p) openParentModal("edit",f.id,p);
+        });
+      });
+      card.querySelectorAll(".del-par").forEach(function(btn){
+        btn.addEventListener("click",async function(){
+          if(!this._arm){this._arm=true;this.textContent="确认删除？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除";},3500);return;}
+          try{await api("/api/admin/parents/"+btn.getAttribute("data-pid"),{method:"DELETE"});await loadOverview();}
+          catch(e){note("globalMsg",e.message,true);}
+        });
+      });
+      card.querySelectorAll(".edit-kid").forEach(function(btn){
+        btn.addEventListener("click",function(){
+          var c=f.children.find(function(x){return x.id===btn.getAttribute("data-cid");});
+          if(c) openChildModal("edit",f.id,c);
+        });
+      });
+      card.querySelectorAll(".del-kid").forEach(function(btn){
+        btn.addEventListener("click",async function(){
+          if(!this._arm){this._arm=true;this.textContent="确认删除？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除";},3500);return;}
+          try{await api("/api/admin/children/"+btn.getAttribute("data-cid"),{method:"DELETE"});await loadOverview();}
+          catch(e){note("globalMsg",e.message,true);}
+        });
+      });
+
+      box.appendChild(card);
+    });
+  }
+
+  $id("searchInput").addEventListener("input",renderFamilies);
+  $id("btnRefresh").addEventListener("click",loadOverview);
+
+  /* 新建家庭 */
+  $id("btnNewFamily").addEventListener("click",function(){
+    ["nfName","nfDisplay","nfUser","nfPass","nfChildName","nfChildUser","nfChildPass"].forEach(function(k){$id(k).value="";});
+    $id("nfMsg").textContent="";
+    $id("newFamilyModal").classList.add("show");
+  });
+  $id("btnCancelNewFamily").addEventListener("click",function(){$id("newFamilyModal").classList.remove("show");});
+  $id("btnSaveNewFamily").addEventListener("click",async function(){
+    try{
+      await api("/api/admin/families",{
+        method:"POST",
+        body:JSON.stringify({
+          familyName:$id("nfName").value.trim(),
+          displayName:$id("nfDisplay").value.trim(),
+          username:$id("nfUser").value.trim(),
+          password:$id("nfPass").value,
+          childName:$id("nfChildName").value.trim(),
+          childUsername:$id("nfChildUser").value.trim(),
+          childPassword:$id("nfChildPass").value
+        })
+      });
+      $id("newFamilyModal").classList.remove("show");
+      note("globalMsg","家庭已创建成功！");
+      await loadOverview();
+    }catch(e){note("nfMsg",e.message,true);}
+  });
+
+  /* 家长弹窗 */
+  function openParentModal(mode,familyId,parent){
+    parentCtx={mode:mode,familyId:familyId,parent:parent};
+    $id("pmTitle").textContent=mode==="create"?"添加家庭家长":"编辑家长账号";
+    $id("pmPassLabel").textContent=mode==="create"?"登录密码（至少4位）":"重置密码（留空则不修改）";
+    $id("pmUser").value=parent?parent.username:"";
+    $id("pmDisplay").value=parent?parent.display_name:"";
+    $id("pmPass").value="";
+    $id("pmMsg").textContent="";
+    $id("parentModal").classList.add("show");
+  }
+  $id("btnCancelParent").addEventListener("click",function(){$id("parentModal").classList.remove("show");});
+  $id("btnSaveParent").addEventListener("click",async function(){
+    if(!parentCtx) return;
+    try{
+      if(parentCtx.mode==="create"){
+        await api("/api/admin/parents",{
+          method:"POST",
+          body:JSON.stringify({familyId:parentCtx.familyId,username:$id("pmUser").value.trim(),displayName:$id("pmDisplay").value.trim(),password:$id("pmPass").value})
+        });
+      }else{
+        var payload={username:$id("pmUser").value.trim(),displayName:$id("pmDisplay").value.trim()};
+        if($id("pmPass").value!=="") payload.password=$id("pmPass").value;
+        await api("/api/admin/parents/"+parentCtx.parent.id,{method:"PATCH",body:JSON.stringify(payload)});
+      }
+      $id("parentModal").classList.remove("show");
+      await loadOverview();
+    }catch(e){note("pmMsg",e.message,true);}
+  });
+
+  /* 儿童弹窗 */
+  function openChildModal(mode,familyId,child){
+    childCtx={mode:mode,familyId:familyId,child:child};
+    $id("cmTitle").textContent=mode==="create"?"添加儿童档案与 App 账号":"编辑儿童档案与 App 账号";
+    $id("cmPassLabel").textContent=mode==="create"?"儿童登录密码（填账号时必填，至少4位）":"重置儿童密码（留空则不修改）";
+    $id("cmName").value=child?child.name:"";
+    $id("cmUser").value=child?(child.username||""):"";
+    $id("cmPass").value="";
+    $id("cmExtraRow").style.display=mode==="edit"?"":"none";
+    if(child){$id("cmXp").value=child.xp;$id("cmCoupons").value=child.coupons;}
+    $id("cmMsg").textContent="";
+    $id("childModal").classList.add("show");
+  }
+  $id("btnCancelChild").addEventListener("click",function(){$id("childModal").classList.remove("show");});
+  $id("btnSaveChild").addEventListener("click",async function(){
+    if(!childCtx) return;
+    try{
+      if(childCtx.mode==="create"){
+        await api("/api/admin/children",{
+          method:"POST",
+          body:JSON.stringify({
+            familyId:childCtx.familyId,
+            name:$id("cmName").value.trim(),
+            username:$id("cmUser").value.trim(),
+            password:$id("cmPass").value
+          })
+        });
+      }else{
+        var payload={
+          name:$id("cmName").value.trim(),
+          username:$id("cmUser").value.trim(),
+          xp:parseInt($id("cmXp").value,10)||0,
+          coupons:parseInt($id("cmCoupons").value,10)||0
+        };
+        if($id("cmPass").value!=="") payload.password=$id("cmPass").value;
+        await api("/api/admin/children/"+childCtx.child.id,{method:"PATCH",body:JSON.stringify(payload)});
+      }
+      $id("childModal").classList.remove("show");
+      await loadOverview();
+    }catch(e){note("cmMsg",e.message,true);}
+  });
+
+  /* 改管理员密码 */
+  $id("btnOpenAdminPwd").addEventListener("click",function(){
+    $id("apOld").value="";$id("apNew").value="";$id("apMsg").textContent="";
+    $id("adminPwdModal").classList.add("show");
+  });
+  $id("btnCancelAdminPwd").addEventListener("click",function(){$id("adminPwdModal").classList.remove("show");});
+  $id("btnSaveAdminPwd").addEventListener("click",async function(){
+    try{
+      await api("/api/admin/change-password",{method:"POST",body:JSON.stringify({oldPassword:$id("apOld").value,newPassword:$id("apNew").value})});
+      $id("adminPwdModal").classList.remove("show");
+      note("globalMsg","管理员密码修改成功！");
+    }catch(e){note("apMsg",e.message,true);}
+  });
+
+  /* Tab 切换与 App 远程升级发布 */
+  $id("tabFamilies").addEventListener("click",function(){
+    this.classList.add("on");$id("tabReleases").classList.remove("on");
+    $id("secFamilies").style.display="";$id("secReleases").style.display="none";
+  });
+  $id("tabReleases").addEventListener("click",function(){
+    this.classList.add("on");$id("tabFamilies").classList.remove("on");
+    $id("secReleases").style.display="";$id("secFamilies").style.display="none";
+    loadReleases();
+  });
+
+  function fmtSize(bytes){
+    if(!bytes) return "外部链接";
+    if(bytes>=1024*1024) return (bytes/(1024*1024)).toFixed(1)+" MB";
+    return Math.round(bytes/1024)+" KB";
+  }
+
+  async function loadReleases(){
+    try{
+      var res=await api("/api/admin/releases");
+      var list=res.releases||[];
+      var box=$id("releasesContainer");
+      box.innerHTML="";
+      if(!list.length){
+        box.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">暂未发布任何安卓版本，上传 APK 后客户端即可自动检测远程升级。</div>';
+        return;
+      }
+      list.forEach(function(rel,idx){
+        var row=document.createElement("div");
+        row.className="user-row";
+        var dt=new Date(rel.created_at).toLocaleString();
+        var sha=rel.sha256 ? ("SHA256: "+rel.sha256.slice(0,12)+"…") : "无校验值";
+        row.innerHTML=
+          '<div class="user-meta" style="flex-direction:column;align-items:flex-start;gap:4px">'
+            +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+              +'<strong>v'+GBArt.esc(rel.version_name)+'</strong>'
+              +'<span class="tag">code '+rel.version_code+'</span>'
+              +(idx===0?'<span class="tag amber">当前最新</span>':'')
+              +(rel.force_update?'<span class="tag" style="background:#fde8e8;color:#b83232">强制升级</span>':'')
+              +'<span class="tag gray">'+fmtSize(rel.file_size)+'</span>'
+            +'</div>'
+            +'<div style="font-size:12px;color:var(--muted)">'+GBArt.esc(rel.release_notes||"常规更新")+' · '+sha+' · '+dt+'</div>'
+          +'</div>'
+          +'<div style="display:flex;gap:6px">'
+            +'<a class="sm" href="'+GBArt.esc(rel.download_url)+'" style="text-decoration:none;display:inline-flex;align-items:center">下载</a>'
+            +'<button class="sm danger del-rel">删除</button>'
+          +'</div>';
+        row.querySelector(".del-rel").addEventListener("click",async function(){
+          if(!this._arm){this._arm=true;this.textContent="确认删除？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除";},3500);return;}
+          try{await api("/api/admin/releases/"+rel.id,{method:"DELETE"});note("relMsg","已删除版本 v"+rel.version_name);await loadReleases();}
+          catch(e){note("relMsg",e.message,true);}
+        });
+        box.appendChild(row);
+      });
+    }catch(e){note("relMsg",e.message,true);}
+  }
+
+  $id("btnPublishRelease").addEventListener("click",async function(){
+    var vName=$id("relVerName").value.trim();
+    var vCode=parseInt($id("relVerCode").value,10)||0;
+    var notes=$id("relNotes").value.trim();
+    var force=$id("relForce").checked;
+    var fileInput=$id("relApkFile");
+    var extUrl=$id("relExtUrl").value.trim();
+    if(!vName||vCode<=0){note("relMsg","请填写版本名和正整数 versionCode",true);return;}
+
+    var prog=$id("relUploadProg");
+    var btn=this;
+    btn.disabled=true;
+    try{
+      if(fileInput.files&&fileInput.files.length>0){
+        var fd=new FormData();
+        fd.append("versionName",vName);
+        fd.append("versionCode",String(vCode));
+        fd.append("releaseNotes",notes);
+        fd.append("forceUpdate",force?"true":"false");
+        fd.append("apk",fileInput.files[0]);
+
+        prog.style.display="block";
+        prog.textContent="正在上传 APK（0%）...";
+        await new Promise(function(resolve,reject){
+          var xhr=new XMLHttpRequest();
+          xhr.open("POST","/api/admin/releases");
+          if(token()) xhr.setRequestHeader("Authorization","Bearer "+token());
+          xhr.upload.onprogress=function(ev){
+            if(ev.lengthComputable){
+              var pct=Math.round((ev.loaded/ev.total)*100);
+              prog.textContent="正在上传 APK（"+pct+"% · "+(ev.loaded/(1024*1024)).toFixed(1)+"/"+(ev.total/(1024*1024)).toFixed(1)+" MB）...";
+            }
+          };
+          xhr.onload=function(){
+            try{
+              var d=JSON.parse(xhr.responseText||"{}");
+              if(xhr.status>=200&&xhr.status<300) resolve(d);
+              else reject(new Error(d.error||"上传失败"));
+            }catch(e){reject(new Error("响应解析失败"));}
+          };
+          xhr.onerror=function(){reject(new Error("网络错误，上传中断"));};
+          xhr.send(fd);
+        });
+      }else if(extUrl){
+        await api("/api/admin/releases",{
+          method:"POST",
+          body:JSON.stringify({versionName:vName,versionCode:vCode,releaseNotes:notes,forceUpdate:force,downloadUrl:extUrl})
+        });
+      }else{
+        throw new Error("请选择要上传的 .apk 文件，或填写外部直链");
+      }
+      $id("relVerName").value="";$id("relVerCode").value="";$id("relNotes").value="";
+      $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=false;
+      note("relMsg","🎉 新版本 v"+vName+" 发布成功！App 启动后即可检测到远程升级。");
+      await loadReleases();
+    }catch(e){
+      note("relMsg",e.message,true);
+    }finally{
+      prog.style.display="none";
+      btn.disabled=false;
+    }
+  });
+
+  if(token()) loadOverview(); else showAuth();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+services:
+  growth-buddy:
+    build: .
+    container_name: growth-buddy-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      DB_PATH: "/app/data/growth_buddy.db"
+      RELEASES_DIR: "/app/data/releases"
+      SESSION_SECRET: "${SESSION_SECRET:-change-me-to-a-long-random-secret}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin1234}"
+    volumes:
+      - ./data:/app/data
+      - ./growth-buddy-server:/app/growth-buddy-server
+    command: ["sh", "-c", "chmod +x /app/growth-buddy-server && exec /app/growth-buddy-server"]
