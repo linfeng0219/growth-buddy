@@ -344,6 +344,21 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodGet && strings.HasPrefix(p, "/api/task-icon/") {
+		iconID := strings.TrimPrefix(p, "/api/task-icon/")
+		if iconID != "" && !strings.Contains(iconID, "/") {
+			mimeType, raw, err := a.store.GetTaskIconData(iconID)
+			if err != nil {
+				w.WriteHeader(404)
+				return
+			}
+			w.Header().Set("Content-Type", mimeType)
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			_, _ = w.Write(raw)
+			return
+		}
+	}
+
 	if m == http.MethodGet && strings.HasPrefix(p, "/api/checkin-photo/") {
 		logID := strings.TrimPrefix(p, "/api/checkin-photo/")
 		if logID == "" || strings.Contains(logID, "/") {
@@ -857,8 +872,9 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		cids, hasCids := mapStrSlice(body, "childIds")
 		id, err := a.store.CreateTask(fid, TaskInput{
-			Emoji:       mapOptStr(body, "emoji"),
-			Label:       mapOptStr(body, "label"),
+			Emoji:        mapOptStr(body, "emoji"),
+			IconURL:      mapOptStr(body, "icon_url"),
+			Label:        mapOptStr(body, "label"),
 			Pts:         mapOptInt(body, "pts"),
 			Scope:       mapOptStr(body, "scope"),
 			TaskType:     mapOptStr(body, "task_type"),
@@ -891,8 +907,9 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 				}
 				cids, hasCids := mapStrSlice(body, "childIds")
 				err = a.store.UpdateTask(fid, tid, TaskInput{
-					Emoji:       mapOptStr(body, "emoji"),
-					Label:       mapOptStr(body, "label"),
+					Emoji:        mapOptStr(body, "emoji"),
+					IconURL:      mapOptStr(body, "icon_url"),
+					Label:        mapOptStr(body, "label"),
 					Pts:         mapOptInt(body, "pts"),
 					Scope:       mapOptStr(body, "scope"),
 					TaskType:     mapOptStr(body, "task_type"),
@@ -1029,6 +1046,41 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/parent/task-icons" {
+		list, err := a.store.ListFamilyTaskIcons(fid)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"icons": list})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/parent/task-icons" {
+		body, err := readJSONMap(r, 2*1024*1024)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		ico, err := a.store.AddFamilyTaskIcon(fid, mapStr(body, "label"), mapStr(body, "category"), mapStr(body, "image_data"))
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"icon": ico})
+		return
+	}
+
+	if strings.HasPrefix(p, "/api/parent/task-icons/") && m == http.MethodDelete {
+		iconID := strings.TrimPrefix(p, "/api/parent/task-icons/")
+		if err := a.store.DeleteFamilyTaskIcon(fid, iconID); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}

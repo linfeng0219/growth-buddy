@@ -209,7 +209,15 @@
       <div id="subtab-add" class="panel" style="display:none">
         <div class="panel-head"><h2>新增任务（支持单次 / 周一至周日循环）</h2></div>
         <div class="row3">
-          <div class="field"><label>图标 Emoji</label><input type="text" id="tEmoji" value="✨" maxlength="4"></div>
+          <div class="field">
+            <label>任务图标</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span id="tIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:20px;flex-shrink:0">✨</span>
+              <input type="text" id="tEmoji" value="✨" maxlength="4" style="width:54px">
+              <button type="button" class="sm" id="btnPickTIcon">选图标</button>
+            </div>
+            <input type="hidden" id="tIconUrl" value="">
+          </div>
           <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="18" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
         </div>
         <div class="row2">
@@ -392,12 +400,46 @@
   </div>
 </div>
 
+<!-- 任务图标选择弹窗（内置分类 + 家庭私有图标库） -->
+<div class="modal-backdrop" id="taskIconModal">
+  <div class="modal-card" style="text-align:left;max-width:480px">
+    <h3 style="font-family:var(--serif);margin-bottom:10px">🎨 选择任务图标</h3>
+    <div class="child-filter-bar" id="iconCatTabs" style="margin-bottom:10px">
+      <button type="button" class="sm on" data-icat="生活">生活</button>
+      <button type="button" class="sm" data-icat="运动">运动</button>
+      <button type="button" class="sm" data-icat="学习">学习</button>
+      <button type="button" class="sm" data-icat="兴趣">兴趣</button>
+      <button type="button" class="sm" data-icat="私有">🖼️ 私有图标库</button>
+    </div>
+    <div id="iconGridBox" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:240px;overflow-y:auto"></div>
+    <div id="iconUploadBar" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--hair-2)">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="newIconLabel" placeholder="图标名称（可选）" maxlength="10" style="flex:1">
+        <input type="file" id="newIconFile" accept="image/*" style="display:none">
+        <button type="button" class="primary sm" id="btnUploadTaskIcon">➕ 上传图片到私有库</button>
+      </div>
+      <div class="msg" id="iconUploadMsg"></div>
+    </div>
+    <div style="margin-top:12px;text-align:right">
+      <button type="button" class="ghost sm" id="btnCloseIconModal">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- 编辑任务弹窗 -->
 <div class="modal-backdrop" id="editTaskModal">
   <div class="modal-card" style="text-align:left;max-width:430px">
     <h3 style="font-family:var(--serif);margin-bottom:10px">编辑任务与分配对象</h3>
     <div class="row3">
-      <div class="field"><label>Emoji</label><input type="text" id="etEmoji" maxlength="4"></div>
+      <div class="field">
+        <label>图标</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span id="etIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:18px;flex-shrink:0">✨</span>
+          <input type="text" id="etEmoji" maxlength="4" style="width:50px">
+          <button type="button" class="sm" id="btnPickEtIcon">选图标</button>
+        </div>
+        <input type="hidden" id="etIconUrl" value="">
+      </div>
       <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="18"></div>
     </div>
     <div class="row2">
@@ -653,12 +695,16 @@
           allPhotos.push({kidName:c.name,log:l});
         }
       });
+      var healthBadge='<span style="background:#e8f5ee;color:#2f6b4f">💚 健康</span>';
+      if(c.pet_health==="weak") healthBadge='<span style="background:#fff4e5;color:#b8621b">💧 虚弱 ('+(c.heal_progress||0)+'/'+(c.heal_target||20)+')</span>';
+      else if(c.pet_health==="sick") healthBadge='<span style="background:#fdeaea;color:#c0392b">🤒 生病 ('+(c.heal_progress||0)+'/'+(c.heal_target||40)+')</span>';
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
         +'<div class="info">'
         +'<h3>'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)+GBArt.esc(c.name)+(c.pet_name?'<small style="color:var(--muted);font-size:12px"> · '+GBArt.esc(c.pet_name)+'</small>':"")+'</h3>'
         +'<div class="kid-stats">'
         +'<span>'+lvName+' ('+c.xp+' XP)</span>'
+        +healthBadge
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
         +'<span>图鉴 '+c.owned_count+' 只</span>'
         +'</div></div></div>'
@@ -888,7 +934,7 @@
           var st=doneSet[t.id]
             ?('<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="color:var(--accent);font-size:12px;font-weight:600">✓ 今日已完成</span>'+phBtn+'<button type="button" class="sm parent-undo-btn">↩ 取消打卡</button></div>')
             :'<button type="button" class="primary sm parent-checkin-btn">✅ 帮TA打卡</button>';
-          row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+tag+'</div>'+st;
+          row.innerHTML='<div class="task-meta">'+taskIconHtml(t)+'<strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+tag+'</div>'+st;
           var tpb=row.querySelector(".task-photo-btn");
           if(tpb&&pLog){
             tpb.addEventListener("click",function(){
@@ -929,7 +975,7 @@
         scopeBadge='<span class="tag-sel">'+(t.assigned_child_ids.length===1?"专有：":"指定：")+GBArt.esc(names)+'</span>';
       }
       var offBadge=t.enabled?"":'<span class="tag-off">已停用</span>';
-      row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+scopeBadge+offBadge+'</div>'
+      row.innerHTML='<div class="task-meta">'+taskIconHtml(t)+'<strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+scopeBadge+offBadge+'</div>'
         +'<div style="display:flex;gap:6px"><button class="sm edit-t">分配/编辑</button><button class="sm toggle-t">'+(t.enabled?"停用":"启用")+'</button><button class="sm danger del-t">删除</button></div>';
       row.querySelector(".edit-t").addEventListener("click",function(){openEditTask(t);});
       row.querySelector(".toggle-t").addEventListener("click",async function(){
@@ -961,6 +1007,7 @@
         method:"POST",
         body:JSON.stringify({
           emoji:$id("tEmoji").value.trim()||(taskType==="rope_jump"?"🪢":"✨"),
+          icon_url:$id("tIconUrl").value.trim(),
           label:$id("tLabel").value.trim(),
           pts:$id("tPts").value,
           scope:scope,
@@ -976,6 +1023,8 @@
         })
       });
       $id("tLabel").value="";
+      $id("tIconUrl").value="";
+      setTaskIconPreview("t",$id("tEmoji").value||"✨","");
       note("taskMsg","任务已发布并同步到对应孩子的任务列表！");
       await loadOverview();
     }catch(e){note("taskMsg",e.message,true);}
@@ -984,6 +1033,8 @@
   function openEditTask(t){
     editingTaskId=t.id;
     $id("etEmoji").value=t.emoji||"✨";
+    $id("etIconUrl").value=t.icon_url||"";
+    setTaskIconPreview("et",t.emoji||"✨",t.icon_url||"");
     $id("etLabel").value=t.label;
     $id("etPts").value=t.pts;
     $id("etType").value=t.task_type||"normal";
@@ -1026,6 +1077,7 @@
         method:"PATCH",
         body:JSON.stringify({
           emoji:$id("etEmoji").value.trim(),
+          icon_url:$id("etIconUrl").value.trim(),
           label:$id("etLabel").value.trim(),
           pts:$id("etPts").value,
           scope:scope,
@@ -1261,7 +1313,129 @@
     }catch(e){$id("qMsg").textContent=e.message;}
   });
 
-  if(token()){ loadOverview(); loadQuestions(); } else showAuth();
+  var PRESET_TASK_ICONS={
+    "生活":[["🦷","刷牙"],["🛏️","叠被子"],["🍚","好好吃饭"],["🧹","收拾房间"],["🛁","洗澡"],["💤","早睡"],["🎒","整理书包"],["💧","喝水"]],
+    "运动":[["🪢","跳绳"],["🏃","跑步"],["🚴","骑车"],["🏀","拍球"],["🤸","做操"],["🏊","游泳"],["⚽","踢球"],["🚶","散步"]],
+    "学习":[["📖","阅读"],["✍️","写作业"],["🗣️","背古诗"],["🔢","口算"],["🔤","练字"],["🎧","听英语"],["🎹","练琴"],["🧩","思维"]],
+    "兴趣":[["🎨","画画"],["✂️","手工"],["🧱","积木"],["🎤","唱歌"],["🌱","养植物"],["📷","观察"],["♟️","下棋"],["🔭","科学"]]
+  };
+  var familyIcons=[];
+  var iconPickTarget="t";
+  var curIconCat="生活";
+
+  function taskIconHtml(t){
+    if(t.icon_url){
+      return '<img src="'+GBArt.esc(t.icon_url)+'" alt="" style="width:22px;height:22px;border-radius:6px;object-fit:cover;vertical-align:middle">';
+    }
+    return '<span>'+GBArt.esc(t.emoji||"✨")+'</span>';
+  }
+  function setTaskIconPreview(prefix, emoji, iconUrl){
+    var box=$id(prefix+"IconPreview");
+    if(!box) return;
+    if(iconUrl){
+      box.innerHTML='<img src="'+GBArt.esc(iconUrl)+'" alt="" style="width:100%;height:100%;border-radius:9px;object-fit:cover">';
+    }else{
+      box.textContent=emoji||"✨";
+    }
+  }
+  $id("tEmoji").addEventListener("input",function(){$id("tIconUrl").value="";setTaskIconPreview("t",this.value,"");});
+  $id("etEmoji").addEventListener("input",function(){$id("etIconUrl").value="";setTaskIconPreview("et",this.value,"");});
+
+  async function loadFamilyIcons(){
+    try{
+      var r=await api("/api/parent/task-icons");
+      familyIcons=r.icons||[];
+    }catch(e){}
+  }
+  function renderIconGrid(){
+    document.querySelectorAll("#iconCatTabs button").forEach(function(b){
+      b.classList.toggle("on",b.getAttribute("data-icat")===curIconCat);
+    });
+    var grid=$id("iconGridBox");grid.innerHTML="";
+    $id("iconUploadBar").style.display=(curIconCat==="私有")?"block":"none";
+    if(curIconCat==="私有"){
+      if(!familyIcons.length){
+        grid.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px;padding:12px 0">还没有上传私有图标，点击下方按钮添加图片到本家庭图标库吧~</div>';
+        return;
+      }
+      familyIcons.forEach(function(ic){
+        var cell=document.createElement("div");
+        cell.style.cssText="position:relative;border:1px solid var(--hair);border-radius:12px;padding:8px;text-align:center;cursor:pointer;background:#fff";
+        cell.innerHTML='<img src="'+GBArt.esc(ic.image_url)+'" style="width:40px;height:40px;border-radius:8px;object-fit:cover">'
+          +'<div style="font-size:11px;margin-top:4px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+GBArt.esc(ic.label)+'</div>'
+          +'<button type="button" data-del-ico="'+GBArt.esc(ic.id)+'" style="position:absolute;top:2px;right:4px;border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px">×</button>';
+        cell.addEventListener("click",function(e){
+          if(e.target&&e.target.hasAttribute("data-del-ico")) return;
+          $id(iconPickTarget+"IconUrl").value=ic.image_url;
+          setTaskIconPreview(iconPickTarget,$id(iconPickTarget+"Emoji").value,ic.image_url);
+          $id("taskIconModal").classList.remove("show");
+        });
+        cell.querySelector("[data-del-ico]").addEventListener("click",async function(e){
+          e.stopPropagation();
+          await api("/api/parent/task-icons/"+ic.id,{method:"DELETE"});
+          await loadFamilyIcons();
+          renderIconGrid();
+        });
+        grid.appendChild(cell);
+      });
+      return;
+    }
+    (PRESET_TASK_ICONS[curIconCat]||[]).forEach(function(pair){
+      var b=document.createElement("button");b.type="button";b.className="ghost";
+      b.style.cssText="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;border:1px solid var(--hair);border-radius:12px;background:#fff";
+      b.innerHTML='<span style="font-size:22px">'+pair[0]+'</span><span style="font-size:11.5px;color:var(--ink-soft)">'+pair[1]+'</span>';
+      b.addEventListener("click",function(){
+        $id(iconPickTarget+"Emoji").value=pair[0];
+        $id(iconPickTarget+"IconUrl").value="";
+        setTaskIconPreview(iconPickTarget,pair[0],"");
+        $id("taskIconModal").classList.remove("show");
+      });
+      grid.appendChild(b);
+    });
+  }
+  function openTaskIconPicker(target){
+    iconPickTarget=target;
+    $id("iconUploadMsg").textContent="";
+    $id("taskIconModal").classList.add("show");
+    renderIconGrid();
+    loadFamilyIcons().then(function(){if(curIconCat==="私有")renderIconGrid();});
+  }
+  $id("btnPickTIcon").addEventListener("click",function(){openTaskIconPicker("t");});
+  $id("btnPickEtIcon").addEventListener("click",function(){openTaskIconPicker("et");});
+  $id("btnCloseIconModal").addEventListener("click",function(){$id("taskIconModal").classList.remove("show");});
+  document.querySelectorAll("#iconCatTabs button").forEach(function(b){
+    b.addEventListener("click",function(){curIconCat=b.getAttribute("data-icat");renderIconGrid();});
+  });
+  $id("btnUploadTaskIcon").addEventListener("click",function(){$id("newIconFile").click();});
+  $id("newIconFile").addEventListener("change",function(){
+    var f=this.files&&this.files[0];this.value="";
+    if(!f) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      var img=new Image();
+      img.onload=async function(){
+        var cv=document.createElement("canvas");cv.width=128;cv.height=128;
+        var ctx=cv.getContext("2d");
+        var s=Math.min(img.width,img.height),sx=(img.width-s)/2,sy=(img.height-s)/2;
+        ctx.drawImage(img,sx,sy,s,s,0,0,128,128);
+        var dataUrl=cv.toDataURL("image/png");
+        try{
+          await api("/api/parent/task-icons",{
+            method:"POST",
+            body:JSON.stringify({label:$id("newIconLabel").value.trim()||f.name.replace(/\.[^.]+$/,"").slice(0,10),category:"自定义",image_data:dataUrl})
+          });
+          $id("newIconLabel").value="";
+          $id("iconUploadMsg").textContent="已上传到家庭私有图标库！";
+          await loadFamilyIcons();
+          renderIconGrid();
+        }catch(e){$id("iconUploadMsg").textContent=e.message;}
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+
+  if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); } else showAuth();
 })();
 </script>
 </body>

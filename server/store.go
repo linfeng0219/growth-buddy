@@ -193,6 +193,9 @@ func (s *Store) initSchema() error {
 			coupons INTEGER NOT NULL DEFAULT 0,
 			active_companion TEXT,
 			muted INTEGER NOT NULL DEFAULT 0,
+			pet_health TEXT NOT NULL DEFAULT 'normal',
+			heal_progress INTEGER NOT NULL DEFAULT 0,
+			last_health_date TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL
 		);
 
@@ -200,6 +203,7 @@ func (s *Store) initSchema() error {
 			id TEXT PRIMARY KEY,
 			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
 			emoji TEXT NOT NULL DEFAULT '✨',
+			icon_url TEXT NOT NULL DEFAULT '',
 			label TEXT NOT NULL,
 			pts INTEGER NOT NULL DEFAULT 3,
 			scope TEXT NOT NULL DEFAULT 'all',
@@ -304,6 +308,15 @@ func (s *Store) initSchema() error {
 			answer_idx INTEGER NOT NULL,
 			created_at INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS family_task_icons (
+			id TEXT PRIMARY KEY,
+			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+			category TEXT NOT NULL DEFAULT '自定义',
+			label TEXT NOT NULL,
+			image_data TEXT NOT NULL,
+			created_at INTEGER NOT NULL
+		);
 	`
 	if err := s.db.ExecRaw(ddl); err != nil {
 		return err
@@ -317,7 +330,11 @@ func (s *Store) initSchema() error {
 		{"children", "password_hash", "password_hash TEXT NOT NULL DEFAULT ''"},
 		{"children", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"children", "avatar_updated_at", "avatar_updated_at INTEGER NOT NULL DEFAULT 0"},
+		{"children", "pet_health", "pet_health TEXT NOT NULL DEFAULT 'normal'"},
+		{"children", "heal_progress", "heal_progress INTEGER NOT NULL DEFAULT 0"},
+		{"children", "last_health_date", "last_health_date TEXT NOT NULL DEFAULT ''"},
 		{"polaroids", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
+		{"tasks", "icon_url", "icon_url TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},
 		{"tasks", "duration_sec", "duration_sec INTEGER NOT NULL DEFAULT 60"},
 		{"tasks", "target_count", "target_count INTEGER NOT NULL DEFAULT 60"},
@@ -494,6 +511,7 @@ type TaskDTO struct {
 	ID               string   `json:"id"`
 	FamilyID         string   `json:"family_id,omitempty"`
 	Emoji            string   `json:"emoji"`
+	IconURL          string   `json:"icon_url"`
 	Label            string   `json:"label"`
 	Pts              int      `json:"pts"`
 	Scope            string   `json:"scope"`
@@ -545,6 +563,9 @@ type ChildSummaryDTO struct {
 	ActiveCompanion *string `json:"active_companion"`
 	Muted           bool    `json:"muted"`
 	HasPin          bool    `json:"has_pin"`
+	PetHealth       string  `json:"pet_health"`
+	HealProgress    int     `json:"heal_progress"`
+	HealTarget      int     `json:"heal_target"`
 }
 
 type ChildStateDTO struct {
@@ -882,7 +903,7 @@ func isTaskActiveOnDate(t TaskDTO, dateStr string) bool {
 func (s *Store) getTasksForChildLocked(tx *Tx, familyID, childID, todayStr string) ([]TaskDTO, error) {
 	tasks := make([]TaskDTO, 0)
 	err := tx.Query(`
-		SELECT t.id, t.emoji, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.timer_mode, t.require_photo, t.repeat_mode, t.repeat_days, t.due_date, t.enabled, t.sort_order
+		SELECT t.id, t.emoji, t.icon_url, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.timer_mode, t.require_photo, t.repeat_mode, t.repeat_days, t.due_date, t.enabled, t.sort_order
 		FROM tasks t
 		WHERE t.family_id = ? AND t.enabled = 1
 		  AND (
@@ -894,19 +915,20 @@ func (s *Store) getTasksForChildLocked(tx *Tx, familyID, childID, todayStr strin
 		t := TaskDTO{
 			ID:           r.String(0),
 			Emoji:        r.String(1),
-			Label:        r.String(2),
-			Pts:          r.Int(3),
-			Scope:        r.String(4),
-			TaskType:     r.String(5),
-			DurationSec:  r.Int(6),
-			TargetCount:  r.Int(7),
-			TimerMode:    r.String(8),
-			RequirePhoto: r.Int(9) != 0,
-			RepeatMode:   r.String(10),
-			RepeatDays:   r.String(11),
-			DueDate:      r.String(12),
-			Enabled:      r.Int(13) != 0,
-			SortOrder:    r.Int(14),
+			IconURL:      r.String(2),
+			Label:        r.String(3),
+			Pts:          r.Int(4),
+			Scope:        r.String(5),
+			TaskType:     r.String(6),
+			DurationSec:  r.Int(7),
+			TargetCount:  r.Int(8),
+			TimerMode:    r.String(9),
+			RequirePhoto: r.Int(10) != 0,
+			RepeatMode:   r.String(11),
+			RepeatDays:   r.String(12),
+			DueDate:      r.String(13),
+			Enabled:      r.Int(14) != 0,
+			SortOrder:    r.Int(15),
 		}
 		if todayStr == "" || isTaskActiveOnDate(t, todayStr) {
 			tasks = append(tasks, t)
@@ -945,12 +967,17 @@ func (s *Store) getCatalogForChildLocked(tx *Tx, familyID, childID string) ([]Sp
 }
 
 func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) (*ChildStateDTO, error) {
+	s.syncChildHealthLocked(tx, childID, todayStr)
 	var child ChildSummaryDTO
 	err := tx.QueryRow(`
-		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin
+		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress
 		FROM children WHERE id = ? AND family_id = ?
 	`, func(r SQLiteRow) error {
 		cid := r.String(0)
+		h := r.String(11)
+		if h == "" {
+			h = "normal"
+		}
 		child = ChildSummaryDTO{
 			ID:              cid,
 			Name:            r.String(1),
@@ -962,6 +989,9 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 			ActiveCompanion: r.NullableString(8),
 			Muted:           r.Int(9) != 0,
 			HasPin:          r.String(10) != "",
+			PetHealth:       h,
+			HealProgress:    r.Int(12),
+			HealTarget:      healTargetForHealth(h),
 		}
 		return nil
 	}, childID, familyID)
@@ -1244,6 +1274,8 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 		if _, err := tx.Exec("UPDATE children SET xp = ? WHERE id = ?", newXP, childID); err != nil {
 			return err
 		}
+		s.syncChildHealthLocked(tx, childID, todayStr)
+		s.applyHealProgressLocked(tx, childID, task.Pts)
 
 		st, err := s.getChildStateLocked(tx, familyID, childID, todayStr)
 		if err != nil {
@@ -1349,8 +1381,12 @@ func (s *Store) ParentCheckin(familyID, childID, taskID, todayStr string) error 
 		); err != nil {
 			return err
 		}
-		_, err := tx.Exec("UPDATE children SET xp = ? WHERE id = ?", curXP+pts, childID)
-		return err
+		if _, err := tx.Exec("UPDATE children SET xp = ? WHERE id = ?", curXP+pts, childID); err != nil {
+			return err
+		}
+		s.syncChildHealthLocked(tx, childID, todayStr)
+		s.applyHealProgressLocked(tx, childID, pts)
+		return nil
 	})
 }
 
@@ -1793,26 +1829,27 @@ func (s *Store) TakePolaroid(familyID, childID string, avatarIdx int, noteText, 
 func (s *Store) getFamilyTasksWithAssignmentsLocked(tx *Tx, familyID string) ([]TaskDTO, error) {
 	tasks := make([]TaskDTO, 0)
 	if err := tx.Query(
-		"SELECT id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled, sort_order, created_at FROM tasks WHERE family_id = ? ORDER BY sort_order ASC, created_at ASC",
+		"SELECT id, family_id, emoji, icon_url, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled, sort_order, created_at FROM tasks WHERE family_id = ? ORDER BY sort_order ASC, created_at ASC",
 		func(r SQLiteRow) error {
 			tasks = append(tasks, TaskDTO{
 				ID:               r.String(0),
 				FamilyID:         r.String(1),
 				Emoji:            r.String(2),
-				Label:            r.String(3),
-				Pts:              r.Int(4),
-				Scope:            r.String(5),
-				TaskType:         r.String(6),
-				DurationSec:      r.Int(7),
-				TargetCount:      r.Int(8),
-				TimerMode:        r.String(9),
-				RequirePhoto:     r.Int(10) != 0,
-				RepeatMode:       r.String(11),
-				RepeatDays:       r.String(12),
-				DueDate:          r.String(13),
-				Enabled:          r.Int(14) != 0,
-				SortOrder:        r.Int(15),
-				CreatedAt:        r.Int64(16),
+				IconURL:          r.String(3),
+				Label:            r.String(4),
+				Pts:              r.Int(5),
+				Scope:            r.String(6),
+				TaskType:         r.String(7),
+				DurationSec:      r.Int(8),
+				TargetCount:      r.Int(9),
+				TimerMode:        r.String(10),
+				RequirePhoto:     r.Int(11) != 0,
+				RepeatMode:       r.String(12),
+				RepeatDays:       r.String(13),
+				DueDate:          r.String(14),
+				Enabled:          r.Int(15) != 0,
+				SortOrder:        r.Int(16),
+				CreatedAt:        r.Int64(17),
 				AssignedChildIDs: make([]string, 0),
 			})
 			return nil
@@ -1878,19 +1915,32 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 		}, familyID)
 
 		type rawKid struct {
-			id, name, username, passHash, pin, petName string
-			avatarIdx, xp, coupons                     int
-			hasAvatarData                              bool
-			avatarUpdatedAt                            int64
-			activeComp                                 *string
+			id, name, username, passHash, pin, petName, petHealth string
+			avatarIdx, xp, coupons, healProgress                  int
+			hasAvatarData                                         bool
+			avatarUpdatedAt                                       int64
+			activeComp                                            *string
+		}
+		kidIDs := make([]string, 0)
+		_ = tx.Query("SELECT id FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+			kidIDs = append(kidIDs, r.String(0))
+			return nil
+		}, familyID)
+		for _, kidID := range kidIDs {
+			s.syncChildHealthLocked(tx, kidID, todayStr)
 		}
 		rawKids := make([]rawKid, 0)
-		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, active_companion FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, active_companion, pet_health, heal_progress FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+			h := r.String(12)
+			if h == "" {
+				h = "normal"
+			}
 			rawKids = append(rawKids, rawKid{
 				id: r.String(0), name: r.String(1), avatarIdx: clampAvatarIdx(r.Int(2)),
 				hasAvatarData: r.Int(3) != 0, avatarUpdatedAt: r.Int64(4),
 				username: r.String(5), passHash: r.String(6), pin: r.String(7),
 				petName: r.String(8), xp: r.Int(9), coupons: r.Int(10), activeComp: r.NullableString(11),
+				petHealth: h, healProgress: r.Int(13),
 			})
 			return nil
 		}, familyID)
@@ -1943,6 +1993,9 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				"xp":               c.xp,
 				"level":            LevelForXP(c.xp),
 				"coupons":          c.coupons,
+				"pet_health":       c.petHealth,
+				"heal_progress":    c.healProgress,
+				"heal_target":      healTargetForHealth(c.petHealth),
 				"active_companion": c.activeComp,
 				"tasks":            myTasks,
 				"today_done_ids":   todayDone,
@@ -2223,6 +2276,7 @@ func (s *Store) DeleteChild(familyID, childID string) error {
 
 type TaskInput struct {
 	Emoji       *string  `json:"emoji"`
+	IconURL     *string  `json:"icon_url"`
 	Label       *string  `json:"label"`
 	Pts         *int     `json:"pts"`
 	Scope       *string  `json:"scope"`
@@ -2298,6 +2352,10 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 	if in.Emoji != nil && strings.TrimSpace(*in.Emoji) != "" {
 		emoji = strings.TrimSpace(*in.Emoji)
 	}
+	iconURL := ""
+	if in.IconURL != nil {
+		iconURL = strings.TrimSpace(*in.IconURL)
+	}
 	assigned := make([]string, 0)
 	for _, cid := range in.ChildIDs {
 		if cid != "" {
@@ -2317,8 +2375,8 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 			return nil
 		}, familyID)
 		if _, err := tx.Exec(
-			"INSERT INTO tasks (id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-			id, familyID, emoji, label, pts, scope, taskType, duration, target, timerMode, requirePhoto, repeatMode, repeatDays, dueDate, maxOrder+1, nowMs(),
+			"INSERT INTO tasks (id, family_id, emoji, icon_url, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+			id, familyID, emoji, iconURL, label, pts, scope, taskType, duration, target, timerMode, requirePhoto, repeatMode, repeatDays, dueDate, maxOrder+1, nowMs(),
 		); err != nil {
 			return err
 		}
@@ -2340,24 +2398,25 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 
 func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 	return s.db.WithTx(func(tx *Tx) error {
-		var curEmoji, curLabel, curScope, curType, curTimerMode, curRepeatMode, curRepeatDays, curDueDate string
+		var curEmoji, curIconURL, curLabel, curScope, curType, curTimerMode, curRepeatMode, curRepeatDays, curDueDate string
 		var curPts, curDur, curTarget, curRequirePhoto, curEnabled int
 		if err := tx.QueryRow(
-			"SELECT emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled FROM tasks WHERE id = ? AND family_id = ?",
+			"SELECT emoji, icon_url, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled FROM tasks WHERE id = ? AND family_id = ?",
 			func(r SQLiteRow) error {
 				curEmoji = r.String(0)
-				curLabel = r.String(1)
-				curPts = r.Int(2)
-				curScope = r.String(3)
-				curType = r.String(4)
-				curDur = r.Int(5)
-				curTarget = r.Int(6)
-				curTimerMode = r.String(7)
-				curRequirePhoto = r.Int(8)
-				curRepeatMode = r.String(9)
-				curRepeatDays = r.String(10)
-				curDueDate = r.String(11)
-				curEnabled = r.Int(12)
+				curIconURL = r.String(1)
+				curLabel = r.String(2)
+				curPts = r.Int(3)
+				curScope = r.String(4)
+				curType = r.String(5)
+				curDur = r.Int(6)
+				curTarget = r.Int(7)
+				curTimerMode = r.String(8)
+				curRequirePhoto = r.Int(9)
+				curRepeatMode = r.String(10)
+				curRepeatDays = r.String(11)
+				curDueDate = r.String(12)
+				curEnabled = r.Int(13)
 				return nil
 			}, taskID, familyID,
 		); err != nil {
@@ -2432,9 +2491,12 @@ func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 			}
 			curEmoji = e
 		}
+		if in.IconURL != nil {
+			curIconURL = strings.TrimSpace(*in.IconURL)
+		}
 		if _, err := tx.Exec(
-			"UPDATE tasks SET emoji = ?, label = ?, pts = ?, scope = ?, task_type = ?, duration_sec = ?, target_count = ?, timer_mode = ?, require_photo = ?, repeat_mode = ?, repeat_days = ?, due_date = ?, enabled = ? WHERE id = ? AND family_id = ?",
-			curEmoji, curLabel, curPts, curScope, curType, curDur, curTarget, curTimerMode, curRequirePhoto, curRepeatMode, curRepeatDays, curDueDate, curEnabled, taskID, familyID,
+			"UPDATE tasks SET emoji = ?, icon_url = ?, label = ?, pts = ?, scope = ?, task_type = ?, duration_sec = ?, target_count = ?, timer_mode = ?, require_photo = ?, repeat_mode = ?, repeat_days = ?, due_date = ?, enabled = ? WHERE id = ? AND family_id = ?",
+			curEmoji, curIconURL, curLabel, curPts, curScope, curType, curDur, curTarget, curTimerMode, curRequirePhoto, curRepeatMode, curRepeatDays, curDueDate, curEnabled, taskID, familyID,
 		); err != nil {
 			return err
 		}

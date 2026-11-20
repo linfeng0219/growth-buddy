@@ -658,16 +658,18 @@ class PetStageView @JvmOverloads constructor(
 
     private var level: Int = 0
     private var asleep: Boolean = false
+    private var petHealth: String = "normal"
     private var companion: SpeciesItem? = null
 
     private var hopAnimStartMs: Long = 0L
     private var squishAnimStartMs: Long = 0L
     private var lastFrameMs: Long = SystemClock.uptimeMillis()
 
-    fun setPetState(lv: Int, isSleep: Boolean, activeComp: SpeciesItem?) {
+    fun setPetState(lv: Int, isSleep: Boolean, activeComp: SpeciesItem?, health: String = "normal") {
         level = lv
         asleep = isSleep
         companion = activeComp
+        petHealth = health
         invalidate()
     }
 
@@ -775,7 +777,7 @@ class PetStageView @JvmOverloads constructor(
             PetArtCanvas.drawSpecies(canvas, sp, compX, compY, compScale, silhouette = false, paint = paint)
         }
 
-        // 睡眠 Zzz
+        // 睡眠 Zzz 或 健康状态角标（虚弱 / 生病）
         if (asleep) {
             paint.shader = null
             paint.style = Paint.Style.FILL
@@ -784,6 +786,14 @@ class PetStageView @JvmOverloads constructor(
             paint.textAlign = Paint.Align.CENTER
             val zy = cy - 50f * scale + sin(now / 420.0).toFloat() * 6f * scale
             canvas.drawText("💤", cx + 52f * scale, zy, paint)
+        } else if (petHealth == "weak" || petHealth == "sick") {
+            paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.textSize = 26f * scale
+            paint.textAlign = Paint.Align.CENTER
+            val hy = cy - 54f * scale + sin(now / 380.0).toFloat() * 5f * scale
+            val icon = if (petHealth == "sick") "🤒" else "💧"
+            canvas.drawText(icon, cx + 56f * scale, hy, paint)
         }
 
         // 更新并绘制粒子

@@ -19,12 +19,16 @@ data class ChildInfo(
     val level: Int,
     val coupons: Int,
     val activeCompanion: String?,
-    val muted: Boolean
+    val muted: Boolean,
+    val petHealth: String = "normal",
+    val healProgress: Int = 0,
+    val healTarget: Int = 0
 )
 
 data class TaskItem(
     val id: String,
     val emoji: String,
+    val iconUrl: String = "",
     val label: String,
     val pts: Int,
     val scope: String,
@@ -135,6 +139,7 @@ object GrowthMeta {
                 TaskItem(
                     id = t.getString("id"),
                     emoji = t.optString("emoji", "✨"),
+                    iconUrl = t.optString("icon_url", ""),
                     label = t.optString("label", "习惯任务"),
                     pts = t.optInt("pts", 3),
                     scope = t.optString("scope", "all"),
@@ -242,7 +247,10 @@ object GrowthMeta {
                 level = childObj.optInt("level", levelForXp(childObj.optInt("xp", 0))),
                 coupons = childObj.optInt("coupons", 0),
                 activeCompanion = comp,
-                muted = childObj.optBoolean("muted", false)
+                muted = childObj.optBoolean("muted", false),
+                petHealth = childObj.optString("pet_health", "normal"),
+                healProgress = childObj.optInt("heal_progress", 0),
+                healTarget = childObj.optInt("heal_target", 0)
             ),
             childCount = obj.optInt("child_count", 1),
             tasks = tasks,

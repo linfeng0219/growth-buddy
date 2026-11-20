@@ -428,17 +428,28 @@ class MainActivity : AppCompatActivity() {
         binding.tvFamilySub.text = "${st.family.name} · 点击头像可更换 ✎"
         binding.btnMute.text = if (c.muted) "🔇" else "🔊"
 
-        binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}"
+        val healthTag = when (c.petHealth) {
+            "weak" -> " · 💧虚弱(${c.healProgress}/${c.healTarget.coerceAtLeast(20)})"
+            "sick" -> " · 🤒生病(${c.healProgress}/${c.healTarget.coerceAtLeast(40)})"
+            else -> ""
+        }
+        binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}$healthTag"
         binding.tvStreakPill.text = "🌟 连续 ${computeStreakDays(st.logs)} 天"
-        binding.petStageView.setPetState(lv, asleep, activeComp)
+        binding.petStageView.setPetState(lv, asleep, activeComp, c.petHealth)
         binding.battleStageView.setPet(activeComp, lv)
 
-        binding.tvBubble.text = if (asleep) {
-            "呼呼……已经 3 天没见到你了，喂我一口就醒来。"
-        } else if (st.logs.isEmpty()) {
-            GrowthMeta.LEVELS[0].talk
-        } else {
-            lvSpec.talk
+        binding.tvBubble.text = when {
+            c.petHealth == "sick" -> {
+                val left = (c.healTarget.coerceAtLeast(40) - c.healProgress).coerceAtLeast(1)
+                "🤒 呜呜，我生病了……还差 $left 点成长值就能康复！"
+            }
+            c.petHealth == "weak" -> {
+                val left = (c.healTarget.coerceAtLeast(20) - c.healProgress).coerceAtLeast(1)
+                "💧 我有点虚弱了……再攒 $left 点成长值就能恢复活力！"
+            }
+            asleep -> "呼呼……已经 3 天没见到你了，喂我一口就醒来。"
+            st.logs.isEmpty() -> GrowthMeta.LEVELS[0].talk
+            else -> lvSpec.talk
         }
         binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
 
@@ -568,13 +579,31 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
+            val titleRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            if (t.iconUrl.isNotEmpty() && !done) {
+                val iconIv = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(8) }
+                    tag = t.iconUrl
+                }
+                api.fetchBitmap(t.iconUrl) { bmp ->
+                    if (bmp != null && iconIv.tag == t.iconUrl) {
+                        iconIv.setImageBitmap(bmp)
+                    }
+                }
+                titleRow.addView(iconIv)
+            }
             val titleTv = TextView(this).apply {
-                text = "${if (done) "✅" else t.emoji} ${t.label}"
+                text = if (t.iconUrl.isNotEmpty() && !done) t.label else "${if (done) "✅" else t.emoji} ${t.label}"
                 textSize = 15f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(if (done) 0xFF2F6B4F.toInt() else 0xFF2B2620.toInt())
             }
-            leftCol.addView(titleTv)
+            titleRow.addView(titleTv)
+            leftCol.addView(titleRow)
 
             val subText = when {
                 done && !photoUrl.isNullOrEmpty() -> "📷 今日已完成并上传成果照片 · 点击查看照片"
