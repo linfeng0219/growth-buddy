@@ -121,9 +121,13 @@ class MainActivity : AppCompatActivity() {
         val actualCount = obj.optInt("actualCount", 0)
         val actualDuration = obj.optInt("actualDuration", 60)
         val completed = obj.optBoolean("completed", false)
+        val isNewRecord = obj.optBoolean("isNewRecord", false)
         val photoPath = obj.optString("photoPath", "")
 
         if (completed && taskId.isNotEmpty()) {
+            if (isNewRecord) {
+                Toast.makeText(this, "🎆 太厉害了！跳绳 ${actualCount} 个打破历史最高纪录！", Toast.LENGTH_LONG).show()
+            }
             val autoPhotoDataUrl = readRopePhotoDataUrl(photoPath)
             if (autoPhotoDataUrl != null) {
                 submitCheckin(taskId, actualCount, actualDuration, autoPhotoDataUrl)
@@ -940,12 +944,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun launchRopeChallenge(t: TaskItem) {
+        val ropeLogs = (state?.logs ?: emptyList()).filter { (it.actualCount ?: 0) > 0 }
+        val prevBestCount = ropeLogs
+            .filter { it.actualDuration == null || it.actualDuration == t.durationSec }
+            .maxOfOrNull { it.actualCount ?: 0 }
+            ?: ropeLogs.maxOfOrNull { it.actualCount ?: 0 }
+            ?: 0
+
         val taskJson = JSONObject().apply {
             put("taskId", t.id)
             put("label", t.label)
             put("durationSec", t.durationSec)
             put("targetCount", t.targetCount)
             put("childName", state?.child?.name ?: "")
+            put("bestCount", prevBestCount)
         }.toString()
         val intent = Intent(this, RopeJumpActivity::class.java)
         intent.putExtra(RopeJumpActivity.EXTRA_TASK_JSON, taskJson)

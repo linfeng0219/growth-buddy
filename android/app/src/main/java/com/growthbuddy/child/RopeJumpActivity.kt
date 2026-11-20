@@ -66,6 +66,7 @@ class RopeJumpActivity : AppCompatActivity() {
     private var durationSec: Int = 60
     private var targetCount: Int = 60
     private var childName: String = ""
+    private var prevBestCount: Int = 0
 
     private var phase: Phase = Phase.FRAMING
     private var framedFramesStreak: Int = 0
@@ -73,6 +74,8 @@ class RopeJumpActivity : AppCompatActivity() {
     private var lastSpokenMilestone: Int = 0
     private var usingFrontCamera: Boolean = true
     private var cameraProviderRef: ProcessCameraProvider? = null
+    private var settlementPayload: JSONObject? = null
+    private var settlementPreviewBmp: Bitmap? = null
 
     private val cameraPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -126,9 +129,17 @@ class RopeJumpActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnConfirmSettlement.setOnClickListener {
+            completeSettlement()
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                finishWithCancel()
+                if (settlementPayload != null) {
+                    completeSettlement()
+                } else {
+                    finishWithCancel()
+                }
             }
         })
 
@@ -147,6 +158,7 @@ class RopeJumpActivity : AppCompatActivity() {
         durationSec = obj.optInt("durationSec", 60).coerceIn(10, 600)
         targetCount = obj.optInt("targetCount", 60).coerceIn(1, 500)
         childName = obj.optString("childName", "")
+        prevBestCount = obj.optInt("bestCount", 0).coerceAtLeast(0)
     }
 
     private fun startCamera() {
@@ -352,31 +364,119 @@ class RopeJumpActivity : AppCompatActivity() {
         if (completed) {
             sound.playWin()
             sound.speak("挑战成功，一共跳了${finalCount}个")
+            val isNewRecord = finalCount > prevBestCount && finalCount > 0
+            val displayBest = maxOf(finalCount, prevBestCount)
+            val checkinTimeStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            val rawBmp = binding.previewView.bitmap
+            runCatching { cameraProviderRef?.unbindAll() }
+
+            val photoPath = captureRopeSummaryPhoto(
+                previewBmp = rawBmp,
+                finalCount = finalCount,
+                checkinTimeStr = checkinTimeStr,
+                isNewRecord = isNewRecord,
+                displayBest = displayBest
+            )
+            showSettlementScreen(
+                rawBmp = rawBmp,
+                finalCount = finalCount,
+                checkinTimeStr = checkinTimeStr,
+                isNewRecord = isNewRecord,
+                displayBest = displayBest,
+                photoPath = photoPath
+            )
         } else {
             sound.playError()
             sound.speak("时间到，跳了${finalCount}个")
+            val payload = JSONObject().apply {
+                put("taskId", taskId)
+                put("actualCount", finalCount)
+                put("actualDuration", durationSec)
+                put("completed", false)
+                put("cancelled", false)
+            }
+            setResult(RESULT_OK, Intent().putExtra(EXTRA_RESULT_JSON, payload.toString()))
+            finish()
+        }
+    }
+
+    private fun showSettlementScreen(
+        rawBmp: Bitmap?,
+        finalCount: Int,
+        checkinTimeStr: String,
+        isNewRecord: Boolean,
+        displayBest: Int,
+        photoPath: String
+    ) {
+        val who = if (childName.isNotBlank()) " · $childName" else ""
+        binding.topHud.visibility = View.GONE
+        binding.scoreCard.visibility = View.GONE
+        binding.bottomBar.visibility = View.GONE
+        binding.poseOverlay.visibility = View.GONE
+        binding.tvBigCountdown.visibility = View.GONE
+
+        settlementPreviewBmp = if (rawBmp != null && rawBmp.width > 0 && rawBmp.height > 0) {
+            rawBmp.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            Bitmap.createBitmap(720, 960, Bitmap.Config.ARGB_8888).apply {
+                Canvas(this).drawColor(Color.parseColor("#1A2332"))
+            }
+        }
+        binding.ivSettlementPhoto.setImageBitmap(settlementPreviewBmp)
+
+        binding.tvSettleTask.text = "🪢 $taskLabel$who"
+        binding.tvSettleTime.text = "打卡时间：$checkinTimeStr"
+        binding.tvSettleCount.text = "${finalCount} 个"
+        binding.tvSettleSub.text = "用时 ${durationSec} 秒 · 目标 ${targetCount} 个"
+        binding.tvSettleRecordTag.visibility = if (isNewRecord) View.VISIBLE else View.GONE
+        binding.tvSettleBest.text = if (isNewRecord) {
+            if (prevBestCount > 0) "🎆 打破历史纪录！新最高纪录：${displayBest} 个（原 ${prevBestCount} 个）"
+            else "🎆 创造首次最高纪录：${displayBest} 个！"
+        } else {
+            "🏆 历史最高纪录：${displayBest} 个"
         }
 
-        val photoPath = if (completed) captureRopeSummaryPhoto(finalCount) else ""
+        if (isNewRecord) {
+            binding.fireworksView.visibility = View.VISIBLE
+            binding.fireworksView.start()
+        } else {
+            binding.fireworksView.stop()
+            binding.fireworksView.visibility = View.GONE
+        }
+        binding.settlementOverlay.visibility = View.VISIBLE
 
-        val payload = JSONObject().apply {
+        settlementPayload = JSONObject().apply {
             put("taskId", taskId)
             put("actualCount", finalCount)
             put("actualDuration", durationSec)
-            put("completed", completed)
+            put("completed", true)
+            put("isNewRecord", isNewRecord)
+            put("bestCount", displayBest)
+            put("checkinTime", checkinTimeStr)
             put("cancelled", false)
             if (photoPath.isNotEmpty()) put("photoPath", photoPath)
         }
+    }
+
+    private fun completeSettlement() {
+        val payload = settlementPayload ?: return
+        binding.fireworksView.stop()
         setResult(RESULT_OK, Intent().putExtra(EXTRA_RESULT_JSON, payload.toString()))
         finish()
     }
 
     /**
-     * 跳绳挑战达标结束时，截取当前摄像头画面并叠加最终跳绳数量、时长与时间戳水印，保存为临时 JPEG 文件路径。
+     * 跳绳挑战达标结束时，以抓拍画面为底图，仅在顶部与底部安全边缘叠加打卡时间、最终数量与破纪录礼花/最高纪录，
+     * 避开中央人脸区域，保存为临时 JPEG 文件供上传家长端照片墙。
      */
-    private fun captureRopeSummaryPhoto(finalCount: Int): String {
+    private fun captureRopeSummaryPhoto(
+        previewBmp: Bitmap?,
+        finalCount: Int,
+        checkinTimeStr: String,
+        isNewRecord: Boolean,
+        displayBest: Int
+    ): String {
         return try {
-            val previewBmp = binding.previewView.bitmap
             val targetW: Int
             val targetH: Int
             val outBmp: Bitmap
@@ -402,52 +502,82 @@ class RopeJumpActivity : AppCompatActivity() {
 
             val canvas = Canvas(outBmp)
             val s = targetW / 720f
-            val pad = 24f * s
-            val bannerH = 168f * s
-            val top = (targetH - bannerH - pad).coerceAtLeast(pad)
-            val cardRect = RectF(pad, top, targetW - pad, top + bannerH)
+            val pad = 20f * s
 
             val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#D9141E2E")
+                color = Color.parseColor("#D4141E2E")
                 style = Paint.Style.FILL
             }
             val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#99FFD166")
+                color = if (isNewRecord) Color.parseColor("#B8FFD166") else Color.parseColor("#6694A3B8")
                 style = Paint.Style.STROKE
-                strokeWidth = 3f * s
+                strokeWidth = 2.5f * s
             }
-            canvas.drawRoundRect(cardRect, 22f * s, 22f * s, bgPaint)
-            canvas.drawRoundRect(cardRect, 22f * s, 22f * s, borderPaint)
 
-            val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#E2E8F0")
-                textSize = 24f * s
+            // 1. 顶部超薄信息条（位于人物头部上方安全区）
+            val topBarH = 62f * s
+            val topRect = RectF(pad, pad, targetW - pad, pad + topBarH)
+            canvas.drawRoundRect(topRect, 16f * s, 16f * s, bgPaint)
+            val topTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#FFFFFF")
+                textSize = 22f * s
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#94A3B8")
-                textSize = 20f * s
+                color = Color.parseColor("#CBD5E1")
+                textSize = 19f * s
                 textAlign = Paint.Align.RIGHT
             }
+            val who = if (childName.isNotBlank()) " · $childName" else ""
+            canvas.drawText("🪢 $taskLabel$who", topRect.left + 18f * s, topRect.top + 40f * s, topTitlePaint)
+            canvas.drawText(checkinTimeStr, topRect.right - 18f * s, topRect.top + 39f * s, timePaint)
+
+            // 2. 如破历史纪录，在四角边缘安全区绘制礼花（完全避开中央人脸）
+            if (isNewRecord) {
+                FireworksView.drawCornerFireworksOnBitmap(canvas, targetW.toFloat(), targetH.toFloat())
+            }
+
+            // 3. 底部紧凑结算条（紧贴底边，不遮挡人脸与上半身）
+            val bannerH = 148f * s
+            val botTop = (targetH - bannerH - pad).coerceAtLeast(topRect.bottom + pad)
+            val cardRect = RectF(pad, botTop, targetW - pad, botTop + bannerH)
+            canvas.drawRoundRect(cardRect, 20f * s, 20f * s, bgPaint)
+            canvas.drawRoundRect(cardRect, 20f * s, 20f * s, borderPaint)
+
             val countPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#FFD166")
-                textSize = 52f * s
+                textSize = 46f * s
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
             val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.parseColor("#F8FAFC")
-                textSize = 22f * s
+                textSize = 21f * s
+            }
+            val recordPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (isNewRecord) Color.parseColor("#FDE68A") else Color.parseColor("#BAE6FD")
+                textSize = 21f * s
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
 
-            val who = if (childName.isNotBlank()) " · $childName" else ""
-            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-            canvas.drawText("🪢 $taskLabel$who", cardRect.left + 24f * s, cardRect.top + 40f * s, titlePaint)
-            canvas.drawText(stamp, cardRect.right - 24f * s, cardRect.top + 39f * s, timePaint)
-            canvas.drawText("最终成绩：${finalCount} 个", cardRect.left + 24f * s, cardRect.top + 102f * s, countPaint)
+            canvas.drawText("${finalCount} 个", cardRect.left + 22f * s, cardRect.top + 56f * s, countPaint)
+            val countW = countPaint.measureText("${finalCount} 个")
             canvas.drawText(
-                "用时 ${durationSec} 秒 · 目标 ${targetCount} 个 · AI 跳绳达标自动抓拍",
-                cardRect.left + 24f * s,
-                cardRect.top + 142f * s,
+                "用时 ${durationSec} 秒 · 目标 ${targetCount} 个",
+                cardRect.left + 22f * s + countW + 18f * s,
+                cardRect.top + 48f * s,
+                subPaint
+            )
+            val bestText = if (isNewRecord) {
+                if (prevBestCount > 0) "🎆 打破纪录！最高纪录：${displayBest} 个（原 ${prevBestCount} 个）"
+                else "🎆 新最高纪录：${displayBest} 个！"
+            } else {
+                "🏆 历史最高纪录：${displayBest} 个"
+            }
+            canvas.drawText(bestText, cardRect.left + 22f * s, cardRect.top + 96f * s, recordPaint)
+            canvas.drawText(
+                "打卡时间：$checkinTimeStr",
+                cardRect.left + 22f * s,
+                cardRect.top + 128f * s,
                 subPaint
             )
 
@@ -474,6 +604,9 @@ class RopeJumpActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         countDownTimer?.cancel()
+        binding.fireworksView.stop()
+        settlementPreviewBmp?.recycle()
+        settlementPreviewBmp = null
         sound.release()
         poseDetector.close()
         cameraExecutor.shutdown()
