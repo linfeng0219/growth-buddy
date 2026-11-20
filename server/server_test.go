@@ -74,6 +74,10 @@ func TestNodeAuthCrossCompatibility(t *testing.T) {
 	if err != nil {
 		t.Skip("node not available for cross-compat check")
 	}
+	const legacyAuthPath = "/home/antigravity/growth-buddy-server/auth.js"
+	if _, err := os.Stat(legacyAuthPath); err != nil {
+		t.Skip("legacy node auth.js not present on this host")
+	}
 	cmd := exec.Command(nodeBin, "-e", `
 		process.env.SESSION_SECRET = "compat-secret-123";
 		const auth = require("/home/antigravity/growth-buddy-server/auth.js");
