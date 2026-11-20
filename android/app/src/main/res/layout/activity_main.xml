@@ -219,15 +219,6 @@
                         android:text="点击头像可更换 ✎"
                         android:textColor="#8A7E6E"
                         android:textSize="11.5sp" />
-
-                    <TextView
-                        android:id="@+id/tvAppVer"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="版本 ⓘ"
-                        android:textColor="#2F6B4F"
-                        android:textSize="11sp" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -427,12 +418,16 @@
                                 android:id="@+id/btnRenamePet"
                                 style="@style/Widget.Material3.Button.TextButton"
                                 android:layout_width="wrap_content"
-                                android:layout_height="32dp"
+                                android:layout_height="wrap_content"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
                                 android:minWidth="0dp"
+                                android:minHeight="0dp"
                                 android:paddingHorizontal="8dp"
-                                android:text="✏️改名"
+                                android:paddingVertical="4dp"
+                                android:text="✏️ 改名"
                                 android:textColor="#8A7E6E"
-                                android:textSize="12sp" />
+                                android:textSize="12.5sp" />
                         </LinearLayout>
 
                         <TextView

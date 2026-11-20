@@ -200,8 +200,6 @@ class MainActivity : AppCompatActivity() {
             updateVolumeBoostButton()
         }
         binding.ivHeaderAvatar.setOnClickListener { showAvatarPickerDialog() }
-        binding.tvAppVer.text = "版本 ${BuildConfig.VERSION_NAME} ⓘ"
-        binding.tvAppVer.setOnClickListener { showChangelogDialog() }
         binding.btnMute.setOnClickListener { toggleMute() }
         binding.btnAppUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
         binding.btnRefresh.setOnClickListener { loadChildState() }
