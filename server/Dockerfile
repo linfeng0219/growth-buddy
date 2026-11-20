@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libsqlite3-
     && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-Bstatic -lsqlite3 -Wl,-Bdynamic -lm -ldl -lpthread" \
-    go build -trimpath -ldflags="-s -w" -o /out/growth-buddy-server .
+    go build -trimpath -ldflags="-s -w -X main.SystemVersion=$(TZ=Asia/Shanghai date +%Y.%m.%d-%H%M)" -o /out/growth-buddy-server .
 
 FROM debian:12-slim
 WORKDIR /app

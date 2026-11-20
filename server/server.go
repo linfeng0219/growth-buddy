@@ -23,7 +23,38 @@ import (
 //go:embed all:public
 var embeddedPublicFS embed.FS
 
-const SystemVersion = "v2.3.0"
+// SystemVersion 默认取编译注入时间（YYYY.MM.DD-HHMM），未注入时取程序文件最后修改时间。
+var SystemVersion = ""
+
+func init() {
+	if SystemVersion != "" {
+		return
+	}
+	loc := time.FixedZone("CST", 8*3600)
+	t := time.Now().In(loc)
+	if exe, err := os.Executable(); err == nil {
+		if info, err := os.Stat(exe); err == nil {
+			t = info.ModTime().In(loc)
+		}
+	}
+	SystemVersion = t.Format("2006.01.02-1504")
+}
+
+func versionCodeFromTime(t time.Time) int {
+	loc := time.FixedZone("CST", 8*3600)
+	lt := t.In(loc)
+	return (lt.Year()-2020)*100_000_000 + int(lt.Month())*1_000_000 + lt.Day()*10_000 + lt.Hour()*100 + lt.Minute()
+}
+
+func autoVersionCodeFromName(vName string) int {
+	loc := time.FixedZone("CST", 8*3600)
+	for _, layout := range []string{"2006.01.02-1504", "2006-01-02 15:04", "200601021504"} {
+		if t, err := time.ParseInLocation(layout, strings.TrimSpace(vName), loc); err == nil {
+			return versionCodeFromTime(t)
+		}
+	}
+	return versionCodeFromTime(time.Now())
+}
 
 var dateRegexp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
@@ -1408,9 +1439,12 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 		vName := strings.TrimSpace(r.FormValue("versionName"))
 		notes := strings.TrimSpace(r.FormValue("releaseNotes"))
 		force := strings.EqualFold(r.FormValue("forceUpdate"), "true") || r.FormValue("forceUpdate") == "1" || r.FormValue("forceUpdate") == "on"
-		if vCode <= 0 || vName == "" {
-			writeJSON(w, 400, map[string]string{"error": "请填写正整数版本号（versionCode）和版本名称（如 2.1.0）"})
-			return
+		if vName == "" {
+			loc := time.FixedZone("CST", 8*3600)
+			vName = time.Now().In(loc).Format("2006.01.02-1504")
+		}
+		if vCode <= 0 {
+			vCode = autoVersionCodeFromName(vName)
 		}
 
 		file, header, err := r.FormFile("apk")
@@ -1477,10 +1511,19 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 400, map[string]string{"error": "请上传 APK 文件，或填写以 http(s):// 开头的外部下载地址"})
 		return
 	}
+	vName := strings.TrimSpace(mapStr(body, "versionName"))
+	if vName == "" {
+		loc := time.FixedZone("CST", 8*3600)
+		vName = time.Now().In(loc).Format("2006.01.02-1504")
+	}
+	vCode := mapInt(body, "versionCode", 0)
+	if vCode <= 0 {
+		vCode = autoVersionCodeFromName(vName)
+	}
 	created, err := a.store.CreateRelease(AppReleaseDTO{
 		Platform:     "android",
-		VersionCode:  mapInt(body, "versionCode", 0),
-		VersionName:  mapStr(body, "versionName"),
+		VersionCode:  vCode,
+		VersionName:  vName,
 		ReleaseNotes: mapStr(body, "releaseNotes"),
 		ForceUpdate:  mapBool(body, "forceUpdate"),
 		FileSize:     int64(mapInt(body, "fileSize", 0)),

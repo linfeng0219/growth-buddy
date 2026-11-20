@@ -1,7 +1,19 @@
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val buildTime = ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))
+val autoVersionCode = (buildTime.year - 2020) * 100_000_000 +
+    buildTime.monthValue * 1_000_000 +
+    buildTime.dayOfMonth * 10_000 +
+    buildTime.hour * 100 +
+    buildTime.minute
+val autoVersionName = buildTime.format(DateTimeFormatter.ofPattern("yyyy.MM.dd-HHmm"))
 
 android {
     namespace = "com.growthbuddy.child"
@@ -11,8 +23,8 @@ android {
         applicationId = "com.growthbuddy.child"
         minSdk = 24
         targetSdk = 34
-        versionCode = 5
-        versionName = "2.3.0"
+        versionCode = autoVersionCode
+        versionName = autoVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val arm64Only = (project.findProperty("arm64Only") as String?)?.toBoolean() ?: false
         ndk {

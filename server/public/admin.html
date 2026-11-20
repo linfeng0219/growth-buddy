@@ -96,9 +96,9 @@
         <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">
           上传新版本 APK 后，儿童端 App 启动时或点击「检查更新」将自动发现新版本、校验 SHA-256 并下载安装。
         </p>
-        <div class="row2">
-          <div class="field"><label>版本名（如 2.2.0）</label><input type="text" id="relVerName" placeholder="例如：2.2.0"></div>
-          <div class="field"><label>内部版本号 versionCode（须大于旧版）</label><input type="number" id="relVerCode" min="1" placeholder="例如：4"></div>
+        <div class="field">
+          <label>版本号（默认自动使用当前/文件编译时间，如 2026.11.20-1710）</label>
+          <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.20-1710">
         </div>
         <div class="field"><label>更新日志（会直接展示在 App 升级弹窗中）</label><textarea id="relNotes" rows="2" placeholder="例如：优化跳绳防漏计与界面流畅度"></textarea></div>
         <div class="row2">
@@ -522,8 +522,7 @@
         row.innerHTML=
           '<div class="user-meta" style="flex-direction:column;align-items:flex-start;gap:4px">'
             +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-              +'<strong>v'+GBArt.esc(rel.version_name)+'</strong>'
-              +'<span class="tag">code '+rel.version_code+'</span>'
+              +'<strong>'+GBArt.esc(rel.version_name)+'</strong>'
               +(idx===0?'<span class="tag amber">当前最新</span>':'')
               +(rel.force_update?'<span class="tag" style="background:#fde8e8;color:#b83232">强制升级</span>':'')
               +'<span class="tag gray">'+fmtSize(rel.file_size)+'</span>'
@@ -544,14 +543,23 @@
     }catch(e){note("relMsg",e.message,true);}
   }
 
+  function fmtTimeVer(d){
+    var dt=d||new Date();
+    var p=function(n){return String(n).padStart(2,"0");};
+    return dt.getFullYear()+"."+p(dt.getMonth()+1)+"."+p(dt.getDate())+"-"+p(dt.getHours())+p(dt.getMinutes());
+  }
+  $id("relApkFile").addEventListener("change",function(){
+    var f=this.files&&this.files[0];
+    if(f&&!$id("relVerName").value.trim()){
+      $id("relVerName").value=fmtTimeVer(f.lastModified?new Date(f.lastModified):new Date());
+    }
+  });
   $id("btnPublishRelease").addEventListener("click",async function(){
-    var vName=$id("relVerName").value.trim();
-    var vCode=parseInt($id("relVerCode").value,10)||0;
+    var vName=$id("relVerName").value.trim()||fmtTimeVer(new Date());
     var notes=$id("relNotes").value.trim();
     var force=$id("relForce").checked;
     var fileInput=$id("relApkFile");
     var extUrl=$id("relExtUrl").value.trim();
-    if(!vName||vCode<=0){note("relMsg","请填写版本名和正整数 versionCode",true);return;}
 
     var prog=$id("relUploadProg");
     var btn=this;
@@ -560,7 +568,6 @@
       if(fileInput.files&&fileInput.files.length>0){
         var fd=new FormData();
         fd.append("versionName",vName);
-        fd.append("versionCode",String(vCode));
         fd.append("releaseNotes",notes);
         fd.append("forceUpdate",force?"true":"false");
         fd.append("apk",fileInput.files[0]);
@@ -590,14 +597,14 @@
       }else if(extUrl){
         await api("/api/admin/releases",{
           method:"POST",
-          body:JSON.stringify({versionName:vName,versionCode:vCode,releaseNotes:notes,forceUpdate:force,downloadUrl:extUrl})
+          body:JSON.stringify({versionName:vName,releaseNotes:notes,forceUpdate:force,downloadUrl:extUrl})
         });
       }else{
         throw new Error("请选择要上传的 .apk 文件，或填写外部直链");
       }
-      $id("relVerName").value="";$id("relVerCode").value="";$id("relNotes").value="";
+      $id("relVerName").value="";$id("relNotes").value="";
       $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=false;
-      note("relMsg","🎉 新版本 v"+vName+" 发布成功！App 启动后即可检测到远程升级。");
+      note("relMsg","🎉 新版本 "+vName+" 发布成功！App 启动后即可检测到远程升级。");
       await loadReleases();
     }catch(e){
       note("relMsg",e.message,true);
