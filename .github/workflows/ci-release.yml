@@ -58,6 +58,12 @@ jobs:
           sha256sum dist/growth-buddy-go-aliyun.tar.gz > dist/server.sha256
           ls -lh dist/growth-buddy-go-aliyun.tar.gz
 
+      - name: Upload growth-buddy-server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: growth-buddy-server
+          path: server/growth-buddy-server
+
       - name: Upload server deployment artifact
         uses: actions/upload-artifact@v4
         with:
