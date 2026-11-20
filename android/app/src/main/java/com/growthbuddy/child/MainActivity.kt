@@ -444,7 +444,7 @@ class MainActivity : AppCompatActivity() {
 
         val totalDays = st.logs.map { it.checkinDate }.toSet().size
         val doneCount = st.tasks.count { st.todayDoneIds.contains(it.id) }
-        binding.tvStatsRow.text = "陪伴 $totalDays 天 · 今日已完成 $doneCount/${st.tasks.size} · 可用积分 ${c.xp} 分"
+        binding.tvStatsRow.text = "陪伴 $totalDays 天 · 今日已完成 $doneCount/${st.tasks.size} · 成长值 ${c.xp}"
         binding.tvTodayBadge.text = "$doneCount/${st.tasks.size}"
 
         // XP 进度条
@@ -974,7 +974,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderDex(st: ChildState) {
         val c = st.child
-        binding.tvCouponTitle.text = "当前积分：${c.xp} 分（满 25 分可直接兑换领养）" + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
+        val matureXp = 200
+        val surplus = (c.xp - matureXp).coerceAtLeast(0)
+        binding.tvCouponTitle.text = if (c.xp < matureXp) {
+            "成长值：${c.xp}/$matureXp（主宠成熟后，富余每 25 点可换宠物蛋）"
+        } else {
+            "主宠已成熟！富余成长值：$surplus 点（每 25 点可直兑 1 只）"
+        } + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
         binding.dexContainer.removeAllViews()
 
         val pairs = st.catalog.chunked(2)
@@ -1053,14 +1059,20 @@ class MainActivity : AppCompatActivity() {
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
-                        c.xp >= 25 -> {
-                            text = "✨ 25 积分直接领养"
+                        surplus >= 25 -> {
+                            text = "✨ 25 富余成长值兑换"
                             setBackgroundColor(0xFFE8913A.toInt())
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
+                        c.xp < matureXp -> {
+                            text = "主宠成熟后可兑换"
+                            isEnabled = false
+                            setBackgroundColor(0xFFEDE6DA.toInt())
+                            setTextColor(0xFF8A7E6E.toInt())
+                        }
                         else -> {
-                            text = "还差 ${25 - c.xp} 分可兑换"
+                            text = "富余还差 ${25 - surplus} 点"
                             isEnabled = false
                             setBackgroundColor(0xFFEDE6DA.toInt())
                             setTextColor(0xFF8A7E6E.toInt())

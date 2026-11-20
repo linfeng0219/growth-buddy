@@ -1559,13 +1559,18 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 		}, childID, familyID); err != nil {
 			return errors.New("孩子档案不存在")
 		}
+		const matureXP = 200
+		const eggCost = 25
+		surplusXP := xp - matureXP
 		useCoupon := false
 		if coupons > 0 {
 			useCoupon = true
-		} else if xp >= 25 {
+		} else if surplusXP >= eggCost {
 			useCoupon = false
+		} else if xp < matureXP {
+			return fmt.Errorf("主宠达到成熟期（%d 成长值）后，富余成长值满 %d 点即可直接兑换宠物蛋", matureXP, eggCost)
 		} else {
-			return errors.New("积分不足 25 分，继续打卡攒积分就能直接兑换啦")
+			return fmt.Errorf("富余成长值不足 %d 点（当前富余 %d 点），继续打卡攒成长值吧", eggCost, surplusXP)
 		}
 		if mystery && xp < 120 {
 			return errors.New("神秘蛋需要主宠达到「成年体（120 成长值）」才解锁哦")
@@ -1613,7 +1618,7 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 				return err
 			}
 		} else {
-			if _, err := tx.Exec("UPDATE children SET xp = MAX(0, xp - 25), active_companion = COALESCE(active_companion, ?) WHERE id = ?", target.ID, childID); err != nil {
+			if _, err := tx.Exec("UPDATE children SET xp = MAX(?, xp - ?), active_companion = COALESCE(active_companion, ?) WHERE id = ?", matureXP, eggCost, target.ID, childID); err != nil {
 				return err
 			}
 		}
