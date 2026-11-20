@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - 修复 Android 11+ 无法绑定系统 TTS 语音引擎的问题：在 `AndroidManifest.xml` 中补充 `<queries>` `TTS_SERVICE` 声明。
   - 优化安卓主界面布局：移除登录后头像旁版本号文本，修复宠物名字旁「✏️ 改名」按钮文字底部被裁切问题。
   - 安卓儿童端固定服务器地址为 `https://linuu.xyz`，移除登录页服务器地址编辑入口。
   - 修复管理端 OTA 上传 APK 时优先从文件名解析编译时间戳版本号（避免因文件写入耗时差 1 分钟导致页面版本号与 APK 内部版本号不一致）。
