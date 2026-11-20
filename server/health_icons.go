@@ -196,5 +196,5 @@ func (s *Store) GetTaskIconData(iconID string) (string, []byte, error) {
 	if err != nil || raw == "" {
 		return "", nil, ErrNotFound
 	}
-	return decodeDataURL(raw)
+	return parseDataURLImage(raw)
 }
