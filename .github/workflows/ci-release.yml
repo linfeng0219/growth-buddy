@@ -38,16 +38,18 @@ jobs:
         working-directory: server
         run: |
           BUILD_VER="$(TZ=Asia/Shanghai date +%Y.%m.%d-%H%M)"
+          echo "BUILD_VER=${BUILD_VER}" >> "$GITHUB_ENV"
           CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-Bstatic -lsqlite3 -Wl,-Bdynamic -lm -ldl -lpthread" \
             go build -trimpath -ldflags="-s -w -X main.SystemVersion=${BUILD_VER}" -o growth-buddy-server .
-          ls -lh growth-buddy-server
+          cp growth-buddy-server "growth-buddy-server-${BUILD_VER}"
+          ls -lh growth-buddy-server "growth-buddy-server-${BUILD_VER}"
           ldd growth-buddy-server
 
       - name: Package Aliyun deployment tarball (with prebuilt binary)
         run: |
           STAGE="$(mktemp -d)"
           cp -a server/. "$STAGE/"
-          rm -rf "$STAGE/data" "$STAGE/.env"
+          rm -rf "$STAGE/data" "$STAGE/.env" "$STAGE"/growth-buddy-server-*
           # Replace Dockerfile in release tarball with ultra-fast prebuilt binary image
           printf '%s\n' \
             'FROM debian:12-slim' \
@@ -67,8 +69,8 @@ jobs:
       - name: Upload growth-buddy-server binary
         uses: actions/upload-artifact@v4
         with:
-          name: growth-buddy-server
-          path: server/growth-buddy-server
+          name: growth-buddy-server-${{ env.BUILD_VER }}
+          path: server/growth-buddy-server-${{ env.BUILD_VER }}
 
       - name: Upload server deployment artifact
         uses: actions/upload-artifact@v4

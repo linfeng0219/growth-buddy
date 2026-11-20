@@ -55,7 +55,7 @@ gradle testDebugUnitTest assembleDebug
 # 或仅打 64 位瘦身 Release 包（约 13.6 MB）：
 gradle assembleRelease -Parm64Only=true
 ```
-产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`（或 `release/app-release.apk`）。
+产物位于 `android/app/build/outputs/apk/release/GrowthBuddyChild-<编译时间>-release.apk`（Debug 版为 `GrowthBuddyChild-<编译时间>-debug.apk`）。
 
 ---
 
@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - 产物文件名携带编译时间：APK 自动输出 `GrowthBuddyChild-YYYY.MM.DD-HHMM-release.apk`，CI 服务端二进制同步输出 `growth-buddy-server-YYYY.MM.DD-HHMM`。
   - 统一编译时间版本号：后台服务端版本号自动取编译/更新时间（`YYYY.MM.DD-HHMM`），Android APK 版本号自动取最后编译时间，管理端 OTA 发布台不再区分 `versionCode` / `versionName`。
   - 修复 `health_icons.go` 中调用 `parseDataURLImage` 名称笔误导致的 CI 编译报错。
   - 宠物健康机制：1 天未打卡变虚弱（需 10 成长值恢复），2 天及以上未打卡变生病（需 20 成长值恢复）。

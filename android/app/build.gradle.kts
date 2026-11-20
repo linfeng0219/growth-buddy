@@ -25,6 +25,7 @@ android {
         targetSdk = 34
         versionCode = autoVersionCode
         versionName = autoVersionName
+        setProperty("archivesBaseName", "GrowthBuddyChild-$autoVersionName")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val arm64Only = (project.findProperty("arm64Only") as String?)?.toBoolean() ?: false
         ndk {
