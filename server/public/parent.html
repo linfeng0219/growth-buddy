@@ -311,6 +311,22 @@
         <button id="btnImportBackup" style="width:100%">导入到云端</button>
         <div class="msg" id="impMsg"></div>
       </div>
+      <div class="card">
+        <h3>📚 冒险小剧场题库（一年级预设 + 自定义）</h3>
+        <div class="row2">
+          <div class="field"><label>学科分类</label><select id="qCat"><option value="语文">语文</option><option value="数学">数学</option><option value="科学常识">科学常识</option></select></div>
+          <div class="field"><label>正确答案</label><select id="qAns"><option value="0">选项 A</option><option value="1">选项 B</option><option value="2">选项 C</option></select></div>
+        </div>
+        <div class="field"><label>题目内容</label><input type="text" id="qText" placeholder="例如：7 + 6 等于多少？" maxlength="80"></div>
+        <div class="row3">
+          <div class="field"><label>选项 A</label><input type="text" id="qOpt0" placeholder="选项 A" maxlength="30"></div>
+          <div class="field"><label>选项 B</label><input type="text" id="qOpt1" placeholder="选项 B" maxlength="30"></div>
+          <div class="field"><label>选项 C</label><input type="text" id="qOpt2" placeholder="选项 C" maxlength="30"></div>
+        </div>
+        <button id="btnAddQuestion" style="width:100%">➕ 添加到家庭题库</button>
+        <div class="msg" id="qMsg"></div>
+        <div id="questionList" style="margin-top:12px;max-height:260px;overflow-y:auto"></div>
+      </div>
     </section>
   </div>
 </div>
@@ -968,7 +984,43 @@
     });
   });
 
-  if(token()) loadOverview(); else showAuth();
+  async function loadQuestions(){
+    try{
+      var r=await api("GET","/api/parent/questions");
+      var box=$id("questionList");
+      var list=r.questions||[];
+      box.innerHTML=list.map(function(q){
+        var del=q.is_preset?'<span style="font-size:11px;color:#888">预设</span>':'<button class="ghost sm" data-del-q="'+q.id+'" style="color:#c0392b">删除</button>';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #e5dfd3;gap:8px">'
+          +'<div style="font-size:13px"><b>['+q.category+']</b> '+q.question+' <span style="color:#2f6b4f;font-size:12px">（答案：'+((q.options&&q.options[q.answer_idx])||"")+'）</span></div>'
+          +del+'</div>';
+      }).join("");
+      box.querySelectorAll("[data-del-q]").forEach(function(btn){
+        btn.addEventListener("click",async function(){
+          await api("DELETE","/api/parent/questions/"+btn.getAttribute("data-del-q"));
+          loadQuestions();
+        });
+      });
+    }catch(e){}
+  }
+
+  $id("btnAddQuestion").addEventListener("click",async function(){
+    $id("qMsg").textContent="";
+    try{
+      var opts=[$id("qOpt0").value.trim(),$id("qOpt1").value.trim(),$id("qOpt2").value.trim()].filter(Boolean);
+      await api("POST","/api/parent/questions",{
+        category:$id("qCat").value,
+        question:$id("qText").value.trim(),
+        options:opts,
+        answer_idx:parseInt($id("qAns").value,10)||0
+      });
+      $id("qText").value="";$id("qOpt0").value="";$id("qOpt1").value="";$id("qOpt2").value="";
+      $id("qMsg").textContent="已添加到家庭题库！";
+      loadQuestions();
+    }catch(e){$id("qMsg").textContent=e.message;}
+  });
+
+  if(token()){ loadOverview(); loadQuestions(); } else showAuth();
 })();
 </script>
 </body>

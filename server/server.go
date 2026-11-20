@@ -547,6 +547,12 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	m := r.Method
 
+	if m == http.MethodGet && p == "/api/child/questions" {
+		list := a.store.ListFamilyQuestions(auth.FamilyID)
+		writeJSON(w, 200, map[string]any{"questions": list})
+		return
+	}
+
 	if m == http.MethodGet && p == "/api/child/state" {
 		todayStr := sanitizeDate(r.URL.Query().Get("date"))
 		st, err := a.store.GetChildState(auth.FamilyID, targetChildID, todayStr)
@@ -976,6 +982,37 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/parent/questions" {
+		list := a.store.ListFamilyQuestions(fid)
+		writeJSON(w, 200, map[string]any{"questions": list})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/parent/questions" {
+		var q QuizQuestion
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&q); err != nil {
+			writeJSON(w, 400, map[string]string{"error": "请求格式错误"})
+			return
+		}
+		created, err := a.store.AddFamilyQuestion(fid, q)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"question": created})
+		return
+	}
+
+	if strings.HasPrefix(p, "/api/parent/questions/") && m == http.MethodDelete {
+		qid := strings.TrimPrefix(p, "/api/parent/questions/")
+		if err := a.store.DeleteFamilyQuestion(fid, qid); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}

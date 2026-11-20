@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F9F4EA"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnAdvExit"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="← 退出"
+            android:textColor="#2F6B4F"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:text="⚔️ 冒险小剧场"
+            android:textColor="#233128"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvAdvHp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="怪兽体力 3/3"
+            android:textColor="#D9534F"
+            android:textSize="13.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 怪兽血条 -->
+    <ProgressBar
+        android:id="@+id/pbMonsterHp"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="10dp"
+        android:layout_marginTop="10dp"
+        android:max="3"
+        android:progress="3"
+        android:progressTint="#D9534F" />
+
+    <!-- 战斗舞台 -->
+    <com.growthbuddy.child.BattleStageView
+        android:id="@+id/advBattleStage"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_marginTop="10dp"
+        android:background="#FFFDF9" />
+
+    <TextView
+        android:id="@+id/tvAdvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="答对题目给小伙伴充能，击败拖延怪！"
+        android:textColor="#2F6B4F"
+        android:textSize="13.5sp"
+        android:textStyle="bold" />
+
+    <!-- 答题充能卡片 -->
+    <LinearLayout
+        android:id="@+id/quizCard"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:background="#FFFDF9"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/tvQuizCat"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="#E8F2EC"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="数学"
+            android:textColor="#2F6B4F"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvQuizQuestion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="题目加载中..."
+            android:textColor="#233128"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnOpt0"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="14dp"
+            android:gravity="start|center_vertical"
+            android:text="A."
+            android:textColor="#233128"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnOpt1"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:gravity="start|center_vertical"
+            android:text="B."
+            android:textColor="#233128"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnOpt2"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:gravity="start|center_vertical"
+            android:text="C."
+            android:textColor="#233128"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/btnAdvNextRound"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="#E69A2B"
+            android:text="🎉 再来一关！"
+            android:textColor="#FFFFFF"
+            android:textSize="15.5sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F9F4EA"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- 顶部栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnFocusExit"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="← 退出"
+            android:textColor="#2F6B4F"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tvFocusTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="⏱️ 专注时钟"
+            android:textColor="#233128"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 宠物陪伴舞台 -->
+    <com.growthbuddy.child.PetStageView
+        android:id="@+id/focusPetStage"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:id="@+id/tvFocusBubble"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="#FFFDF9"
+        android:gravity="center"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:text="选好时间，小伙伴陪你一起安静专注吧！"
+        android:textColor="#2F6B4F"
+        android:textSize="14sp" />
+
+    <!-- 大号倒计时与进度条 -->
+    <TextView
+        android:id="@+id/tvFocusTimer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="22dp"
+        android:gravity="center"
+        android:text="15:00"
+        android:textColor="#233128"
+        android:textSize="54sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/pbFocusProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginTop="10dp"
+        android:max="1000"
+        android:progress="0"
+        android:progressTint="#2F6B4F" />
+
+    <!-- 自由专注时长选择（10 / 15 / 25 分钟） -->
+    <LinearLayout
+        android:id="@+id/focusDurationRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnDur10"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="6dp"
+            android:text="10 分钟"
+            android:textColor="#2F6B4F" />
+
+        <Button
+            android:id="@+id/btnDur15"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="6dp"
+            android:text="15 分钟"
+            android:textColor="#2F6B4F" />
+
+        <Button
+            android:id="@+id/btnDur25"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="6dp"
+            android:text="25 分钟"
+            android:textColor="#2F6B4F" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 底部主控按钮 -->
+    <Button
+        android:id="@+id/btnFocusAction"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:layout_marginBottom="12dp"
+        android:backgroundTint="#2F6B4F"
+        android:text="▶ 开始专注"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

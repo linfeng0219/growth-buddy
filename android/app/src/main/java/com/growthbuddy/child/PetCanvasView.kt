@@ -902,3 +902,164 @@ class SpeciesThumbView @JvmOverloads constructor(
         }
     }
 }
+
+/**
+ * 冒险小剧场舞台：左侧己方宠物，右侧「拖延怪」，支持出猎一击动画与特效。
+ */
+class BattleStageView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : View(context, attrs) {
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var species: SpeciesItem? = null
+    private var stage: Int = 1
+
+    private var busy = false
+    private var animStartMs = 0L
+    private var hitFired = false
+    private var onHitCallback: (() -> Unit)? = null
+    private var onWinCallback: (() -> Unit)? = null
+
+    private val animator = object : Runnable {
+        override fun run() {
+            if (!busy) return
+            val elapsed = SystemClock.uptimeMillis() - animStartMs
+            if (elapsed >= 340L && !hitFired) {
+                hitFired = true
+                onHitCallback?.invoke()
+            }
+            if (elapsed >= 1300L) {
+                busy = false
+                invalidate()
+                onWinCallback?.invoke()
+                return
+            }
+            invalidate()
+            postOnAnimation(this)
+        }
+    }
+
+    fun setPet(species: SpeciesItem?, stage: Int) {
+        this.species = species
+        this.stage = stage
+        invalidate()
+    }
+
+    fun triggerAttack(onHit: () -> Unit, onWin: () -> Unit) {
+        if (busy) return
+        busy = true
+        hitFired = false
+        animStartMs = SystemClock.uptimeMillis()
+        onHitCallback = onHit
+        onWinCallback = onWin
+        postOnAnimation(animator)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        removeCallbacks(animator)
+        busy = false
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat().coerceAtLeast(1f)
+        val h = height.toFloat().coerceAtLeast(1f)
+        val elapsed = if (busy) (SystemClock.uptimeMillis() - animStartMs).toFloat() else -1f
+
+        // 1. 己方宠物位置与冲刺动画 (0..900ms)
+        var fighterDx = 0f
+        var fighterDy = 0f
+        if (elapsed in 0f..900f) {
+            val t = elapsed / 900f
+            fighterDx = when {
+                t < 0.42f -> (t / 0.42f) * (w * 0.18f)
+                t < 0.55f -> w * 0.18f + ((t - 0.42f) / 0.13f) * (w * 0.03f)
+                else -> (1f - (t - 0.55f) / 0.45f) * (w * 0.21f)
+            }
+            if (t in 0.35f..0.65f) {
+                val jt = (t - 0.35f) / 0.30f
+                fighterDy = -sin(jt * Math.PI).toFloat() * (h * 0.10f)
+            }
+        }
+
+        val fighterCx = w * 0.24f + fighterDx
+        val fighterCy = h * 0.58f + fighterDy
+        val petScale = min(w / 320f, h / 145f) * 0.92f
+        val sp = species
+        if (sp != null) {
+            PetArtCanvas.drawSpecies(canvas, sp, fighterCx, fighterCy, petScale, silhouette = false, paint = paint)
+        } else {
+            PetArtCanvas.drawMainPet(canvas, stage.coerceIn(1, 3), fighterCx, fighterCy, petScale, sleep = false, breath = 0f, paint = paint)
+        }
+
+        // 2. 右侧「拖延怪」位置与受击晃动 (460..1110ms)
+        val foeCx = w * 0.76f
+        val foeCy = h * 0.56f
+        var foeRot = 0f
+        if (elapsed in 460f..1110f) {
+            val t = (elapsed - 460f) / 650f
+            foeRot = when {
+                t < 0.3f -> -(t / 0.3f) * 12f
+                t < 0.6f -> -12f + ((t - 0.3f) / 0.3f) * 20f
+                else -> 8f * (1f - (t - 0.6f) / 0.4f)
+            }
+        }
+        canvas.save()
+        canvas.rotate(foeRot, foeCx, foeCy)
+        val r = min(w, h) * 0.24f
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFE5DFD3.toInt()
+        canvas.drawOval(foeCx - r * 0.9f, foeCy + r * 0.75f, foeCx + r * 0.9f, foeCy + r * 1.1f, paint)
+        paint.color = 0xFF7AA67D.toInt()
+        canvas.drawOval(foeCx - r, foeCy - r * 0.8f, foeCx + r, foeCy + r * 0.85f, paint)
+        paint.color = 0xFF22301F.toInt()
+        canvas.drawCircle(foeCx - r * 0.35f, foeCy - r * 0.15f, r * 0.12f, paint)
+        canvas.drawCircle(foeCx + r * 0.35f, foeCy - r * 0.15f, r * 0.12f, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4f
+        paint.strokeCap = Paint.Cap.ROUND
+        val mouth = Path().apply {
+            moveTo(foeCx - r * 0.3f, foeCy + r * 0.3f)
+            quadTo(foeCx, foeCy + r * 0.5f, foeCx + r * 0.3f, foeCy + r * 0.3f)
+        }
+        canvas.drawPath(mouth, paint)
+        canvas.restore()
+
+        // 3. 金色能量弧 (300..900ms)
+        if (elapsed in 300f..900f) {
+            val t = (elapsed - 300f) / 600f
+            val alpha = ((if (t < 0.35f) t / 0.35f else 1f - (t - 0.35f) / 0.65f) * 255).toInt().coerceIn(0, 255)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 8f
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = (alpha shl 24) or 0x00F0C24B
+            val bolt = Path().apply {
+                moveTo(w * 0.36f, h * 0.54f)
+                quadTo(w * 0.52f, h * 0.25f, w * 0.68f, h * 0.48f)
+            }
+            canvas.drawPath(bolt, paint)
+        }
+
+        // 4. "元气!" 与 "⭐" 飘字 (500..1400ms)
+        if (elapsed in 500f..1300f) {
+            val t = (elapsed - 500f) / 800f
+            val alpha = ((if (t < 0.4f) t / 0.4f else 1f - (t - 0.4f) / 0.6f) * 255).toInt().coerceIn(0, 255)
+            paint.style = Paint.Style.FILL
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = 36f
+            paint.color = (alpha shl 24) or 0x00D9534F
+            canvas.drawText("元气!", foeCx, foeCy - r - t * 36f, paint)
+        }
+        if (elapsed in 700f..1300f) {
+            val t = (elapsed - 700f) / 600f
+            val alpha = ((if (t < 0.45f) t / 0.45f else 1f - (t - 0.45f) / 0.55f) * 255).toInt().coerceIn(0, 255)
+            paint.style = Paint.Style.FILL
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = 34f
+            paint.color = (alpha shl 24) or 0x00F0A500
+            canvas.drawText("⭐", foeCx + r * 0.7f, foeCy - r * 0.4f - t * 28f, paint)
+        }
+    }
+}

@@ -74,6 +74,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val focusLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == RESULT_OK) {
+            val mins = res.data?.getIntExtra(FocusActivity.EXTRA_DURATION_MIN, 15) ?: 15
+            sound.playWin()
+            binding.petStageView.triggerPatAnimation()
+            binding.tvBubble.text = "太棒了！刚完成了 $mins 分钟专注，继续保持哦~"
+            Toast.makeText(this, "🎉 完成 $mins 分钟专注！", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private val pickAvatarLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -208,6 +220,26 @@ class MainActivity : AppCompatActivity() {
         binding.btnUndo.setOnClickListener { performUndo() }
         binding.btnMysteryEgg.setOnClickListener { performAdopt(speciesId = null, mystery = true) }
         binding.btnSnap.setOnClickListener { performTakePolaroid() }
+        binding.btnFreeFocus.setOnClickListener {
+            val intent = Intent(this, FocusActivity::class.java).apply {
+                putExtra(FocusActivity.EXTRA_TASK_TITLE, "自由专注")
+                putExtra(FocusActivity.EXTRA_DURATION_MIN, 15)
+            }
+            focusLauncher.launch(intent)
+        }
+        binding.btnToggleBattle.setOnClickListener {
+            startActivity(Intent(this, AdventureActivity::class.java))
+        }
+        binding.btnRunBattle.setOnClickListener {
+            binding.tvBattleMsg.text = ""
+            binding.battleStageView.triggerAttack(
+                onHit = { sound.playFeed() },
+                onWin = {
+                    sound.playWin()
+                    binding.tvBattleMsg.text = "拖延怪被击退啦！继续保持打卡节奏~"
+                }
+            )
+        }
     }
 
     private fun refreshServerFooter() {
@@ -372,6 +404,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}"
         binding.tvStreakPill.text = "🌟 连续 ${computeStreakDays(st.logs)} 天"
         binding.petStageView.setPetState(lv, asleep, activeComp)
+        binding.battleStageView.setPet(activeComp, lv)
 
         binding.tvBubble.text = if (asleep) {
             "呼呼……已经 3 天没见到你了，喂我一口就醒来。"
