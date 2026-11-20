@@ -60,6 +60,7 @@
       <div class="top-bar">
         <span class="kicker" id="adminGreeting">系统管理端</span>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="pill" id="adminVerBadge" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9">版本加载中...</button>
           <a href="/parent.html" class="pill ghost" style="text-decoration:none">家长端 ↗</a>
           <button class="pill ghost" id="btnOpenAdminPwd">修改管理员密码</button>
           <button class="pill ghost" id="btnLogout">退出登录</button>
@@ -202,8 +203,10 @@
 </div>
 
 <script src="/shared/pet-art.js"></script>
+<script src="/shared/changelog-modal.js"></script>
 <script>
 (function(){
+  if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("adminVerBadge"),"");
   var $id=function(id){return document.getElementById(id);};
   var data=null;
   var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }

@@ -133,6 +133,7 @@
           <span style="font-size:11px;color:var(--muted)">✎</span>
         </button>
         <div style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="pill" id="parentVerBadge" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9">版本加载中...</button>
           <button class="pill ghost" id="btnLogout">退出登录</button>
         </div>
       </div>
@@ -211,11 +212,11 @@
         <div class="row3">
           <div class="field">
             <label>任务图标</label>
-            <div style="display:flex;gap:6px;align-items:center">
-              <span id="tIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:20px;flex-shrink:0">✨</span>
-              <input type="text" id="tEmoji" value="✨" maxlength="4" style="width:54px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="tIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:21px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
               <button type="button" class="sm" id="btnPickTIcon">选图标</button>
             </div>
+            <input type="hidden" id="tEmoji" value="✨">
             <input type="hidden" id="tIconUrl" value="">
           </div>
           <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="18" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
@@ -420,7 +421,11 @@
       </div>
       <div class="msg" id="iconUploadMsg"></div>
     </div>
-    <div style="margin-top:12px;text-align:right">
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" id="manualEmojiInput" maxlength="4" placeholder="或输入任意Emoji" style="width:125px;font-size:12.5px">
+        <button type="button" class="sm" id="btnApplyManualEmoji">使用</button>
+      </div>
       <button type="button" class="ghost sm" id="btnCloseIconModal">关闭</button>
     </div>
   </div>
@@ -433,11 +438,11 @@
     <div class="row3">
       <div class="field">
         <label>图标</label>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span id="etIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:18px;flex-shrink:0">✨</span>
-          <input type="text" id="etEmoji" maxlength="4" style="width:50px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="etIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:20px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
           <button type="button" class="sm" id="btnPickEtIcon">选图标</button>
         </div>
+        <input type="hidden" id="etEmoji" value="✨">
         <input type="hidden" id="etIconUrl" value="">
       </div>
       <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="18"></div>
@@ -544,8 +549,10 @@
 </div>
 
 <script src="/shared/pet-art.js"></script>
+<script src="/shared/changelog-modal.js"></script>
 <script>
 (function(){
+  if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("parentVerBadge"),"");
   GBArt.enableEyeTracking();
   var $id=function(id){return document.getElementById(id);};
   var data=null, previewKidId=null, newKidAv=0, previewSilo=false, editingTaskId=null;
@@ -1400,8 +1407,19 @@
     renderIconGrid();
     loadFamilyIcons().then(function(){if(curIconCat==="私有")renderIconGrid();});
   }
+  $id("tIconPreview").addEventListener("click",function(){openTaskIconPicker("t");});
+  $id("etIconPreview").addEventListener("click",function(){openTaskIconPicker("et");});
   $id("btnPickTIcon").addEventListener("click",function(){openTaskIconPicker("t");});
   $id("btnPickEtIcon").addEventListener("click",function(){openTaskIconPicker("et");});
+  $id("btnApplyManualEmoji").addEventListener("click",function(){
+    var v=$id("manualEmojiInput").value.trim();
+    if(!v) return;
+    $id(iconPickTarget+"Emoji").value=v;
+    $id(iconPickTarget+"IconUrl").value="";
+    setTaskIconPreview(iconPickTarget,v,"");
+    $id("manualEmojiInput").value="";
+    $id("taskIconModal").classList.remove("show");
+  });
   $id("btnCloseIconModal").addEventListener("click",function(){$id("taskIconModal").classList.remove("show");});
   document.querySelectorAll("#iconCatTabs button").forEach(function(b){
     b.addEventListener("click",function(){curIconCat=b.getAttribute("data-icat");renderIconGrid();});

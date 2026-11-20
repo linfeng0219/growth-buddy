@@ -105,15 +105,12 @@
 </div>
 
 <script src="/shared/pet-art.js"></script>
+<script src="/shared/changelog-modal.js"></script>
 <script>
   document.getElementById("heroPet").innerHTML=GBArt.mainPetSVG(3,{w:176});
   GBArt.enableEyeTracking();
-  fetch("/api/health").then(function(r){return r.json();}).then(function(d){
-    if(d&&d.version){
-      document.getElementById("sysVerBadge").textContent="系统版本 "+d.version;
-      document.getElementById("sysFoot").textContent="成长小伙伴 · Growth Buddy · 系统版本 "+d.version;
-    }
-  }).catch(function(){});
+  GBChangelog.bindBadge(document.getElementById("sysVerBadge"),"系统版本 ");
+  GBChangelog.bindBadge(document.getElementById("sysFoot"),"成长小伙伴 · Growth Buddy · 系统版本 ");
   fetch("/api/app/version?platform=android").then(function(r){return r.json();}).then(function(d){
     if(d&&d.hasRelease&&d.release){
       var rel=d.release;

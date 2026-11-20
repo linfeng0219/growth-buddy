@@ -304,6 +304,18 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodGet && p == "/api/changelog" {
+		raw, err := fs.ReadFile(embeddedPublicFS, "public/shared/changelog.json")
+		if err != nil {
+			writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": []any{}})
+			return
+		}
+		var list []any
+		_ = json.Unmarshal(raw, &list)
+		writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": list})
+		return
+	}
+
 	/* ===== 0. 公开 App 远程升级接口 ===== */
 	if m == http.MethodGet && p == "/api/app/version" {
 		platform := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("platform")))

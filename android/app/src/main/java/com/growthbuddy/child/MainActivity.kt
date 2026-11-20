@@ -181,6 +181,7 @@ class MainActivity : AppCompatActivity() {
         binding.loginPetPreview.setPetState(3, false, null)
         binding.etLoginUser.setText(ServerPrefs.getSavedUsername(this))
         refreshServerFooter()
+        binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
 
         binding.btnLoginUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
         binding.btnLoginServer.setOnClickListener { showServerDialog() }
@@ -200,6 +201,8 @@ class MainActivity : AppCompatActivity() {
             updateVolumeBoostButton()
         }
         binding.ivHeaderAvatar.setOnClickListener { showAvatarPickerDialog() }
+        binding.tvAppVer.text = "版本 ${BuildConfig.VERSION_NAME} ⓘ"
+        binding.tvAppVer.setOnClickListener { showChangelogDialog() }
         binding.btnMute.setOnClickListener { toggleMute() }
         binding.btnAppUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
         binding.btnRefresh.setOnClickListener { loadChildState() }
@@ -270,7 +273,56 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshServerFooter() {
-        binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · v${BuildConfig.VERSION_NAME}"
+        binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · ${BuildConfig.VERSION_NAME} ⓘ"
+    }
+
+    private fun showChangelogDialog() {
+        val fallback = """
+            • 统一编译时间版本号（${BuildConfig.VERSION_NAME}）
+            • 宠物缺卡虚弱(10成长值恢复) / 生病(20成长值恢复)
+            • 独立冒险小剧场答题闯关 & 沉浸式番茄专注页
+            • 任务支持单次/周循环、正倒计时、拍照留证与自定义图标
+            • 主宠成熟(200成长值)后富余成长值直接兑换伙伴
+        """.trimIndent()
+
+        val tv = TextView(this).apply {
+            text = "正在加载更新内容..."
+            textSize = 13.5f
+            setTextColor(0xFF4A4238.toInt())
+            setPadding(dp(20), dp(14), dp(20), dp(8))
+            setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("📋 版本更新内容 (${BuildConfig.VERSION_NAME})")
+            .setView(tv)
+            .setPositiveButton("知道了", null)
+            .create()
+        dlg.show()
+
+        api.request("GET", "/api/changelog", null) { res ->
+            val arr = res.json?.optJSONArray("changelog")
+            if (res.ok && arr != null && arr.length() > 0) {
+                val sb = StringBuilder()
+                for (i in 0 until arr.length()) {
+                    val entry = arr.getJSONObject(i)
+                    val dt = entry.optString("date", "")
+                    val title = entry.optString("title", "")
+                    sb.append("📅 ").append(dt)
+                    if (title.isNotEmpty()) sb.append(" · ").append(title)
+                    sb.append("\n")
+                    val items = entry.optJSONArray("items")
+                    if (items != null) {
+                        for (j in 0 until items.length()) {
+                            sb.append("  • ").append(items.optString(j, "")).append("\n")
+                        }
+                    }
+                    if (i + 1 < arr.length()) sb.append("\n")
+                }
+                tv.text = sb.toString().trim()
+            } else {
+                tv.text = fallback
+            }
+        }
     }
 
     private fun showLoginView(message: String = "") {
@@ -278,6 +330,7 @@ class MainActivity : AppCompatActivity() {
         binding.appContainer.visibility = View.GONE
         binding.tvLoginMsg.text = message
         refreshServerFooter()
+        binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
     }
 
     private fun showAppView() {
@@ -359,6 +412,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("保存") { _, _ ->
                 ServerPrefs.setServerUrl(this, input.text.toString())
                 refreshServerFooter()
+        binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
                 Toast.makeText(this, "服务器地址已保存", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
