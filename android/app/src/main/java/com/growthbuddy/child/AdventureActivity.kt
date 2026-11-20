@@ -58,7 +58,9 @@ class AdventureActivity : AppCompatActivity() {
                 QuizItem("科学常识", "太阳每天从哪个方向升起？", listOf("东边", "西边", "北边"), 0),
                 QuizItem("语文", "“大”字加一笔可以变成哪个字？", listOf("天", "小", "人"), 0),
                 QuizItem("数学", "16 - 7 等于多少？", listOf("8", "9", "10"), 1),
-                QuizItem("科学常识", "一年有四个季节，春天的下一个季节是什么？", listOf("冬天", "夏天", "秋天"), 1)
+                QuizItem("科学常识", "一年有四个季节，春天的下一个季节是什么？", listOf("冬天", "夏天", "秋天"), 1),
+                QuizItem("趣味问答", "什么东西越洗越脏？", listOf("水", "肥皂", "毛巾"), 0),
+                QuizItem("趣味问答", "什么动物天天熬夜，黑眼圈最大？", listOf("大熊猫", "小兔子", "长颈鹿"), 0)
             ).shuffled()
         )
     }

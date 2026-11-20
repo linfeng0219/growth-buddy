@@ -96,6 +96,31 @@ func DefaultGrade1Questions() []QuizQuestion {
 			Options:   []string{"水", "糖果", "石头"},
 			AnswerIdx: 0,
 		},
+		// 趣味问答
+		{
+			ID: "preset_fun_1", Category: "趣味问答", IsPreset: true,
+			Question:  "什么东西越洗越脏？",
+			Options:   []string{"水", "肥皂", "毛巾"},
+			AnswerIdx: 0,
+		},
+		{
+			ID: "preset_fun_2", Category: "趣味问答", IsPreset: true,
+			Question:  "什么动物天天熬夜，黑眼圈最大？",
+			Options:   []string{"大熊猫", "小兔子", "长颈鹿"},
+			AnswerIdx: 0,
+		},
+		{
+			ID: "preset_fun_3", Category: "趣味问答", IsPreset: true,
+			Question:  "麻屋子，红帐子，里面住着白胖子（打一食物）",
+			Options:   []string{"花生", "核桃", "饺子"},
+			AnswerIdx: 0,
+		},
+		{
+			ID: "preset_fun_4", Category: "趣味问答", IsPreset: true,
+			Question:  "小时四条腿，长大两条腿，老了三条腿，猜猜是谁？",
+			Options:   []string{"人", "青蛙", "小狗"},
+			AnswerIdx: 0,
+		},
 	}
 }
 
