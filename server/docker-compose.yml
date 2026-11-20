@@ -15,5 +15,15 @@ services:
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin1234}"
     volumes:
       - ./data:/app/data
-      - ./growth-buddy-server:/app/growth-buddy-server
-    command: ["sh", "-c", "chmod +x /app/growth-buddy-server && exec /app/growth-buddy-server"]
+      - .:/app/host:ro
+    command:
+      - sh
+      - -c
+      - |
+        BIN=$$(ls -1 /app/host/growth-buddy-server* 2>/dev/null | grep -E '/growth-buddy-server(-[0-9]{4}\.[0-9]{2}\.[0-9]{2}-[0-9]{4})?$$' | LC_ALL=C sort -r | head -n 1)
+        if [ -n "$$BIN" ] && [ -f "$$BIN" ]; then
+          echo "Using host binary: $$BIN"
+          cp -f "$$BIN" /app/growth-buddy-server
+        fi
+        chmod +x /app/growth-buddy-server
+        exec /app/growth-buddy-server

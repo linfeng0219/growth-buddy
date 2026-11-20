@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - 支持 `docker-compose.yml` 自动识别带编译时间的后端二进制 `growth-buddy-server-YYYY.MM.DD-HHMM`（自动选取最新版本启动，无需手动重命名）。
   - 产物文件名携带编译时间：APK 自动输出 `GrowthBuddyChild-YYYY.MM.DD-HHMM-release.apk`，CI 服务端二进制同步输出 `growth-buddy-server-YYYY.MM.DD-HHMM`。
   - 统一编译时间版本号：后台服务端版本号自动取编译/更新时间（`YYYY.MM.DD-HHMM`），Android APK 版本号自动取最后编译时间，管理端 OTA 发布台不再区分 `versionCode` / `versionName`。
   - 修复 `health_icons.go` 中调用 `parseDataURLImage` 名称笔误导致的 CI 编译报错。
