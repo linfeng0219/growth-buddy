@@ -117,7 +117,9 @@
       document.getElementById("apkVerTitle").textContent="📥 儿童端安卓 App（v"+rel.version_name+"）";
       var sz=rel.file_size?((rel.file_size/(1024*1024)).toFixed(1)+" MB · "):"";
       document.getElementById("apkVerMeta").textContent=sz+(rel.release_notes||"孩子使用家长分配的账号密码登录");
-      document.getElementById("apkDownloadLink").href=rel.download_url||"/api/app/latest.apk";
+      var dlUrl=rel.download_url||"/api/app/latest.apk";
+      if(dlUrl.indexOf("/api/app/download/")===0&&dlUrl.slice(-4)!==".apk") dlUrl+=".apk";
+      document.getElementById("apkDownloadLink").href=dlUrl;
     }
   }).catch(function(){});
 </script>

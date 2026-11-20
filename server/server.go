@@ -343,7 +343,7 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m == http.MethodGet && p == "/api/app/latest.apk" {
+	if (m == http.MethodGet || m == http.MethodHead) && p == "/api/app/latest.apk" {
 		rel, err := a.store.GetLatestRelease("android")
 		if err != nil {
 			writeJSON(w, 404, map[string]string{"error": "暂未发布安卓安装包"})
@@ -353,8 +353,9 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m == http.MethodGet && strings.HasPrefix(p, "/api/app/download/") {
+	if (m == http.MethodGet || m == http.MethodHead) && strings.HasPrefix(p, "/api/app/download/") {
 		id := strings.TrimPrefix(p, "/api/app/download/")
+		id = strings.TrimSuffix(id, ".apk")
 		if id == "" || strings.Contains(id, "/") {
 			writeJSON(w, 404, map[string]string{"error": "版本不存在"})
 			return
@@ -575,7 +576,7 @@ func (a *AppServer) serveReleaseAPK(w http.ResponseWriter, r *http.Request, rel 
 			}
 			w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, dlName))
-			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFile(w, r, localPath)
 			return
 		}

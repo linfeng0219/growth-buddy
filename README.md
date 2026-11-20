@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - 修复华为浏览器等手机浏览器下载 APK 失败问题：后端 `/api/app/latest.apk` 与 `/api/app/download/` 补充支持 `HEAD` 预检请求与 `.apk` 路径后缀，移除 `no-store` 响应头以兼容系统下载管理器。
   - 统一更新日志弹窗：首页、家长端、管理端及安卓 App 均支持点击版本号查看更新内容（由 `/api/changelog` 统一提供）；优化家长端新增/编辑任务图标选择器为单框预览。
   - 支持 `docker-compose.yml` 自动识别带编译时间的后端二进制 `growth-buddy-server-YYYY.MM.DD-HHMM`（自动选取最新版本启动，无需手动重命名）。
   - 产物文件名携带编译时间：APK 自动输出 `GrowthBuddyChild-YYYY.MM.DD-HHMM-release.apk`，CI 服务端二进制同步输出 `growth-buddy-server-YYYY.MM.DD-HHMM`。
