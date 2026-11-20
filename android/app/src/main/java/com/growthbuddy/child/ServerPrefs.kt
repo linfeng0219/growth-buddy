@@ -7,20 +7,16 @@ object ServerPrefs {
     private const val KEY_SERVER_URL = "server_url"
     private const val KEY_CHILD_TOKEN = "child_token"
     private const val KEY_SAVED_USERNAME = "saved_username"
-    const val DEFAULT_SERVER_URL = "http://linuu.xyz"
+    const val DEFAULT_SERVER_URL = "https://linuu.xyz"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
-    fun getServerUrl(context: Context): String {
-        val raw = prefs(context).getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
-        val clean = normalizeUrl(raw)
-        return clean.ifEmpty { DEFAULT_SERVER_URL }
-    }
+    fun getServerUrl(context: Context): String = DEFAULT_SERVER_URL
 
     fun setServerUrl(context: Context, url: String) {
-        val clean = normalizeUrl(url).ifEmpty { DEFAULT_SERVER_URL }
-        prefs(context).edit().putString(KEY_SERVER_URL, clean).apply()
+        // 固定使用默认 HTTPS 服务器地址，不再允许用户修改
+        prefs(context).edit().putString(KEY_SERVER_URL, DEFAULT_SERVER_URL).apply()
     }
 
     fun getChildToken(context: Context): String {

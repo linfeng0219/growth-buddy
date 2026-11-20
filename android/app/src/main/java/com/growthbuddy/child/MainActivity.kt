@@ -184,7 +184,6 @@ class MainActivity : AppCompatActivity() {
         binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
 
         binding.btnLoginUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
-        binding.btnLoginServer.setOnClickListener { showServerDialog() }
         binding.btnDoLogin.setOnClickListener { performChildLogin() }
         binding.etLoginPass.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
@@ -394,26 +393,6 @@ class MainActivity : AppCompatActivity() {
                 ServerPrefs.clearChildToken(this)
                 state = null
                 showLoginView("已退出登录，请输入孩子账号和密码")
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    private fun showServerDialog() {
-        val input = EditText(this).apply {
-            hint = "例如：http://linuu.xyz"
-            setText(ServerPrefs.getServerUrl(this@MainActivity))
-            setPadding(40, 28, 40, 28)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("设置服务器地址")
-            .setMessage("默认已指向 http://linuu.xyz，如更换服务器可在此修改")
-            .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-                ServerPrefs.setServerUrl(this, input.text.toString())
-                refreshServerFooter()
-        binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
-                Toast.makeText(this, "服务器地址已保存", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
             .show()
