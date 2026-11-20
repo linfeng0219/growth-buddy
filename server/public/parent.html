@@ -141,27 +141,60 @@
 
     <div class="fam-banner">
       <div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink)">👨‍👩‍👧 家长可在「孩子总览」发蛋/撤销打卡，或在「任务中心 → 当日任务」代孩子打卡</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">👨‍👩‍👧 家长可在「任务中心 → 当日任务」帮孩子打卡或取消打卡，孩子积分满 25 分可直接兑换图鉴伙伴</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">
-          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号密码登录</span>
+          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号与密码登录</span>
         </div>
       </div>
       <a id="apkDownloadLink" href="/api/app/latest.apk" class="pill" style="display:none;text-decoration:none;background:#2f6b4f;color:#fff;border-color:#2f6b4f">📥 下载儿童端 App</a>
     </div>
 
     <nav class="tabs">
-      <button data-tab="overview" class="on">孩子总览与发蛋</button>
+      <button data-tab="overview" class="on">孩子总览</button>
       <button data-tab="tasks">任务中心</button>
+      <button data-tab="logs">打卡记录与汇总</button>
       <button data-tab="studio">伙伴工作室</button>
       <button data-tab="family">家庭与档案</button>
     </nav>
 
-    <!-- 1. 孩子总览与发蛋 -->
+    <!-- 1. 孩子总览 -->
     <section id="tab-overview">
       <div class="kid-overview-grid" id="kidOverviewGrid"></div>
       <div class="panel">
-        <div class="panel-head"><h2>最近领养蛋发放记录</h2></div>
-        <div id="grantLogList" style="font-size:12.5px;color:var(--ink-soft)"></div>
+        <div class="panel-head">
+          <h2>📸 孩子打卡完成情况 · 实拍照片墙</h2>
+          <span class="pill" id="photoWallCount">0 张照片</span>
+        </div>
+        <div id="checkinPhotoWall" class="photo-wall-grid"></div>
+      </div>
+    </section>
+
+    <!-- 1.5 打卡记录与汇总 -->
+    <section id="tab-logs" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>📋 打卡记录明细（按天 / 周 / 月）</h2>
+          <span class="pill" id="logRangeLabel">今日</span>
+        </div>
+        <div class="row3" style="margin-bottom:10px">
+          <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="logChildFilter"><option value="">全部孩子</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>查询周期</label><select id="logPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>基准日期</label><input type="date" id="logDateFilter"></div>
+        </div>
+        <div id="checkinLogsList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>📊 按任务汇总打卡数据（按天 / 周 / 月 / 年）</h2>
+          <span class="pill" id="sumRangeLabel">今日</span>
+        </div>
+        <div class="row3" style="margin-bottom:10px">
+          <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="sumChildFilter"><option value="">全部孩子</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>汇总周期</label><select id="sumPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option><option value="year">按年</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>基准日期</label><input type="date" id="sumDateFilter"></div>
+        </div>
+        <div id="taskSummaryList"></div>
       </div>
     </section>
 
@@ -611,15 +644,15 @@
 
   function renderOverview(){
     var g=$id("kidOverviewGrid");g.innerHTML="";
+    var allPhotos=[];
     data.children.forEach(function(c){
       var box=document.createElement("div");box.className="kid-box";
       var lvName=GBArt.LEVELS[c.level]?GBArt.LEVELS[c.level].name:"一颗蛋";
-      var logsHtml=(c.recent_logs||[]).slice(0,5).map(function(l,idx){
-        var metric=(l.actual_count!==null&&l.actual_count!==undefined)?" · "+l.actual_count+"个/"+(l.actual_duration||60)+"秒":"";
-        var tm=fmtTime(l.created_at);
-        var phBtn=(l.has_photo&&l.photo_url)?('<button type="button" class="photo-pill view-log-photo" data-idx="'+idx+'">📷 查看照片</button>'):"";
-        return '<div class="log-row"><span>· '+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+" "+GBArt.esc(l.task_label)+metric+" (+"+l.pts+")</span>"+phBtn+"</div>";
-      }).join("")||"<div>暂无打卡记录</div>";
+      (c.recent_logs||[]).forEach(function(l){
+        if(l.has_photo&&l.photo_url){
+          allPhotos.push({kidName:c.name,log:l});
+        }
+      });
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
         +'<div class="info">'
@@ -627,33 +660,18 @@
         +'<div class="kid-stats">'
         +'<span>'+lvName+' ('+c.xp+' XP)</span>'
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
-        +'<span>领养蛋 '+c.coupons+' 枚</span>'
         +'<span>图鉴 '+c.owned_count+' 只</span>'
         +'</div></div></div>'
         +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +'<button type="button" class="sm go-checkin-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)">✅ 帮 '+GBArt.esc(c.name)+' 打卡</button>'
-        +'<button class="primary sm grant-btn" style="flex:1">🥚 确认扣25分 → 奖1枚领养蛋</button>'
+        +'<button type="button" class="sm go-checkin-btn" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)">✅ 帮 '+GBArt.esc(c.name)+' 打卡</button>'
         +'<button class="sm undo-btn">↩ 撤销最近打卡</button>'
-        +'</div>'
-        +'<div class="recent-logs"><strong>近期动态：</strong>'+logsHtml+'</div>';
+        +'</div>';
 
       box.querySelector(".go-checkin-btn").addEventListener("click",function(){
         previewKidId=c.id;
         switchMainTab("tasks");
         switchTaskSubTab("today");
         renderTasksTab();
-      });
-      box.querySelectorAll(".view-log-photo").forEach(function(btn){
-        btn.addEventListener("click",function(){
-          var l=c.recent_logs[parseInt(btn.getAttribute("data-idx"),10)];
-          if(l&&l.photo_url) openPhotoPreview(l.photo_url,c.name,l.task_label,l.checkin_date,l.created_at);
-        });
-      });
-      var gb=box.querySelector(".grant-btn");
-      gb.addEventListener("click",async function(){
-        if(!gb._arm){gb._arm=true;gb.textContent="确认发放给 "+c.name+"？（再点一次）";setTimeout(function(){gb._arm=false;gb.textContent="🥚 确认扣25分 → 奖1枚领养蛋";},4000);return;}
-        try{await api("/api/parent/grant-egg",{method:"POST",body:JSON.stringify({childId:c.id,amount:1})});await loadOverview();}
-        catch(e){alert(e.message);}
       });
       box.querySelector(".undo-btn").addEventListener("click",async function(){
         try{await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:c.id})});await loadOverview();}
@@ -662,15 +680,25 @@
       g.appendChild(box);
     });
 
-    var gl=$id("grantLogList");
-    if(!data.egg_grants.length){gl.textContent="还没有发放记录。";}
-    else{
-      gl.innerHTML=data.egg_grants.map(function(eg){
-        var dt=new Date(eg.created_at);
-        var ds=dt.getFullYear()+"-"+(dt.getMonth()+1)+"-"+dt.getDate()+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
-        return '<div style="padding:4px 0;border-bottom:1px solid var(--hair)">'+ds+" · "+GBArt.esc(eg.parent_name)+" 为 <strong>"+GBArt.esc(eg.child_name)+"</strong> 发放 "+eg.amount+" 枚领养蛋（"+GBArt.esc(eg.reason)+"）</div>";
-      }).join("");
+    allPhotos.sort(function(a,b){return (b.log.created_at||0)-(a.log.created_at||0);});
+    $id("photoWallCount").textContent=allPhotos.length+" 张照片";
+    var pw=$id("checkinPhotoWall");pw.innerHTML="";
+    if(!allPhotos.length){
+      pw.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px">孩子在打卡时上传作业或完成成果照片后，会实时展示在这里供家长查验。</div>';
+    }else{
+      allPhotos.forEach(function(item){
+        var l=item.log, tm=fmtTime(l.created_at);
+        var card=document.createElement("div");card.className="photo-card";
+        card.innerHTML='<img src="'+GBArt.esc(l.photo_url)+'" alt="打卡照片" loading="lazy">'
+          +'<div class="pc-meta"><span>'+GBArt.esc(item.kidName)+' · '+GBArt.esc(l.task_label)+'</span><span style="color:var(--amber)">+'+l.pts+'</span></div>'
+          +'<div class="pc-sub">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+' · 点击放大</div>';
+        card.addEventListener("click",function(){
+          openPhotoPreview(l.photo_url,item.kidName,l.task_label,l.checkin_date,l.created_at);
+        });
+        pw.appendChild(card);
+      });
     }
+    populateLogFilters();
   }
 
   function renderChildCheckboxes(containerId, selectedIds){
@@ -711,8 +739,62 @@
     document.querySelectorAll(".tabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-tab")===tg);
     });
-    ["overview","tasks","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+    ["overview","tasks","logs","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+    if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
   }
+
+  $id("logDateFilter").value=today();
+  $id("sumDateFilter").value=today();
+  function populateLogFilters(){
+    if(!data||!data.children) return;
+    var opts='<option value="">全部孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
+    var curL=$id("logChildFilter").value, curS=$id("sumChildFilter").value;
+    $id("logChildFilter").innerHTML=opts; $id("logChildFilter").value=curL;
+    $id("sumChildFilter").innerHTML=opts; $id("sumChildFilter").value=curS;
+  }
+  async function loadCheckinLogs(){
+    try{
+      var cid=$id("logChildFilter").value, per=$id("logPeriodFilter").value, dt=$id("logDateFilter").value||today();
+      var r=await api("/api/parent/checkin-logs?childId="+encodeURIComponent(cid)+"&period="+encodeURIComponent(per)+"&date="+encodeURIComponent(dt));
+      $id("logRangeLabel").textContent=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
+      var box=$id("checkinLogsList");
+      var list=r.logs||[];
+      if(!list.length){box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无打卡记录。</div>';return;}
+      box.innerHTML="";
+      list.forEach(function(l){
+        var row=document.createElement("div");row.className="task-item";
+        var tm=fmtTime(l.created_at);
+        var extra=[];
+        if(l.actual_count!=null) extra.push(l.actual_count+"个");
+        if(l.actual_duration!=null) extra.push(l.actual_duration>=60?Math.round(l.actual_duration/60)+"分钟":l.actual_duration+"秒");
+        var extraStr=extra.length?(' <span style="font-size:12px;color:var(--muted)">('+extra.join("/")+')</span>'):"";
+        var phBtn=(l.has_photo&&l.photo_url)?'<button type="button" class="photo-pill">📷 查看照片</button>':"";
+        row.innerHTML='<div class="task-meta"><span style="font-size:12px;color:var(--muted)">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+'</span><strong>'+GBArt.esc(l.child_name)+'</strong><span>· '+GBArt.esc(l.task_label)+'</span>'+extraStr+'<span style="color:var(--amber);font-weight:600">+'+l.pts+'</span></div>'+phBtn;
+        var b=row.querySelector("button");
+        if(b) b.addEventListener("click",function(){openPhotoPreview(l.photo_url,l.child_name,l.task_label,l.checkin_date,l.created_at);});
+        box.appendChild(row);
+      });
+    }catch(e){}
+  }
+  async function loadTaskSummary(){
+    try{
+      var cid=$id("sumChildFilter").value, per=$id("sumPeriodFilter").value, dt=$id("sumDateFilter").value||today();
+      var r=await api("/api/parent/checkin-logs?childId="+encodeURIComponent(cid)+"&period="+encodeURIComponent(per)+"&date="+encodeURIComponent(dt));
+      $id("sumRangeLabel").textContent=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
+      var box=$id("taskSummaryList");
+      var list=r.summary||[];
+      if(!list.length){box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无可汇总的数据。</div>';return;}
+      box.innerHTML=list.map(function(s){
+        var metrics=[];
+        if(s.total_duration>0) metrics.push("累计时长 "+(s.total_duration>=60?Math.round(s.total_duration/60)+"分钟":s.total_duration+"秒"));
+        if(s.total_count>0) metrics.push("累计数量 "+s.total_count+"个");
+        var mStr=metrics.length?(' · <span style="color:var(--muted);font-size:12px">'+metrics.join(" · ")+'</span>'):"";
+        return '<div class="task-item"><div class="task-meta"><strong>'+GBArt.esc(s.task_label)+'</strong>'+mStr+'</div><div style="display:flex;gap:8px;align-items:center"><span class="tag-all">完成 '+s.count+' 次</span><span style="color:var(--amber);font-weight:700">+'+s.total_pts+' XP</span></div></div>';
+      }).join("");
+    }catch(e){}
+  }
+  ["logChildFilter","logPeriodFilter","logDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadCheckinLogs);});
+  ["sumChildFilter","sumPeriodFilter","sumDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadTaskSummary);});
   function switchTaskSubTab(st){
     document.querySelectorAll("#taskSubTabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-subtab")===st);

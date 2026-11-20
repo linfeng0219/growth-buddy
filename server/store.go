@@ -1386,6 +1386,130 @@ func (s *Store) UndoTaskCheckin(familyID, childID, taskID, todayStr string) (*Ch
 	return undone, err
 }
 
+func periodDateRange(period, dateStr string) (string, string) {
+	dt, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		dt = time.Now()
+	}
+	switch period {
+	case "week":
+		wd := int(dt.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		start := dt.AddDate(0, 0, -(wd - 1))
+		end := start.AddDate(0, 0, 6)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	case "month":
+		start := time.Date(dt.Year(), dt.Month(), 1, 0, 0, 0, 0, dt.Location())
+		end := start.AddDate(0, 1, -1)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	case "year":
+		start := time.Date(dt.Year(), 1, 1, 0, 0, 0, 0, dt.Location())
+		end := time.Date(dt.Year(), 12, 31, 0, 0, 0, 0, dt.Location())
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	default:
+		s := dt.Format("2006-01-02")
+		return s, s
+	}
+}
+
+func (s *Store) GetParentCheckinLogs(familyID, childID, period, dateStr string) (map[string]any, error) {
+	startDate, endDate := periodDateRange(period, dateStr)
+	type logRow struct {
+		ID             string `json:"id"`
+		ChildID        string `json:"child_id"`
+		ChildName      string `json:"child_name"`
+		TaskID         string `json:"task_id"`
+		TaskLabel      string `json:"task_label"`
+		Pts            int    `json:"pts"`
+		ActualCount    *int   `json:"actual_count"`
+		ActualDuration *int   `json:"actual_duration"`
+		HasPhoto       bool   `json:"has_photo"`
+		PhotoURL       string `json:"photo_url,omitempty"`
+		CheckinDate    string `json:"checkin_date"`
+		CreatedAt      int64  `json:"created_at"`
+	}
+	type summaryRow struct {
+		TaskLabel     string `json:"task_label"`
+		Count         int    `json:"count"`
+		TotalPts      int    `json:"total_pts"`
+		TotalDuration int    `json:"total_duration"`
+		TotalCount    int    `json:"total_count"`
+	}
+	logs := make([]logRow, 0)
+	summaryMap := make(map[string]*summaryRow)
+	summaryOrder := make([]string, 0)
+
+	err := s.db.WithLock(func(tx *Tx) error {
+		q := `
+			SELECT cl.id, cl.child_id, COALESCE(c.name, '孩子'), cl.task_id, cl.task_label, cl.pts,
+			       cl.actual_count, cl.actual_duration, LENGTH(cl.photo_data) > 0, cl.checkin_date, cl.created_at
+			FROM checkin_logs cl
+			LEFT JOIN children c ON c.id = cl.child_id
+			WHERE cl.family_id = ? AND cl.checkin_date >= ? AND cl.checkin_date <= ?`
+		args := []any{familyID, startDate, endDate}
+		if childID != "" {
+			q += " AND cl.child_id = ?"
+			args = append(args, childID)
+		}
+		q += " ORDER BY cl.checkin_date DESC, cl.created_at DESC LIMIT 500"
+
+		return tx.Query(q, func(r SQLiteRow) error {
+			id := r.String(0)
+			hasPhoto := r.Int(8) != 0
+			photoURL := ""
+			if hasPhoto {
+				photoURL = "/api/checkin-photo/" + id
+			}
+			row := logRow{
+				ID:             id,
+				ChildID:        r.String(1),
+				ChildName:      r.String(2),
+				TaskID:         r.String(3),
+				TaskLabel:      r.String(4),
+				Pts:            r.Int(5),
+				ActualCount:    r.NullableInt(6),
+				ActualDuration: r.NullableInt(7),
+				HasPhoto:       hasPhoto,
+				PhotoURL:       photoURL,
+				CheckinDate:    r.String(9),
+				CreatedAt:      r.Int64(10),
+			}
+			logs = append(logs, row)
+
+			sm, ok := summaryMap[row.TaskLabel]
+			if !ok {
+				sm = &summaryRow{TaskLabel: row.TaskLabel}
+				summaryMap[row.TaskLabel] = sm
+				summaryOrder = append(summaryOrder, row.TaskLabel)
+			}
+			sm.Count++
+			sm.TotalPts += row.Pts
+			if row.ActualDuration != nil {
+				sm.TotalDuration += *row.ActualDuration
+			}
+			if row.ActualCount != nil {
+				sm.TotalCount += *row.ActualCount
+			}
+			return nil
+		}, args...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	summary := make([]summaryRow, 0, len(summaryOrder))
+	for _, k := range summaryOrder {
+		summary = append(summary, *summaryMap[k])
+	}
+	return map[string]any{
+		"start_date": startDate,
+		"end_date":   endDate,
+		"logs":       logs,
+		"summary":    summary,
+	}, nil
+}
+
 func (s *Store) UpdateChildProfile(familyID, childID string, petName *string, activeCompSet bool, activeComp *string, muted *bool) error {
 	return s.db.WithTx(func(tx *Tx) error {
 		var curPet string
@@ -1435,8 +1559,13 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 		}, childID, familyID); err != nil {
 			return errors.New("孩子档案不存在")
 		}
-		if coupons <= 0 {
-			return errors.New("领养蛋不够，请找家长确认积分后发放")
+		useCoupon := false
+		if coupons > 0 {
+			useCoupon = true
+		} else if xp >= 25 {
+			useCoupon = false
+		} else {
+			return errors.New("积分不足 25 分，继续打卡攒积分就能直接兑换啦")
 		}
 		if mystery && xp < 120 {
 			return errors.New("神秘蛋需要主宠达到「成年体（120 成长值）」才解锁哦")
@@ -1479,8 +1608,14 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 			}
 		}
 
-		if _, err := tx.Exec("UPDATE children SET coupons = coupons - 1, active_companion = COALESCE(active_companion, ?) WHERE id = ?", target.ID, childID); err != nil {
-			return err
+		if useCoupon {
+			if _, err := tx.Exec("UPDATE children SET coupons = coupons - 1, active_companion = COALESCE(active_companion, ?) WHERE id = ?", target.ID, childID); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.Exec("UPDATE children SET xp = MAX(0, xp - 25), active_companion = COALESCE(active_companion, ?) WHERE id = ?", target.ID, childID); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec("INSERT INTO child_owned_species (child_id, species_id, adopted_date) VALUES (?, ?, ?)", childID, target.ID, todayStr); err != nil {
 			return err

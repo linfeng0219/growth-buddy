@@ -444,7 +444,7 @@ class MainActivity : AppCompatActivity() {
 
         val totalDays = st.logs.map { it.checkinDate }.toSet().size
         val doneCount = st.tasks.count { st.todayDoneIds.contains(it.id) }
-        binding.tvStatsRow.text = "陪伴 $totalDays 天 · 今日已完成 $doneCount/${st.tasks.size} · 领养蛋 ${c.coupons} 枚"
+        binding.tvStatsRow.text = "陪伴 $totalDays 天 · 今日已完成 $doneCount/${st.tasks.size} · 可用积分 ${c.xp} 分"
         binding.tvTodayBadge.text = "$doneCount/${st.tasks.size}"
 
         // XP 进度条
@@ -974,7 +974,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderDex(st: ChildState) {
         val c = st.child
-        binding.tvCouponTitle.text = "当前拥有领养蛋：${c.coupons} 枚"
+        binding.tvCouponTitle.text = "当前积分：${c.xp} 分（满 25 分可直接兑换领养）" + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
         binding.dexContainer.removeAllViews()
 
         val pairs = st.catalog.chunked(2)
@@ -1053,8 +1053,14 @@ class MainActivity : AppCompatActivity() {
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
+                        c.xp >= 25 -> {
+                            text = "✨ 25 积分直接领养"
+                            setBackgroundColor(0xFFE8913A.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performAdopt(sp.id, mystery = false) }
+                        }
                         else -> {
-                            text = "需要 1 枚领养蛋"
+                            text = "还差 ${25 - c.xp} 分可兑换"
                             isEnabled = false
                             setBackgroundColor(0xFFEDE6DA.toInt())
                             setTextColor(0xFF8A7E6E.toInt())

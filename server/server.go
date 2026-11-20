@@ -940,6 +940,22 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodGet && p == "/api/parent/checkin-logs" {
+		q := r.URL.Query()
+		res, err := a.store.GetParentCheckinLogs(
+			fid,
+			strings.TrimSpace(q.Get("childId")),
+			strings.TrimSpace(q.Get("period")),
+			sanitizeDate(q.Get("date")),
+		)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, res)
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/parent/checkin" {
 		body, err := readJSONMap(r, 0)
 		if err != nil {
