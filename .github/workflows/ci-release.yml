@@ -15,6 +15,8 @@ jobs:
   server-build:
     name: Go + SQLite Server (Test & Package)
     runs-on: ubuntu-22.04
+    outputs:
+      build_ver: ${{ steps.build.outputs.build_ver }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,10 +37,12 @@ jobs:
         run: go test -v ./...
 
       - name: Build static-SQLite Linux binary
+        id: build
         working-directory: server
         run: |
           BUILD_VER="$(TZ=Asia/Shanghai date +%Y.%m.%d-%H%M)"
           echo "BUILD_VER=${BUILD_VER}" >> "$GITHUB_ENV"
+          echo "build_ver=${BUILD_VER}" >> "$GITHUB_OUTPUT"
           CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-Bstatic -lsqlite3 -Wl,-Bdynamic -lm -ldl -lpthread" \
             go build -trimpath -ldflags="-s -w -X main.SystemVersion=${BUILD_VER}" -o growth-buddy-server .
           cp growth-buddy-server "growth-buddy-server-${BUILD_VER}"
@@ -49,7 +53,7 @@ jobs:
         run: |
           STAGE="$(mktemp -d)"
           cp -a server/. "$STAGE/"
-          rm -rf "$STAGE/data" "$STAGE/.env" "$STAGE"/growth-buddy-server-*
+          rm -rf "$STAGE/data" "$STAGE/.env" "$STAGE"/growth-buddy-server*
           # Replace Dockerfile in release tarball with ultra-fast prebuilt binary image
           printf '%s\n' \
             'FROM debian:12-slim' \
@@ -62,46 +66,86 @@ jobs:
             'CMD ["/app/growth-buddy-server"]' \
             > "$STAGE/Dockerfile"
           mkdir -p dist
+          cp "server/growth-buddy-server" "dist/growth-buddy-server"
+          cp "server/growth-buddy-server-${BUILD_VER}" "dist/growth-buddy-server-${BUILD_VER}"
           tar -czf dist/growth-buddy-go-aliyun.tar.gz -C "$STAGE" .
-          sha256sum dist/growth-buddy-go-aliyun.tar.gz > dist/server.sha256
-          ls -lh dist/growth-buddy-go-aliyun.tar.gz
+          (cd dist && sha256sum "growth-buddy-server-${BUILD_VER}" growth-buddy-server growth-buddy-go-aliyun.tar.gz > SHA256SUMS.txt)
+          ls -lh dist/
 
-      - name: Upload growth-buddy-server binary
+      - name: Upload growth-buddy-server binary (Artifact)
         uses: actions/upload-artifact@v4
         with:
           name: growth-buddy-server-${{ env.BUILD_VER }}
           path: server/growth-buddy-server-${{ env.BUILD_VER }}
+          compression-level: 0
 
-      - name: Upload server deployment artifact
+      - name: Upload release bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: server-aliyun-package
+          name: server-release-files
           path: |
+            dist/growth-buddy-server-${{ env.BUILD_VER }}
+            dist/growth-buddy-server
             dist/growth-buddy-go-aliyun.tar.gz
-            dist/server.sha256
+            dist/SHA256SUMS.txt
 
   release:
-    name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Publish GitHub Release (Raw Uncompressed Binary)
+    if: github.event_name != 'pull_request'
     needs: [ server-build ]
     runs-on: ubuntu-latest
     steps:
-      - name: Download build artifacts
+      - name: Checkout repository (for rolling latest tag)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release files
         uses: actions/download-artifact@v4
         with:
-          name: server-aliyun-package
+          name: server-release-files
           path: release-files
 
-      - name: Prepare SHA256SUMS
-        working-directory: release-files
-        run: |
-          mv server.sha256 SHA256SUMS.txt
-          cat SHA256SUMS.txt
+      - name: Mark binaries executable
+        run: chmod +x release-files/growth-buddy-server*
 
-      - name: Create GitHub Release
+      - name: Update rolling latest tag and clear old binary assets
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f latest "${{ github.sha }}"
+          git push -f origin refs/tags/latest
+          if gh release view latest >/dev/null 2>&1; then
+            for a in $(gh release view latest --json assets -q '.assets[].name'); do
+              gh release delete-asset latest "$a" --yes || true
+            done
+          fi
+
+      - name: Publish Rolling Latest Release (main)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Build (${{ needs.server-build.outputs.build_ver }})"
+          make_latest: "true"
+          body: "每次推送 `main` 自动构建的最新 Linux `amd64` 静态服务端二进制（未压缩，下载后可直接拖入服务器运行）。"
+          files: |
+            release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
+            release-files/growth-buddy-server
+            release-files/growth-buddy-go-aliyun.tar.gz
+            release-files/SHA256SUMS.txt
+
+      - name: Publish Versioned GitHub Release (tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
+            release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
+            release-files/growth-buddy-server
             release-files/growth-buddy-go-aliyun.tar.gz
             release-files/SHA256SUMS.txt

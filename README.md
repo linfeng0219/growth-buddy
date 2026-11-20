@@ -62,13 +62,13 @@ gradle assembleRelease -Parm64Only=true
 ## GitHub Actions 自动构建与发版
 
 仓库已配置 [.github/workflows/ci-release.yml](.github/workflows/ci-release.yml)：
-1. **每次推送到 `main` 或发起 PR**：自动在 `ubuntu-22.04` 环境运行 Go 后端单测、构建 Linux `amd64` 单二进制 `growth-buddy-server` 及部署包 `growth-buddy-go-aliyun.tar.gz`，产物保存在对应 Workflow Run 的 **Artifacts** 中可直接下载。
-2. **推送版本标签（例如 `v2.4.0`）自动创建 GitHub Release**：
+1. **每次推送到 `main`**：自动在 `ubuntu-22.04` 环境运行 Go 后端单测并编译 Linux `amd64` 单二进制，同时自动更新 GitHub **Releases → `latest`**，直接挂载未压缩的 `growth-buddy-server-YYYY.MM.DD-HHMM` 与 `growth-buddy-server`（网页点击即可下载原文件，无需解压可直接拖入服务器；提示：GitHub Workflow `Artifacts` 页面由平台强制打包 `.zip`，请从仓库右侧 **Releases** 下载原文件）。
+2. **推送版本标签（例如 `v2.4.0`）自动创建正式版本 Release**：
    ```bash
    git tag v2.4.0
    git push origin main --tags
    ```
-   GitHub Actions 会自动编译并在 **Releases** 页面挂载 `growth-buddy-go-aliyun.tar.gz` 与 `SHA256SUMS.txt`。
+   GitHub Actions 会自动编译并在 **Releases** 页面挂载未压缩二进制 `growth-buddy-server-*`、`growth-buddy-go-aliyun.tar.gz` 与 `SHA256SUMS.txt`。
 3. **也可在 GitHub 网页端手动触发**：进入仓库 **Actions → Build & Release → Run workflow**。
 
 ---
@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-20**：
+  - GitHub CI 直接发布未压缩服务端二进制：每次推送 `main` 自动发布至 GitHub Releases `latest`（直接提供未压缩的 `growth-buddy-server-YYYY.MM.DD-HHMM` 与 `growth-buddy-server` 原文件，下载即可直接拖入服务器）。
   - 跳绳破纪录结算页升级：跳绳达标后以抓拍照片为全屏底图展示结算页，展示打卡时间、最终数量与历史最高纪录；若打破历史纪录将在四角边缘安全区燃放动态/水印礼花并高亮显示新最高纪录，所有文字与礼花避开中央站位人脸区。
   - 跳绳打卡自动抓拍上传：安卓儿童端完成 AI 跳绳挑战时，自动截取画面并叠加最终跳绳数量、时长与时间戳水印，直接随打卡记录上传至家长端照片墙。
   - 家长端新增任务智能默认值：输入书写类关键词（写、作业、练字、抄、听写、日记、口算、试卷等）时默认勾选「打卡需拍照留念」并设为「正计时」；输入时间类关键词（分钟、小时、阅读、练琴、背诵、朗读等）时默认设为「倒计时」并自动提取分钟数（如手动调整选项则保留手动设置）。
