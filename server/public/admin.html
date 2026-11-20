@@ -551,17 +551,23 @@
     var p=function(n){return String(n).padStart(2,"0");};
     return dt.getFullYear()+"."+p(dt.getMonth()+1)+"."+p(dt.getDate())+"-"+p(dt.getHours())+p(dt.getMinutes());
   }
+  function parseVerFromFile(f){
+    if(f&&f.name){
+      var m=f.name.match(/(\d{4}\.\d{2}\.\d{2}-\d{4})/);
+      if(m) return m[1];
+    }
+    return fmtTimeVer(f&&f.lastModified?new Date(f.lastModified):new Date());
+  }
   $id("relApkFile").addEventListener("change",function(){
     var f=this.files&&this.files[0];
-    if(f&&!$id("relVerName").value.trim()){
-      $id("relVerName").value=fmtTimeVer(f.lastModified?new Date(f.lastModified):new Date());
-    }
+    if(f) $id("relVerName").value=parseVerFromFile(f);
   });
   $id("btnPublishRelease").addEventListener("click",async function(){
-    var vName=$id("relVerName").value.trim()||fmtTimeVer(new Date());
+    var fileInput=$id("relApkFile");
+    var pickedFile=fileInput.files&&fileInput.files[0];
+    var vName=$id("relVerName").value.trim()||(pickedFile?parseVerFromFile(pickedFile):fmtTimeVer(new Date()));
     var notes=$id("relNotes").value.trim();
     var force=$id("relForce").checked;
-    var fileInput=$id("relApkFile");
     var extUrl=$id("relExtUrl").value.trim();
 
     var prog=$id("relUploadProg");
