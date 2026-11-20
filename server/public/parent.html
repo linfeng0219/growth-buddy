@@ -780,8 +780,47 @@
     if(isRope&&$id("tEmoji").value==="✨") $id("tEmoji").value="🪢";
     if(isRope&&!$id("tLabel").value.trim()) $id("tLabel").value="定时跳绳挑战";
   });
+  var manualTimerTouched=false;
+  var manualPhotoTouched=false;
+  function applySmartTaskDefaults(rawLabel){
+    if($id("tType").value==="rope_jump") return;
+    var text=(rawLabel||"").trim();
+    if(!text) return;
+    var isWriting=/写|作业|练字|抄|书写|听写|日记|作文|口算|试卷|描红|默写|做题|练习册|生字/.test(text);
+    var isTimed=/分钟|小时|定时|计时|秒|阅读|练琴|背诵|朗读|听英语|听力|诵读|早读|静坐|专注/.test(text);
+    if(isWriting){
+      if(!manualPhotoTouched){
+        $id("tRequirePhoto").checked=true;
+      }
+      if(!manualTimerTouched){
+        $id("tTimerMode").value="countup";
+        $id("tFocusMinBox").style.display="none";
+      }
+    }else if(isTimed){
+      if(!manualTimerTouched){
+        $id("tTimerMode").value="countdown";
+        $id("tFocusMinBox").style.display="block";
+        var m=text.match(/(\d+)\s*(?:分钟|min)/i);
+        if(m&&parseInt(m[1],10)>0){
+          $id("tFocusMin").value=Math.min(180,parseInt(m[1],10));
+        }else{
+          var h=text.match(/(\d+)\s*小时/);
+          if(h&&parseInt(h[1],10)>0){
+            $id("tFocusMin").value=Math.min(180,parseInt(h[1],10)*60);
+          }
+        }
+      }
+    }
+  }
+  $id("tLabel").addEventListener("input",function(){
+    applySmartTaskDefaults(this.value);
+  });
   $id("tTimerMode").addEventListener("change",function(){
+    manualTimerTouched=true;
     $id("tFocusMinBox").style.display=this.value==="countdown"?"block":"none";
+  });
+  $id("tRequirePhoto").addEventListener("change",function(){
+    manualPhotoTouched=true;
   });
   $id("etType").addEventListener("change",function(){
     var isRope=this.value==="rope_jump";
@@ -1031,6 +1070,11 @@
       });
       $id("tLabel").value="";
       $id("tIconUrl").value="";
+      $id("tTimerMode").value="none";
+      $id("tFocusMinBox").style.display="none";
+      $id("tRequirePhoto").checked=false;
+      manualTimerTouched=false;
+      manualPhotoTouched=false;
       setTaskIconPreview("t",$id("tEmoji").value||"✨","");
       note("taskMsg","任务已发布并同步到对应孩子的任务列表！");
       await loadOverview();
@@ -1395,6 +1439,9 @@
         $id(iconPickTarget+"Emoji").value=pair[0];
         $id(iconPickTarget+"IconUrl").value="";
         setTaskIconPreview(iconPickTarget,pair[0],"");
+        if(iconPickTarget==="t"){
+          applySmartTaskDefaults($id("tLabel").value||pair[1]);
+        }
         $id("taskIconModal").classList.remove("show");
       });
       grid.appendChild(b);

@@ -3,6 +3,12 @@ package com.growthbuddy.child
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.CountDownTimer
@@ -32,6 +38,11 @@ import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import com.growthbuddy.child.databinding.ActivityRopeJumpBinding
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -346,15 +357,109 @@ class RopeJumpActivity : AppCompatActivity() {
             sound.speak("时间到，跳了${finalCount}个")
         }
 
+        val photoPath = if (completed) captureRopeSummaryPhoto(finalCount) else ""
+
         val payload = JSONObject().apply {
             put("taskId", taskId)
             put("actualCount", finalCount)
             put("actualDuration", durationSec)
             put("completed", completed)
             put("cancelled", false)
+            if (photoPath.isNotEmpty()) put("photoPath", photoPath)
         }
         setResult(RESULT_OK, Intent().putExtra(EXTRA_RESULT_JSON, payload.toString()))
         finish()
+    }
+
+    /**
+     * 跳绳挑战达标结束时，截取当前摄像头画面并叠加最终跳绳数量、时长与时间戳水印，保存为临时 JPEG 文件路径。
+     */
+    private fun captureRopeSummaryPhoto(finalCount: Int): String {
+        return try {
+            val previewBmp = binding.previewView.bitmap
+            val targetW: Int
+            val targetH: Int
+            val outBmp: Bitmap
+            if (previewBmp != null && previewBmp.width > 0 && previewBmp.height > 0) {
+                val maxW = 720
+                if (previewBmp.width > maxW) {
+                    targetW = maxW
+                    targetH = (previewBmp.height.toFloat() * maxW / previewBmp.width).toInt().coerceAtLeast(320)
+                    outBmp = Bitmap.createScaledBitmap(previewBmp, targetW, targetH, true)
+                        .copy(Bitmap.Config.ARGB_8888, true)
+                } else {
+                    targetW = previewBmp.width
+                    targetH = previewBmp.height
+                    outBmp = previewBmp.copy(Bitmap.Config.ARGB_8888, true)
+                }
+            } else {
+                targetW = 720
+                targetH = 960
+                outBmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888).apply {
+                    Canvas(this).drawColor(Color.parseColor("#1A2332"))
+                }
+            }
+
+            val canvas = Canvas(outBmp)
+            val s = targetW / 720f
+            val pad = 24f * s
+            val bannerH = 168f * s
+            val top = (targetH - bannerH - pad).coerceAtLeast(pad)
+            val cardRect = RectF(pad, top, targetW - pad, top + bannerH)
+
+            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#D9141E2E")
+                style = Paint.Style.FILL
+            }
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#99FFD166")
+                style = Paint.Style.STROKE
+                strokeWidth = 3f * s
+            }
+            canvas.drawRoundRect(cardRect, 22f * s, 22f * s, bgPaint)
+            canvas.drawRoundRect(cardRect, 22f * s, 22f * s, borderPaint)
+
+            val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#E2E8F0")
+                textSize = 24f * s
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val timePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#94A3B8")
+                textSize = 20f * s
+                textAlign = Paint.Align.RIGHT
+            }
+            val countPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#FFD166")
+                textSize = 52f * s
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#F8FAFC")
+                textSize = 22f * s
+            }
+
+            val who = if (childName.isNotBlank()) " · $childName" else ""
+            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+            canvas.drawText("🪢 $taskLabel$who", cardRect.left + 24f * s, cardRect.top + 40f * s, titlePaint)
+            canvas.drawText(stamp, cardRect.right - 24f * s, cardRect.top + 39f * s, timePaint)
+            canvas.drawText("最终成绩：${finalCount} 个", cardRect.left + 24f * s, cardRect.top + 102f * s, countPaint)
+            canvas.drawText(
+                "用时 ${durationSec} 秒 · 目标 ${targetCount} 个 · AI 跳绳达标自动抓拍",
+                cardRect.left + 24f * s,
+                cardRect.top + 142f * s,
+                subPaint
+            )
+
+            val file = File(cacheDir, "rope_snap_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(file).use { fos ->
+                outBmp.compress(Bitmap.CompressFormat.JPEG, 82, fos)
+            }
+            outBmp.recycle()
+            file.absolutePath
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun finishWithCancel() {

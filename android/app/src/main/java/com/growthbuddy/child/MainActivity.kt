@@ -121,13 +121,19 @@ class MainActivity : AppCompatActivity() {
         val actualCount = obj.optInt("actualCount", 0)
         val actualDuration = obj.optInt("actualDuration", 60)
         val completed = obj.optBoolean("completed", false)
+        val photoPath = obj.optString("photoPath", "")
 
         if (completed && taskId.isNotEmpty()) {
-            val taskItem = state?.tasks?.find { it.id == taskId }
-            if (taskItem != null) {
-                showCheckinConfirmDialog(taskItem, actualCount, actualDuration)
+            val autoPhotoDataUrl = readRopePhotoDataUrl(photoPath)
+            if (autoPhotoDataUrl != null) {
+                submitCheckin(taskId, actualCount, actualDuration, autoPhotoDataUrl)
             } else {
-                submitCheckin(taskId, actualCount, actualDuration, null)
+                val taskItem = state?.tasks?.find { it.id == taskId }
+                if (taskItem != null) {
+                    showCheckinConfirmDialog(taskItem, actualCount, actualDuration)
+                } else {
+                    submitCheckin(taskId, actualCount, actualDuration, null)
+                }
             }
         } else {
             sound.playError()
@@ -139,6 +145,21 @@ class MainActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("先休息一下", null)
                 .show()
+        }
+    }
+
+    private fun readRopePhotoDataUrl(photoPath: String): String? {
+        if (photoPath.isBlank()) return null
+        val file = File(photoPath)
+        if (!file.exists()) return null
+        return try {
+            val bytes = file.readBytes()
+            if (bytes.isEmpty()) null
+            else "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { file.delete() }
         }
     }
 
