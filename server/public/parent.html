@@ -557,6 +557,7 @@
         previewKidId=data.children.length?data.children[0].id:null;
       }
       renderAll();
+      loadQuestions();
     }catch(e){showAuth();}
   }
 
@@ -1055,18 +1056,18 @@
 
   async function loadQuestions(){
     try{
-      var r=await api("GET","/api/parent/questions");
+      var r=await api("/api/parent/questions");
       var box=$id("questionList");
       var list=r.questions||[];
       box.innerHTML=list.map(function(q){
-        var del=q.is_preset?'<span style="font-size:11px;color:#888">预设</span>':'<button class="ghost sm" data-del-q="'+q.id+'" style="color:#c0392b">删除</button>';
+        var del=q.is_preset?'<span style="font-size:11px;color:#888">预设</span>':'<button class="ghost sm" data-del-q="'+GBArt.esc(q.id)+'" style="color:#c0392b">删除</button>';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #e5dfd3;gap:8px">'
-          +'<div style="font-size:13px"><b>['+q.category+']</b> '+q.question+' <span style="color:#2f6b4f;font-size:12px">（答案：'+((q.options&&q.options[q.answer_idx])||"")+'）</span></div>'
+          +'<div style="font-size:13px"><b>['+GBArt.esc(q.category)+']</b> '+GBArt.esc(q.question)+' <span style="color:#2f6b4f;font-size:12px">（答案：'+GBArt.esc((q.options&&q.options[q.answer_idx])||"")+'）</span></div>'
           +del+'</div>';
       }).join("");
       box.querySelectorAll("[data-del-q]").forEach(function(btn){
         btn.addEventListener("click",async function(){
-          await api("DELETE","/api/parent/questions/"+btn.getAttribute("data-del-q"));
+          await api("/api/parent/questions/"+btn.getAttribute("data-del-q"),{method:"DELETE"});
           loadQuestions();
         });
       });
@@ -1077,11 +1078,14 @@
     $id("qMsg").textContent="";
     try{
       var opts=[$id("qOpt0").value.trim(),$id("qOpt1").value.trim(),$id("qOpt2").value.trim()].filter(Boolean);
-      await api("POST","/api/parent/questions",{
-        category:$id("qCat").value,
-        question:$id("qText").value.trim(),
-        options:opts,
-        answer_idx:parseInt($id("qAns").value,10)||0
+      await api("/api/parent/questions",{
+        method:"POST",
+        body:JSON.stringify({
+          category:$id("qCat").value,
+          question:$id("qText").value.trim(),
+          options:opts,
+          answer_idx:parseInt($id("qAns").value,10)||0
+        })
       });
       $id("qText").value="";$id("qOpt0").value="";$id("qOpt1").value="";$id("qOpt2").value="";
       $id("qMsg").textContent="已添加到家庭题库！";

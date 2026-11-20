@@ -1187,6 +1187,9 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 			dur := *actualDurationIn
 			actualDuration = &dur
 		}
+		if task.RequirePhoto && cleanPhoto == "" {
+			return errors.New("这项任务要求先拍照留证哦！")
+		}
 
 		prevLv := LevelForXP(curXP)
 		newXP := curXP + task.Pts
