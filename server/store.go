@@ -206,6 +206,8 @@ func (s *Store) initSchema() error {
 			task_type TEXT NOT NULL DEFAULT 'normal',
 			duration_sec INTEGER NOT NULL DEFAULT 60,
 			target_count INTEGER NOT NULL DEFAULT 60,
+			timer_mode TEXT NOT NULL DEFAULT 'none',
+			require_photo INTEGER NOT NULL DEFAULT 0,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL
@@ -289,6 +291,16 @@ func (s *Store) initSchema() error {
 			download_url TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS quiz_questions (
+			id TEXT PRIMARY KEY,
+			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+			category TEXT NOT NULL,
+			question TEXT NOT NULL,
+			options_json TEXT NOT NULL,
+			answer_idx INTEGER NOT NULL,
+			created_at INTEGER NOT NULL
+		);
 	`
 	if err := s.db.ExecRaw(ddl); err != nil {
 		return err
@@ -306,6 +318,8 @@ func (s *Store) initSchema() error {
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},
 		{"tasks", "duration_sec", "duration_sec INTEGER NOT NULL DEFAULT 60"},
 		{"tasks", "target_count", "target_count INTEGER NOT NULL DEFAULT 60"},
+		{"tasks", "timer_mode", "timer_mode TEXT NOT NULL DEFAULT 'none'"},
+		{"tasks", "require_photo", "require_photo INTEGER NOT NULL DEFAULT 0"},
 		{"checkin_logs", "actual_count", "actual_count INTEGER"},
 		{"checkin_logs", "actual_duration", "actual_duration INTEGER"},
 		{"checkin_logs", "photo_data", "photo_data TEXT NOT NULL DEFAULT ''"},
@@ -480,6 +494,8 @@ type TaskDTO struct {
 	TaskType         string   `json:"task_type"`
 	DurationSec      int      `json:"duration_sec"`
 	TargetCount      int      `json:"target_count"`
+	TimerMode        string   `json:"timer_mode"`
+	RequirePhoto     bool     `json:"require_photo"`
 	Enabled          bool     `json:"enabled"`
 	SortOrder        int      `json:"sort_order"`
 	CreatedAt        int64    `json:"created_at,omitempty"`
@@ -833,7 +849,7 @@ func (s *Store) LoginChildByRoster(code, childID, pin string) (familyID string, 
 func (s *Store) getTasksForChildLocked(tx *Tx, familyID, childID string) ([]TaskDTO, error) {
 	tasks := make([]TaskDTO, 0)
 	err := tx.Query(`
-		SELECT t.id, t.emoji, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.enabled, t.sort_order
+		SELECT t.id, t.emoji, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.timer_mode, t.require_photo, t.enabled, t.sort_order
 		FROM tasks t
 		WHERE t.family_id = ? AND t.enabled = 1
 		  AND (
@@ -843,16 +859,18 @@ func (s *Store) getTasksForChildLocked(tx *Tx, familyID, childID string) ([]Task
 		ORDER BY t.sort_order ASC, t.created_at ASC
 	`, func(r SQLiteRow) error {
 		tasks = append(tasks, TaskDTO{
-			ID:          r.String(0),
-			Emoji:       r.String(1),
-			Label:       r.String(2),
-			Pts:         r.Int(3),
-			Scope:       r.String(4),
-			TaskType:    r.String(5),
-			DurationSec: r.Int(6),
-			TargetCount: r.Int(7),
-			Enabled:     r.Int(8) != 0,
-			SortOrder:   r.Int(9),
+			ID:           r.String(0),
+			Emoji:        r.String(1),
+			Label:        r.String(2),
+			Pts:          r.Int(3),
+			Scope:        r.String(4),
+			TaskType:     r.String(5),
+			DurationSec:  r.Int(6),
+			TargetCount:  r.Int(7),
+			TimerMode:    r.String(8),
+			RequirePhoto: r.Int(9) != 0,
+			Enabled:      r.Int(10) != 0,
+			SortOrder:    r.Int(11),
 		})
 		return nil
 	}, familyID, childID)
@@ -1110,7 +1128,7 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 
 		var task TaskDTO
 		if err := tx.QueryRow(`
-			SELECT t.id, t.family_id, t.emoji, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.enabled, t.sort_order
+			SELECT t.id, t.family_id, t.emoji, t.label, t.pts, t.scope, t.task_type, t.duration_sec, t.target_count, t.timer_mode, t.require_photo, t.enabled, t.sort_order
 			FROM tasks t
 			WHERE t.id = ? AND t.family_id = ? AND t.enabled = 1
 			  AND (
@@ -1119,17 +1137,19 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 			  )
 		`, func(r SQLiteRow) error {
 			task = TaskDTO{
-				ID:          r.String(0),
-				FamilyID:    r.String(1),
-				Emoji:       r.String(2),
-				Label:       r.String(3),
-				Pts:         r.Int(4),
-				Scope:       r.String(5),
-				TaskType:    r.String(6),
-				DurationSec: r.Int(7),
-				TargetCount: r.Int(8),
-				Enabled:     r.Int(9) != 0,
-				SortOrder:   r.Int(10),
+				ID:           r.String(0),
+				FamilyID:     r.String(1),
+				Emoji:        r.String(2),
+				Label:        r.String(3),
+				Pts:          r.Int(4),
+				Scope:        r.String(5),
+				TaskType:     r.String(6),
+				DurationSec:  r.Int(7),
+				TargetCount:  r.Int(8),
+				TimerMode:    r.String(9),
+				RequirePhoto: r.Int(10) != 0,
+				Enabled:      r.Int(11) != 0,
+				SortOrder:    r.Int(12),
 			}
 			return nil
 		}, taskID, familyID, childID); err != nil {
@@ -1162,6 +1182,9 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 				return fmt.Errorf("这次跳了 %d 个，还差 %d 个达标哦！", cnt, task.TargetCount-cnt)
 			}
 			actualCount = &cnt
+			actualDuration = &dur
+		} else if actualDurationIn != nil && *actualDurationIn > 0 {
+			dur := *actualDurationIn
 			actualDuration = &dur
 		}
 
@@ -1511,7 +1534,7 @@ func (s *Store) TakePolaroid(familyID, childID string, avatarIdx int, noteText, 
 func (s *Store) getFamilyTasksWithAssignmentsLocked(tx *Tx, familyID string) ([]TaskDTO, error) {
 	tasks := make([]TaskDTO, 0)
 	if err := tx.Query(
-		"SELECT id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, enabled, sort_order, created_at FROM tasks WHERE family_id = ? ORDER BY sort_order ASC, created_at ASC",
+		"SELECT id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, enabled, sort_order, created_at FROM tasks WHERE family_id = ? ORDER BY sort_order ASC, created_at ASC",
 		func(r SQLiteRow) error {
 			tasks = append(tasks, TaskDTO{
 				ID:               r.String(0),
@@ -1523,9 +1546,11 @@ func (s *Store) getFamilyTasksWithAssignmentsLocked(tx *Tx, familyID string) ([]
 				TaskType:         r.String(6),
 				DurationSec:      r.Int(7),
 				TargetCount:      r.Int(8),
-				Enabled:          r.Int(9) != 0,
-				SortOrder:        r.Int(10),
-				CreatedAt:        r.Int64(11),
+				TimerMode:        r.String(9),
+				RequirePhoto:     r.Int(10) != 0,
+				Enabled:          r.Int(11) != 0,
+				SortOrder:        r.Int(12),
+				CreatedAt:        r.Int64(13),
 				AssignedChildIDs: make([]string, 0),
 			})
 			return nil
@@ -1939,10 +1964,12 @@ type TaskInput struct {
 	Label       *string  `json:"label"`
 	Pts         *int     `json:"pts"`
 	Scope       *string  `json:"scope"`
-	TaskType    *string  `json:"task_type"`
-	DurationSec *int     `json:"duration_sec"`
-	TargetCount *int     `json:"target_count"`
-	Enabled     *bool    `json:"enabled"`
+	TaskType     *string  `json:"task_type"`
+	DurationSec  *int     `json:"duration_sec"`
+	TargetCount  *int     `json:"target_count"`
+	TimerMode    *string  `json:"timer_mode"`
+	RequirePhoto *bool    `json:"require_photo"`
+	Enabled      *bool    `json:"enabled"`
 	ChildIDs    []string `json:"childIds"`
 	HasChildIDs bool     `json:"-"`
 }
@@ -1969,11 +1996,19 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 	}
 	duration := 60
 	if in.DurationSec != nil && *in.DurationSec > 0 {
-		duration = clampInt(*in.DurationSec, 10, 600)
+		duration = clampInt(*in.DurationSec, 10, 7200)
 	}
 	target := 60
 	if in.TargetCount != nil && *in.TargetCount > 0 {
 		target = clampInt(*in.TargetCount, 1, 500)
+	}
+	timerMode := "none"
+	if in.TimerMode != nil && (*in.TimerMode == "countdown" || *in.TimerMode == "countup") {
+		timerMode = *in.TimerMode
+	}
+	requirePhoto := 0
+	if in.RequirePhoto != nil && *in.RequirePhoto {
+		requirePhoto = 1
 	}
 	emoji := "✨"
 	if taskType == "rope_jump" {
@@ -2001,8 +2036,8 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 			return nil
 		}, familyID)
 		if _, err := tx.Exec(
-			"INSERT INTO tasks (id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
-			id, familyID, emoji, label, pts, scope, taskType, duration, target, maxOrder+1, nowMs(),
+			"INSERT INTO tasks (id, family_id, emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, enabled, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+			id, familyID, emoji, label, pts, scope, taskType, duration, target, timerMode, requirePhoto, maxOrder+1, nowMs(),
 		); err != nil {
 			return err
 		}
@@ -2024,10 +2059,10 @@ func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
 
 func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 	return s.db.WithTx(func(tx *Tx) error {
-		var curEmoji, curLabel, curScope, curType string
-		var curPts, curDur, curTarget, curEnabled int
+		var curEmoji, curLabel, curScope, curType, curTimerMode string
+		var curPts, curDur, curTarget, curRequirePhoto, curEnabled int
 		if err := tx.QueryRow(
-			"SELECT emoji, label, pts, scope, task_type, duration_sec, target_count, enabled FROM tasks WHERE id = ? AND family_id = ?",
+			"SELECT emoji, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, enabled FROM tasks WHERE id = ? AND family_id = ?",
 			func(r SQLiteRow) error {
 				curEmoji = r.String(0)
 				curLabel = r.String(1)
@@ -2036,7 +2071,9 @@ func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 				curType = r.String(4)
 				curDur = r.Int(5)
 				curTarget = r.Int(6)
-				curEnabled = r.Int(7)
+				curTimerMode = r.String(7)
+				curRequirePhoto = r.Int(8)
+				curEnabled = r.Int(9)
 				return nil
 			}, taskID, familyID,
 		); err != nil {
@@ -2066,10 +2103,24 @@ func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 			}
 		}
 		if in.DurationSec != nil && *in.DurationSec > 0 {
-			curDur = clampInt(*in.DurationSec, 10, 600)
+			curDur = clampInt(*in.DurationSec, 10, 7200)
 		}
 		if in.TargetCount != nil && *in.TargetCount > 0 {
 			curTarget = clampInt(*in.TargetCount, 1, 500)
+		}
+		if in.TimerMode != nil {
+			if *in.TimerMode == "countdown" || *in.TimerMode == "countup" {
+				curTimerMode = *in.TimerMode
+			} else {
+				curTimerMode = "none"
+			}
+		}
+		if in.RequirePhoto != nil {
+			if *in.RequirePhoto {
+				curRequirePhoto = 1
+			} else {
+				curRequirePhoto = 0
+			}
 		}
 		if in.Enabled != nil {
 			if *in.Enabled {
@@ -2086,8 +2137,8 @@ func (s *Store) UpdateTask(familyID, taskID string, in TaskInput) error {
 			curEmoji = e
 		}
 		if _, err := tx.Exec(
-			"UPDATE tasks SET emoji = ?, label = ?, pts = ?, scope = ?, task_type = ?, duration_sec = ?, target_count = ?, enabled = ? WHERE id = ? AND family_id = ?",
-			curEmoji, curLabel, curPts, curScope, curType, curDur, curTarget, curEnabled, taskID, familyID,
+			"UPDATE tasks SET emoji = ?, label = ?, pts = ?, scope = ?, task_type = ?, duration_sec = ?, target_count = ?, timer_mode = ?, require_photo = ?, enabled = ? WHERE id = ? AND family_id = ?",
+			curEmoji, curLabel, curPts, curScope, curType, curDur, curTarget, curTimerMode, curRequirePhoto, curEnabled, taskID, familyID,
 		); err != nil {
 			return err
 		}

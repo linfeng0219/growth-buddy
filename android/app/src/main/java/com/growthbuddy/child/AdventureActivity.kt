@@ -22,6 +22,12 @@ data class QuizItem(
  */
 class AdventureActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_PET_STAGE = "pet_stage"
+        const val EXTRA_PET_ASLEEP = "pet_asleep"
+        const val EXTRA_SPECIES_ITEM = "species_item"
+    }
+
     private lateinit var binding: ActivityAdventureBinding
     private lateinit var sound: NativeSoundEngine
     private val io = Executors.newSingleThreadExecutor()
@@ -38,6 +44,12 @@ class AdventureActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         sound = NativeSoundEngine(this)
+        val petStage = intent.getIntExtra(EXTRA_PET_STAGE, 0).coerceIn(0, 5)
+        val petAsleep = intent.getBooleanExtra(EXTRA_PET_ASLEEP, false)
+        @Suppress("DEPRECATION")
+        val speciesItem = intent.getSerializableExtra(EXTRA_SPECIES_ITEM) as? SpeciesItem
+        binding.advBattleStage.setPet(speciesItem, petStage, petAsleep)
+
         binding.btnAdvExit.setOnClickListener { finish() }
         binding.btnOpt0.setOnClickListener { submitAnswer(0) }
         binding.btnOpt1.setOnClickListener { submitAnswer(1) }

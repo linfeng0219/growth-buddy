@@ -30,7 +30,9 @@ data class TaskItem(
     val scope: String,
     val taskType: String,
     val durationSec: Int,
-    val targetCount: Int
+    val targetCount: Int,
+    val timerMode: String = "none",
+    val requirePhoto: Boolean = false
 )
 
 data class SpeciesItem(
@@ -43,7 +45,7 @@ data class SpeciesItem(
     val mouth: String,
     val base: String,
     val hint: String
-)
+) : java.io.Serializable
 
 data class CheckinLog(
     val id: String,
@@ -138,7 +140,9 @@ object GrowthMeta {
                     scope = t.optString("scope", "all"),
                     taskType = t.optString("task_type", "normal"),
                     durationSec = t.optInt("duration_sec", 60),
-                    targetCount = t.optInt("target_count", 60)
+                    targetCount = t.optInt("target_count", 60),
+                    timerMode = t.optString("timer_mode", "none"),
+                    requirePhoto = t.optBoolean("require_photo", false)
                 )
             )
         }

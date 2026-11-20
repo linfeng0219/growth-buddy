@@ -912,8 +912,10 @@ class BattleStageView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val monsterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var species: SpeciesItem? = null
-    private var stage: Int = 1
+    private var stage: Int = 0
+    private var asleep: Boolean = false
 
     private var busy = false
     private var animStartMs = 0L
@@ -940,9 +942,10 @@ class BattleStageView @JvmOverloads constructor(
         }
     }
 
-    fun setPet(species: SpeciesItem?, stage: Int) {
+    fun setPet(species: SpeciesItem?, stage: Int, asleep: Boolean = false) {
         this.species = species
-        this.stage = stage
+        this.stage = stage.coerceIn(0, 5)
+        this.asleep = asleep
         invalidate()
     }
 
@@ -991,7 +994,7 @@ class BattleStageView @JvmOverloads constructor(
         if (sp != null) {
             PetArtCanvas.drawSpecies(canvas, sp, fighterCx, fighterCy, petScale, silhouette = false, paint = paint)
         } else {
-            PetArtCanvas.drawMainPet(canvas, stage.coerceIn(1, 3), fighterCx, fighterCy, petScale, sleep = false, breath = 0f, paint = paint)
+            PetArtCanvas.drawMainPet(canvas, stage.coerceIn(0, 5), fighterCx, fighterCy, petScale, sleep = asleep, breath = 0f, paint = paint)
         }
 
         // 2. 右侧「拖延怪」位置与受击晃动 (460..1110ms)
@@ -1008,23 +1011,115 @@ class BattleStageView @JvmOverloads constructor(
         }
         canvas.save()
         canvas.rotate(foeRot, foeCx, foeCy)
-        val r = min(w, h) * 0.24f
-        paint.style = Paint.Style.FILL
-        paint.color = 0xFFE5DFD3.toInt()
-        canvas.drawOval(foeCx - r * 0.9f, foeCy + r * 0.75f, foeCx + r * 0.9f, foeCy + r * 1.1f, paint)
-        paint.color = 0xFF7AA67D.toInt()
-        canvas.drawOval(foeCx - r, foeCy - r * 0.8f, foeCx + r, foeCy + r * 0.85f, paint)
-        paint.color = 0xFF22301F.toInt()
-        canvas.drawCircle(foeCx - r * 0.35f, foeCy - r * 0.15f, r * 0.12f, paint)
-        canvas.drawCircle(foeCx + r * 0.35f, foeCy - r * 0.15f, r * 0.12f, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 4f
-        paint.strokeCap = Paint.Cap.ROUND
-        val mouth = Path().apply {
-            moveTo(foeCx - r * 0.3f, foeCy + r * 0.3f)
-            quadTo(foeCx, foeCy + r * 0.5f, foeCx + r * 0.3f, foeCy + r * 0.3f)
+        val r = min(w, h) * 0.25f
+
+        // 地面阴影
+        monsterPaint.reset()
+        monsterPaint.isAntiAlias = true
+        monsterPaint.style = Paint.Style.FILL
+        monsterPaint.color = 0xFFE3DDD0.toInt()
+        canvas.drawOval(foeCx - r * 0.95f, foeCy + r * 0.78f, foeCx + r * 0.95f, foeCy + r * 1.12f, monsterPaint)
+
+        // 小短脚
+        monsterPaint.color = 0xFF476C4F.toInt()
+        canvas.drawOval(foeCx - r * 0.62f, foeCy + r * 0.62f, foeCx - r * 0.18f, foeCy + r * 0.96f, monsterPaint)
+        canvas.drawOval(foeCx + r * 0.18f, foeCy + r * 0.62f, foeCx + r * 0.62f, foeCy + r * 0.96f, monsterPaint)
+
+        // 头顶一对小歪角
+        monsterPaint.color = 0xFFF3B749.toInt()
+        val leftHorn = Path().apply {
+            moveTo(foeCx - r * 0.55f, foeCy - r * 0.55f)
+            lineTo(foeCx - r * 0.78f, foeCy - r * 1.05f)
+            lineTo(foeCx - r * 0.22f, foeCy - r * 0.72f)
+            close()
         }
-        canvas.drawPath(mouth, paint)
+        val rightHorn = Path().apply {
+            moveTo(foeCx + r * 0.55f, foeCy - r * 0.55f)
+            lineTo(foeCx + r * 0.78f, foeCy - r * 1.05f)
+            lineTo(foeCx + r * 0.22f, foeCy - r * 0.72f)
+            close()
+        }
+        canvas.drawPath(leftHorn, monsterPaint)
+        canvas.drawPath(rightHorn, monsterPaint)
+
+        // 身体（糖霜渐变）
+        monsterPaint.shader = RadialGradient(
+            foeCx - r * 0.28f, foeCy - r * 0.35f, r * 1.35f,
+            intArrayOf(0xFFA7D3AD.toInt(), 0xFF6B9E74.toInt(), 0xFF487350.toInt()),
+            floatArrayOf(0f, 0.58f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawOval(foeCx - r, foeCy - r * 0.82f, foeCx + r, foeCy + r * 0.84f, monsterPaint)
+        monsterPaint.shader = null
+
+        // 身体描边
+        monsterPaint.style = Paint.Style.STROKE
+        monsterPaint.strokeWidth = 3f
+        monsterPaint.color = 0xFF34563B.toInt()
+        canvas.drawOval(foeCx - r, foeCy - r * 0.82f, foeCx + r, foeCy + r * 0.84f, monsterPaint)
+
+        // 小手臂
+        monsterPaint.style = Paint.Style.FILL
+        monsterPaint.color = 0xFF5D8F66.toInt()
+        canvas.drawOval(foeCx - r * 1.18f, foeCy - r * 0.05f, foeCx - r * 0.82f, foeCy + r * 0.32f, monsterPaint)
+        canvas.drawOval(foeCx + r * 0.82f, foeCy - r * 0.05f, foeCx + r * 1.18f, foeCy + r * 0.32f, monsterPaint)
+
+        // 浅色肚皮
+        monsterPaint.color = 0xFFE6F3E8.toInt()
+        canvas.drawOval(foeCx - r * 0.62f, foeCy + r * 0.08f, foeCx + r * 0.62f, foeCy + r * 0.74f, monsterPaint)
+
+        // 眼白与黑眼珠
+        monsterPaint.color = Color.WHITE
+        canvas.drawCircle(foeCx - r * 0.34f, foeCy - r * 0.24f, r * 0.21f, monsterPaint)
+        canvas.drawCircle(foeCx + r * 0.34f, foeCy - r * 0.24f, r * 0.21f, monsterPaint)
+        monsterPaint.color = 0xFF22301F.toInt()
+        canvas.drawCircle(foeCx - r * 0.32f, foeCy - r * 0.22f, r * 0.11f, monsterPaint)
+        canvas.drawCircle(foeCx + r * 0.32f, foeCy - r * 0.22f, r * 0.11f, monsterPaint)
+        monsterPaint.color = Color.WHITE
+        canvas.drawCircle(foeCx - r * 0.36f, foeCy - r * 0.26f, r * 0.04f, monsterPaint)
+        canvas.drawCircle(foeCx + r * 0.28f, foeCy - r * 0.26f, r * 0.04f, monsterPaint)
+
+        // 搞怪八字眉
+        monsterPaint.style = Paint.Style.STROKE
+        monsterPaint.strokeWidth = 4.5f
+        monsterPaint.strokeCap = Paint.Cap.ROUND
+        monsterPaint.color = 0xFF22301F.toInt()
+        canvas.drawLine(foeCx - r * 0.56f, foeCy - r * 0.50f, foeCx - r * 0.16f, foeCy - r * 0.38f, monsterPaint)
+        canvas.drawLine(foeCx + r * 0.56f, foeCy - r * 0.50f, foeCx + r * 0.16f, foeCy - r * 0.38f, monsterPaint)
+
+        // 腮红
+        monsterPaint.style = Paint.Style.FILL
+        monsterPaint.color = 0x66F28B82
+        canvas.drawOval(foeCx - r * 0.72f, foeCy - r * 0.06f, foeCx - r * 0.45f, foeCy + r * 0.10f, monsterPaint)
+        canvas.drawOval(foeCx + r * 0.45f, foeCy - r * 0.06f, foeCx + r * 0.72f, foeCy + r * 0.10f, monsterPaint)
+
+        // 搞怪大嘴 + 两颗小虎牙
+        monsterPaint.style = Paint.Style.STROKE
+        monsterPaint.strokeWidth = 3.8f
+        monsterPaint.color = 0xFF22301F.toInt()
+        val mouth = Path().apply {
+            moveTo(foeCx - r * 0.36f, foeCy + r * 0.24f)
+            quadTo(foeCx, foeCy + r * 0.48f, foeCx + r * 0.36f, foeCy + r * 0.24f)
+        }
+        canvas.drawPath(mouth, monsterPaint)
+
+        monsterPaint.style = Paint.Style.FILL
+        monsterPaint.color = Color.WHITE
+        val fangL = Path().apply {
+            moveTo(foeCx - r * 0.24f, foeCy + r * 0.29f)
+            lineTo(foeCx - r * 0.18f, foeCy + r * 0.43f)
+            lineTo(foeCx - r * 0.11f, foeCy + r * 0.32f)
+            close()
+        }
+        val fangR = Path().apply {
+            moveTo(foeCx + r * 0.11f, foeCy + r * 0.32f)
+            lineTo(foeCx + r * 0.18f, foeCy + r * 0.43f)
+            lineTo(foeCx + r * 0.24f, foeCy + r * 0.29f)
+            close()
+        }
+        canvas.drawPath(fangL, monsterPaint)
+        canvas.drawPath(fangR, monsterPaint)
+
         canvas.restore()
 
         // 3. 金色能量弧 (300..900ms)

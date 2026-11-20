@@ -78,11 +78,22 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { res ->
         if (res.resultCode == RESULT_OK) {
+            val taskId = res.data?.getStringExtra(FocusActivity.EXTRA_TASK_ID).orEmpty()
+            val actualDur = res.data?.getIntExtra(FocusActivity.EXTRA_ACTUAL_DURATION, 0) ?: 0
             val mins = res.data?.getIntExtra(FocusActivity.EXTRA_DURATION_MIN, 15) ?: 15
-            sound.playWin()
-            binding.petStageView.triggerPatAnimation()
-            binding.tvBubble.text = "太棒了！刚完成了 $mins 分钟专注，继续保持哦~"
-            Toast.makeText(this, "🎉 完成 $mins 分钟专注！", Toast.LENGTH_SHORT).show()
+            if (taskId.isNotEmpty()) {
+                val taskItem = state?.tasks?.find { it.id == taskId }
+                if (taskItem != null && taskItem.requirePhoto) {
+                    showCheckinConfirmDialog(taskItem, null, actualDur.takeIf { it > 0 })
+                } else {
+                    submitCheckin(taskId, null, actualDur.takeIf { it > 0 }, null)
+                }
+            } else {
+                sound.playWin()
+                binding.petStageView.triggerPatAnimation()
+                binding.tvBubble.text = "太棒了！刚完成了 $mins 分钟专注，继续保持哦~"
+                Toast.makeText(this, "🎉 完成 $mins 分钟专注！", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -221,14 +232,30 @@ class MainActivity : AppCompatActivity() {
         binding.btnMysteryEgg.setOnClickListener { performAdopt(speciesId = null, mystery = true) }
         binding.btnSnap.setOnClickListener { performTakePolaroid() }
         binding.btnFreeFocus.setOnClickListener {
+            val st = state
+            val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
+            val asleep = st?.let { isAsleep(it.logs) } ?: false
+            val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
             val intent = Intent(this, FocusActivity::class.java).apply {
                 putExtra(FocusActivity.EXTRA_TASK_TITLE, "自由专注")
                 putExtra(FocusActivity.EXTRA_DURATION_MIN, 15)
+                putExtra(FocusActivity.EXTRA_PET_STAGE, lv)
+                putExtra(FocusActivity.EXTRA_PET_ASLEEP, asleep)
+                if (activeComp != null) putExtra(FocusActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
             focusLauncher.launch(intent)
         }
         binding.btnToggleBattle.setOnClickListener {
-            startActivity(Intent(this, AdventureActivity::class.java))
+            val st = state
+            val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
+            val asleep = st?.let { isAsleep(it.logs) } ?: false
+            val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
+            val intent = Intent(this, AdventureActivity::class.java).apply {
+                putExtra(AdventureActivity.EXTRA_PET_STAGE, lv)
+                putExtra(AdventureActivity.EXTRA_PET_ASLEEP, asleep)
+                if (activeComp != null) putExtra(AdventureActivity.EXTRA_SPECIES_ITEM, activeComp)
+            }
+            startActivity(intent)
         }
         binding.btnRunBattle.setOnClickListener {
             binding.tvBattleMsg.text = ""
@@ -553,8 +580,11 @@ class MainActivity : AppCompatActivity() {
                 done && !photoUrl.isNullOrEmpty() -> "📷 今日已完成并上传成果照片 · 点击查看照片"
                 done -> "今日已完成！"
                 isRope -> "🪢 AI 跳绳：${t.durationSec} 秒跳够 ${t.targetCount} 个 · 点击开启镜头"
-                t.scope == "selected" -> "⭐ 专属任务 · 点击拍照或直接打卡喂宠"
-                else -> "📷 点击拍照留证或直接完成打卡"
+                t.timerMode == "countdown" -> "⏱️ 倒计时 ${(t.durationSec / 60).coerceAtLeast(1)} 分钟${if (t.requirePhoto) " · 需拍照" else ""} · 点击开始专注"
+                t.timerMode == "countup" -> "⏱️ 正计时专注${if (t.requirePhoto) " · 需拍照" else ""} · 点击开始计时"
+                t.requirePhoto -> "📷 需拍照留证 · 点击拍照完成打卡"
+                t.scope == "selected" -> "⭐ 专属任务 · 点击直接打卡喂宠"
+                else -> "✨ 点击直接完成打卡喂宠"
             }
             val subTv = TextView(this).apply {
                 text = subText
@@ -587,8 +617,12 @@ class MainActivity : AppCompatActivity() {
 
             if (!done) {
                 card.setOnClickListener {
-                    if (isRope) launchRopeChallenge(t)
-                    else showCheckinConfirmDialog(t, null, null)
+                    when {
+                        isRope -> launchRopeChallenge(t)
+                        t.timerMode == "countdown" || t.timerMode == "countup" -> launchTaskFocus(t)
+                        t.requirePhoto -> showCheckinConfirmDialog(t, null, null)
+                        else -> submitCheckin(t.id, null, null, null)
+                    }
                 }
             } else if (!photoUrl.isNullOrEmpty()) {
                 card.setOnClickListener {
@@ -597,6 +631,23 @@ class MainActivity : AppCompatActivity() {
             }
             binding.tasksContainer.addView(card)
         }
+    }
+
+    private fun launchTaskFocus(t: TaskItem) {
+        val st = state
+        val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
+        val asleep = st?.let { isAsleep(it.logs) } ?: false
+        val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
+        val intent = Intent(this, FocusActivity::class.java).apply {
+            putExtra(FocusActivity.EXTRA_TASK_ID, t.id)
+            putExtra(FocusActivity.EXTRA_TASK_TITLE, t.label)
+            putExtra(FocusActivity.EXTRA_TIMER_MODE, t.timerMode)
+            putExtra(FocusActivity.EXTRA_DURATION_SEC, t.durationSec)
+            putExtra(FocusActivity.EXTRA_PET_STAGE, lv)
+            putExtra(FocusActivity.EXTRA_PET_ASLEEP, asleep)
+            if (activeComp != null) putExtra(FocusActivity.EXTRA_SPECIES_ITEM, activeComp)
+        }
+        focusLauncher.launch(intent)
     }
 
     private fun decodeAndCompressCapture(file: File): Pair<Bitmap, String>? {
@@ -723,7 +774,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(btnCamera)
 
         val btnSubmit = Button(this).apply {
-            text = "✅ 直接完成打卡 (+${task.pts})"
+            text = if (task.requirePhoto) "📷 请先拍照再打卡 (+${task.pts})" else "✅ 直接完成打卡 (+${task.pts})"
             textSize = 14f
             setAllCaps(false)
             setTextColor(Color.WHITE)
@@ -757,6 +808,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnSubmit.setOnClickListener {
+            if (task.requirePhoto && capturedPhotoData == null) {
+                sound.playError()
+                Toast.makeText(this, "这项任务要求先拍照留证哦！", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             pendingPhotoCallback = null
             dialog.dismiss()
             submitCheckin(task.id, actualCount, actualDuration, capturedPhotoData)

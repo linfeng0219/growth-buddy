@@ -11,14 +11,14 @@ import (
 // QuizQuestion 表示冒险小剧场的一道答题充能题目。
 type QuizQuestion struct {
 	ID        string   `json:"id"`
-	Category  string   `json:"category"` // 语文 / 数学 / 科学常识
+	Category  string   `json:"category"` // 语文 / 数学 / 科学常识 / 趣味问答
 	Question  string   `json:"question"`
 	Options   []string `json:"options"`
 	AnswerIdx int      `json:"answer_idx"`
 	IsPreset  bool     `json:"is_preset,omitempty"`
 }
 
-// DefaultGrade1Questions 返回一年级预设题库（语文、数学、科学常识）。
+// DefaultGrade1Questions 返回一年级预设题库（语文、数学、科学常识、趣味问答）。
 func DefaultGrade1Questions() []QuizQuestion {
 	return []QuizQuestion{
 		// 语文
@@ -124,42 +124,27 @@ func DefaultGrade1Questions() []QuizQuestion {
 	}
 }
 
-func (s *Store) ensureQuizTableLocked() {
-	_, _ = s.db.Exec(`CREATE TABLE IF NOT EXISTS quiz_questions (
-		id TEXT PRIMARY KEY,
-		family_id TEXT NOT NULL,
-		category TEXT NOT NULL,
-		question TEXT NOT NULL,
-		options_json TEXT NOT NULL,
-		answer_idx INTEGER NOT NULL,
-		created_at INTEGER NOT NULL
-	)`)
-}
-
 // ListFamilyQuestions 返回家庭自定义题库 + 一年级预设题库。
 func (s *Store) ListFamilyQuestions(familyID string) []QuizQuestion {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureQuizTableLocked()
-
-	rows, err := s.db.Query(
-		`SELECT id, category, question, options_json, answer_idx FROM quiz_questions WHERE family_id = ? ORDER BY created_at DESC`,
-		familyID,
-	)
 	var list []QuizQuestion
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var q QuizQuestion
-			var optJSON string
-			if err := rows.Scan(&q.ID, &q.Category, &q.Question, &optJSON, &q.AnswerIdx); err == nil {
-				_ = json.Unmarshal([]byte(optJSON), &q.Options)
+	_ = s.db.WithTx(func(tx *Tx) error {
+		return tx.Query(
+			"SELECT id, category, question, options_json, answer_idx FROM quiz_questions WHERE family_id = ? ORDER BY created_at DESC",
+			func(r SQLiteRow) error {
+				q := QuizQuestion{
+					ID:        r.String(0),
+					Category:  r.String(1),
+					Question:  r.String(2),
+					AnswerIdx: r.Int(4),
+				}
+				_ = json.Unmarshal([]byte(r.String(3)), &q.Options)
 				if len(q.Options) >= 2 {
 					list = append(list, q)
 				}
-			}
-		}
-	}
+				return nil
+			}, familyID,
+		)
+	})
 	list = append(list, DefaultGrade1Questions()...)
 	return list
 }
@@ -193,13 +178,13 @@ func (s *Store) AddFamilyQuestion(familyID string, q QuizQuestion) (QuizQuestion
 
 	optBytes, _ := json.Marshal(q.Options)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureQuizTableLocked()
-	_, err := s.db.Exec(
-		`INSERT INTO quiz_questions (id, family_id, category, question, options_json, answer_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		q.ID, familyID, q.Category, q.Question, string(optBytes), q.AnswerIdx, time.Now().Unix(),
-	)
+	err := s.db.WithTx(func(tx *Tx) error {
+		_, err := tx.Exec(
+			"INSERT INTO quiz_questions (id, family_id, category, question, options_json, answer_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			q.ID, familyID, q.Category, q.Question, string(optBytes), q.AnswerIdx, time.Now().Unix(),
+		)
+		return err
+	})
 	if err != nil {
 		return QuizQuestion{}, err
 	}
@@ -211,16 +196,14 @@ func (s *Store) DeleteFamilyQuestion(familyID, qid string) error {
 	if strings.HasPrefix(qid, "preset_") {
 		return errors.New("预设题库不可删除")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureQuizTableLocked()
-	res, err := s.db.Exec(`DELETE FROM quiz_questions WHERE id = ? AND family_id = ?`, qid, familyID)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return errors.New("题目不存在")
-	}
-	return nil
+	return s.db.WithTx(func(tx *Tx) error {
+		n, err := tx.Exec("DELETE FROM quiz_questions WHERE id = ? AND family_id = ?", qid, familyID)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return errors.New("题目不存在")
+		}
+		return nil
+	})
 }

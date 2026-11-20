@@ -196,6 +196,21 @@
             <div class="field" style="margin-bottom:0"><label>达标个数（1~500个）</label><input type="number" id="tTarget" value="60" min="1" max="500"></div>
           </div>
         </div>
+        <div id="tTimerPhotoRow">
+          <div class="row2">
+            <div class="field"><label>计时模式（番茄专注）</label>
+              <select id="tTimerMode">
+                <option value="none">不计时（直接打卡）</option>
+                <option value="countdown">⏱️ 倒计时专注</option>
+                <option value="countup">⏱️ 正计时专注</option>
+              </select>
+            </div>
+            <div class="field" id="tFocusMinBox" style="display:none"><label>倒计时分钟（1~120分）</label><input type="number" id="tFocusMin" value="15" min="1" max="120"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);margin-bottom:10px;cursor:pointer">
+            <input type="checkbox" id="tRequirePhoto"> 📷 完成打卡时需拍照留念
+          </label>
+        </div>
         <div class="field"><label>适用范围</label>
           <select id="tScope">
             <option value="all">全体孩子都有（含以后新增孩子）</option>
@@ -350,6 +365,21 @@
         <div class="field" style="margin-bottom:0"><label>计时秒数</label><input type="number" id="etDuration" min="10" max="600"></div>
         <div class="field" style="margin-bottom:0"><label>达标个数</label><input type="number" id="etTarget" min="1" max="500"></div>
       </div>
+    </div>
+    <div id="etTimerPhotoRow">
+      <div class="row2">
+        <div class="field"><label>计时模式（番茄专注）</label>
+          <select id="etTimerMode">
+            <option value="none">不计时</option>
+            <option value="countdown">⏱️ 倒计时</option>
+            <option value="countup">⏱️ 正计时</option>
+          </select>
+        </div>
+        <div class="field" id="etFocusMinBox" style="display:none"><label>倒计时分钟</label><input type="number" id="etFocusMin" value="15" min="1" max="120"></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="etRequirePhoto"> 📷 打卡需拍照留念
+      </label>
     </div>
     <div class="field"><label>适用范围</label>
       <select id="etScope"><option value="all">全体孩子都有</option><option value="selected">指定孩子</option></select>
@@ -652,16 +682,38 @@
   $id("tType").addEventListener("change",function(){
     var isRope=this.value==="rope_jump";
     $id("tRopeBox").style.display=isRope?"block":"none";
+    $id("tTimerPhotoRow").style.display=isRope?"none":"block";
     if(isRope&&$id("tEmoji").value==="✨") $id("tEmoji").value="🪢";
     if(isRope&&!$id("tLabel").value.trim()) $id("tLabel").value="定时跳绳挑战";
   });
+  $id("tTimerMode").addEventListener("change",function(){
+    $id("tFocusMinBox").style.display=this.value==="countdown"?"block":"none";
+  });
   $id("etType").addEventListener("change",function(){
-    $id("etRopeBox").style.display=this.value==="rope_jump"?"block":"none";
+    var isRope=this.value==="rope_jump";
+    $id("etRopeBox").style.display=isRope?"block":"none";
+    $id("etTimerPhotoRow").style.display=isRope?"none":"block";
+  });
+  $id("etTimerMode").addEventListener("change",function(){
+    $id("etFocusMinBox").style.display=this.value==="countdown"?"block":"none";
   });
 
   function ropeBadgeHtml(t){
-    if(t.task_type!=="rope_jump") return "";
-    return '<span class="tag-sel" style="background:#e9f1fb;color:#275d9c">🪢 '+t.duration_sec+'秒/'+t.target_count+'个</span>';
+    var h="";
+    if(t.task_type==="rope_jump"){
+      h+='<span class="tag-sel" style="background:#e9f1fb;color:#275d9c">🪢 '+t.duration_sec+'秒/'+t.target_count+'个</span>';
+    }else{
+      if(t.timer_mode==="countdown"){
+        var mins=Math.max(1,Math.round((t.duration_sec||900)/60));
+        h+='<span class="tag-sel" style="background:#e8f4ec;color:#2f6b4f">⏱️ 倒计时 '+mins+'分钟</span>';
+      }else if(t.timer_mode==="countup"){
+        h+='<span class="tag-sel" style="background:#e8f4ec;color:#2f6b4f">⏱️ 正计时</span>';
+      }
+      if(t.require_photo){
+        h+='<span class="tag-sel" style="background:#fdf2e9;color:#b8621b">📷 需拍照</span>';
+      }
+    }
+    return h;
   }
 
   function renderTasksTab(){
@@ -736,6 +788,9 @@
     try{
       var scope=$id("tScope").value;
       var taskType=$id("tType").value;
+      var timerMode=(taskType==="rope_jump")?"none":$id("tTimerMode").value;
+      var durSec=(taskType==="rope_jump")?$id("tDuration").value:(timerMode==="countdown"?Math.max(1,parseInt($id("tFocusMin").value,10)||15)*60:60);
+      var reqPhoto=(taskType!=="rope_jump")&&$id("tRequirePhoto").checked;
       var childIds=scope==="selected"?getCheckedChildIds("tChildChecks"):[];
       await api("/api/parent/tasks",{
         method:"POST",
@@ -745,8 +800,10 @@
           pts:$id("tPts").value,
           scope:scope,
           task_type:taskType,
-          duration_sec:$id("tDuration").value,
+          duration_sec:durSec,
           target_count:$id("tTarget").value,
+          timer_mode:timerMode,
+          require_photo:reqPhoto,
           childIds:childIds
         })
       });
@@ -764,7 +821,14 @@
     $id("etType").value=t.task_type||"normal";
     $id("etDuration").value=t.duration_sec||60;
     $id("etTarget").value=t.target_count||60;
-    $id("etRopeBox").style.display=(t.task_type==="rope_jump")?"block":"none";
+    var isRope=(t.task_type==="rope_jump");
+    $id("etRopeBox").style.display=isRope?"block":"none";
+    $id("etTimerPhotoRow").style.display=isRope?"none":"block";
+    var tm=t.timer_mode||"none";
+    $id("etTimerMode").value=tm;
+    $id("etFocusMin").value=Math.max(1,Math.round((t.duration_sec||900)/60));
+    $id("etFocusMinBox").style.display=(tm==="countdown")?"block":"none";
+    $id("etRequirePhoto").checked=!!t.require_photo;
     $id("etScope").value=t.scope;
     $id("etAssignBox").style.display=t.scope==="selected"?"block":"none";
     renderChildCheckboxes("etChildChecks",t.assigned_child_ids);
@@ -776,6 +840,9 @@
     try{
       var scope=$id("etScope").value;
       var taskType=$id("etType").value;
+      var timerMode=(taskType==="rope_jump")?"none":$id("etTimerMode").value;
+      var durSec=(taskType==="rope_jump")?$id("etDuration").value:(timerMode==="countdown"?Math.max(1,parseInt($id("etFocusMin").value,10)||15)*60:60);
+      var reqPhoto=(taskType!=="rope_jump")&&$id("etRequirePhoto").checked;
       var childIds=scope==="selected"?getCheckedChildIds("etChildChecks"):[];
       await api("/api/parent/tasks/"+editingTaskId,{
         method:"PATCH",
@@ -785,8 +852,10 @@
           pts:$id("etPts").value,
           scope:scope,
           task_type:taskType,
-          duration_sec:$id("etDuration").value,
+          duration_sec:durSec,
           target_count:$id("etTarget").value,
+          timer_mode:timerMode,
+          require_photo:reqPhoto,
           childIds:childIds
         })
       });
