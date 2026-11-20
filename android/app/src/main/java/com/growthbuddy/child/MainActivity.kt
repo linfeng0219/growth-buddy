@@ -429,8 +429,8 @@ class MainActivity : AppCompatActivity() {
         binding.btnMute.text = if (c.muted) "🔇" else "🔊"
 
         val healthTag = when (c.petHealth) {
-            "weak" -> " · 💧虚弱(${c.healProgress}/${c.healTarget.coerceAtLeast(20)})"
-            "sick" -> " · 🤒生病(${c.healProgress}/${c.healTarget.coerceAtLeast(40)})"
+            "weak" -> " · 💧虚弱(${c.healProgress}/${c.healTarget.coerceAtLeast(10)})"
+            "sick" -> " · 🤒生病(${c.healProgress}/${c.healTarget.coerceAtLeast(20)})"
             else -> ""
         }
         binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}$healthTag"
@@ -440,11 +440,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvBubble.text = when {
             c.petHealth == "sick" -> {
-                val left = (c.healTarget.coerceAtLeast(40) - c.healProgress).coerceAtLeast(1)
+                val left = (c.healTarget.coerceAtLeast(20) - c.healProgress).coerceAtLeast(1)
                 "🤒 呜呜，我生病了……还差 $left 点成长值就能康复！"
             }
             c.petHealth == "weak" -> {
-                val left = (c.healTarget.coerceAtLeast(20) - c.healProgress).coerceAtLeast(1)
+                val left = (c.healTarget.coerceAtLeast(10) - c.healProgress).coerceAtLeast(1)
                 "💧 我有点虚弱了……再攒 $left 点成长值就能恢复活力！"
             }
             asleep -> "呼呼……已经 3 天没见到你了，喂我一口就醒来。"

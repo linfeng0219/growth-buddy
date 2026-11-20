@@ -2,8 +2,8 @@
 
 面向多家庭习惯养成与运动打卡的三端协同平台：
 - **系统管理端 Web（`/admin.html`）**：管理全平台家庭、家长与儿童账号，并内置 **App 远程升级（OTA）版本发布台**。
-- **家长端 Web（`/parent.html`）**：管理家庭多孩档案、配置孩子独立登录账号密码、布置日常习惯与定时 AI 跳绳任务、核发领养蛋。
-- **儿童端纯原生安卓 App（`android/`）**：零 WebView 纯 Kotlin 原生应用，包含 60fps 糖霜宠物舞台、低延迟高响度 `SoundPool` 音效、「天天跳绳」式肩髋多点融合防漏计 AI 跳绳计数，以及 **OTA 远程在线升级**。
+- **家长端 Web（`/parent.html`）**：管理家庭多孩档案、配置孩子独立登录账号密码、进入**任务中心**（当日任务/新增任务/所有任务，支持单次与周一至周日循环、正/倒计时、是否拍照、内置与私有图标库）、查看实拍照片墙与按天/周/月/年汇总打卡记录、配置冒险小剧场题库。
+- **儿童端纯原生安卓 App（`android/`）**：零 WebView 纯 Kotlin 原生应用，包含 60fps 糖霜宠物舞台（含缺卡虚弱/生病状态与恢复进度）、低延迟 `SoundPool` 音效与 TTS 语音、沉浸式番茄专注页（`FocusActivity`）、独立冒险小剧场答题闯关（`AdventureActivity`）、「天天跳绳」式肩髋多点融合 AI 跳绳计数，以及 **OTA 远程在线升级**；主宠成熟（200 成长值）后富余成长值每 25 点可直接兑换图鉴伙伴。
 
 ---
 
@@ -11,21 +11,24 @@
 
 ```text
 growth-buddy/
-├── .github/workflows/ci-release.yml   # GitHub Actions 自动测试、编译与 Release 发布脚本
+├── .github/workflows/ci-release.yml   # GitHub Actions 自动测试、编译服务端二进制与 Release 发布脚本
 ├── server/                            # Go + SQLite 零外部依赖三端后端（内嵌 Web 静态资源）
 │   ├── main.go / server.go / store.go
+│   ├── quiz.go / health_icons.go      # 一年级冒险小剧场题库 + 宠物健康结算与家庭私有图标库
 │   ├── sqlite.go / auth.go / scrypt.go
 │   ├── server_test.go                 # 集成测试（含密码兼容与 OTA 生命周期测试）
-│   ├── public/                        # 管理端 / 家长端 / 儿童端 Web 页面
+│   ├── public/                        # 首页 / 管理端 / 家长端 / 儿童端 Web 页面
 │   ├── Dockerfile                     # 多阶段 Go + SQLite 构建镜像
 │   ├── docker-compose.yml
 │   ├── nginx.conf.example             # 1Panel / OpenResty 反代配置（160M APK 上传限制）
 │   └── deploy-aliyun.sh               # 阿里云一键部署脚本
 └── android/                           # 纯原生安卓儿童端工程（Kotlin + CameraX + ML Kit）
     └── app/src/main/java/com/growthbuddy/child/
-        ├── MainActivity.kt            # 纯原生登录 / 宠物舞台 / 任务 / 图鉴 / 纪念墙
-        ├── PetCanvasView.kt           # 60fps Candy-Glaze 糖霜宠物绘制与粒子特效
-        ├── NativeSoundEngine.kt       # 预合成高响度 SoundPool WAV + 满音量 TTS
+        ├── MainActivity.kt            # 纯原生登录 / 宠物舞台 / 任务 / 图鉴 / 纪念墙 / 头像编辑
+        ├── FocusActivity.kt           # 沉浸式番茄专注页（自由专注 & 任务正/倒计时）
+        ├── AdventureActivity.kt       # 独立冒险小剧场（一年级题库答题充能击败拖延怪）
+        ├── PetCanvasView.kt           # 60fps Candy-Glaze 糖霜宠物、健康状态与小剧场舞台绘制
+        ├── NativeSoundEngine.kt       # 预合成高响度 SoundPool WAV + 满音量 TTS（含中文回退）
         ├── RopeJumpDetector.kt        # 肩髋多点融合 + 动态波峰波谷反转防漏计状态机
         ├── RopeJumpActivity.kt        # CameraX 高帧率识别 + 前后镜头切换
         └── AppUpdater.kt              # OTA 远程检测、SHA-256 校验与系统安装器拉起
@@ -49,25 +52,34 @@ CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-Bstatic -lsqlite3 -Wl,-Bdynamic -lm -ldl -lpthre
 ```bash
 cd android
 gradle testDebugUnitTest assembleDebug
+# 或仅打 64 位瘦身 Release 包（约 13.6 MB）：
+gradle assembleRelease -Parm64Only=true
 ```
-产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`。
+产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`（或 `release/app-release.apk`）。
 
 ---
 
 ## GitHub Actions 自动构建与发版
 
 仓库已配置 [.github/workflows/ci-release.yml](.github/workflows/ci-release.yml)：
-1. **每次推送到 `main` 或发起 PR**：自动运行 Go 后端单测、构建 Linux `amd64` 部署包 `growth-buddy-go-aliyun.tar.gz`，并运行安卓跳绳单测与编译 APK，产物保存在对应 Workflow Run 的 **Artifacts** 中可直接下载。
-2. **推送版本标签（例如 `v2.2.0`）自动创建 GitHub Release**：
+1. **每次推送到 `main` 或发起 PR**：自动在 `ubuntu-22.04` 环境运行 Go 后端单测、构建 Linux `amd64` 单二进制 `growth-buddy-server` 及部署包 `growth-buddy-go-aliyun.tar.gz`，产物保存在对应 Workflow Run 的 **Artifacts** 中可直接下载。
+2. **推送版本标签（例如 `v2.4.0`）自动创建 GitHub Release**：
    ```bash
-   # 先在 android/app/build.gradle.kts 中递增 versionCode 和 versionName
-   git add .
-   git commit -m "release: v2.2.0"
-   git tag v2.2.0
+   git tag v2.4.0
    git push origin main --tags
    ```
-   GitHub Actions 会自动编译并在 **Releases** 页面挂载 `growth-buddy-go-aliyun.tar.gz`、`GrowthBuddyChild-v2.2.0.apk` 与 `SHA256SUMS.txt`。
+   GitHub Actions 会自动编译并在 **Releases** 页面挂载 `growth-buddy-go-aliyun.tar.gz` 与 `SHA256SUMS.txt`。
 3. **也可在 GitHub 网页端手动触发**：进入仓库 **Actions → Build & Release → Run workflow**。
+
+---
+
+## 最近更新记录
+
+- **2026-11-20**：
+  - 宠物健康机制：1 天未打卡变虚弱（需 10 成长值恢复），2 天及以上未打卡变生病（需 20 成长值恢复）。
+  - 任务中心升级：支持「当日任务 / 新增任务 / 所有任务」Tab 切换、单次或周一至周日循环、正/倒计时番茄专注与是否拍照留证；内置生活/运动/学习/兴趣 4 类图标模板，并支持上传图片到家庭私有图标库。
+  - 打卡统计与兑换：保留实拍照片墙，新增按天/周/月打卡明细与按天/周/月/年任务汇总；取消领养蛋人工审核，主宠成熟（200 成长值）后富余成长值每 25 点直接兑换伙伴。
+  - 儿童端功能：修复点击宠物朗读与头像编辑，新增沉浸式番茄专注页（`FocusActivity`）与独立冒险小剧场答题闯关（`AdventureActivity`，内置一年级语/数/科/趣味题库）。
 
 ---
 

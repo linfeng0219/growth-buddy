@@ -17,16 +17,16 @@ type TaskIconDTO struct {
 func healTargetForHealth(health string) int {
 	switch health {
 	case "weak":
-		return 20
+		return 10
 	case "sick":
-		return 40
+		return 20
 	default:
 		return 0
 	}
 }
 
 // syncChildHealthLocked 按自然日结算宠物健康状态：
-// 1天未打卡 -> 虚弱（需20成长值恢复）；2天及以上未打卡 -> 生病（需40成长值恢复）。
+// 1天未打卡 -> 虚弱（需10成长值恢复）；2天及以上未打卡 -> 生病（需20成长值恢复）。
 func (s *Store) syncChildHealthLocked(tx *Tx, childID, todayStr string) {
 	if todayStr == "" {
 		return

@@ -696,8 +696,8 @@
         }
       });
       var healthBadge='<span style="background:#e8f5ee;color:#2f6b4f">💚 健康</span>';
-      if(c.pet_health==="weak") healthBadge='<span style="background:#fff4e5;color:#b8621b">💧 虚弱 ('+(c.heal_progress||0)+'/'+(c.heal_target||20)+')</span>';
-      else if(c.pet_health==="sick") healthBadge='<span style="background:#fdeaea;color:#c0392b">🤒 生病 ('+(c.heal_progress||0)+'/'+(c.heal_target||40)+')</span>';
+      if(c.pet_health==="weak") healthBadge='<span style="background:#fff4e5;color:#b8621b">💧 虚弱 ('+(c.heal_progress||0)+'/'+(c.heal_target||10)+')</span>';
+      else if(c.pet_health==="sick") healthBadge='<span style="background:#fdeaea;color:#c0392b">🤒 生病 ('+(c.heal_progress||0)+'/'+(c.heal_target||20)+')</span>';
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
         +'<div class="info">'
