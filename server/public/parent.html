@@ -141,9 +141,9 @@
 
     <div class="fam-banner">
       <div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink)">🏠 点击下方孩子卡片上的「进入小屋」即可查看并代孩子操作其专属页面</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">👨‍👩‍👧 家长可在「孩子总览」发蛋/撤销打卡，或在「任务中心 → 当日任务」代孩子打卡</div>
         <div style="font-size:12px;color:var(--muted);margin-top:4px">
-          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号与密码登录</span>
+          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号密码登录</span>
         </div>
       </div>
       <a id="apkDownloadLink" href="/api/app/latest.apk" class="pill" style="display:none;text-decoration:none;background:#2f6b4f;color:#fff;border-color:#2f6b4f">📥 下载儿童端 App</a>
@@ -151,7 +151,7 @@
 
     <nav class="tabs">
       <button data-tab="overview" class="on">孩子总览与发蛋</button>
-      <button data-tab="tasks">任务分配中心</button>
+      <button data-tab="tasks">任务中心</button>
       <button data-tab="studio">伙伴工作室</button>
       <button data-tab="family">家庭与档案</button>
     </nav>
@@ -160,22 +160,21 @@
     <section id="tab-overview">
       <div class="kid-overview-grid" id="kidOverviewGrid"></div>
       <div class="panel">
-        <div class="panel-head">
-          <h2>📸 孩子打卡完成情况 · 实拍照片墙</h2>
-          <span class="pill" id="photoWallCount">0 张照片</span>
-        </div>
-        <div id="checkinPhotoWall" class="photo-wall-grid"></div>
-      </div>
-      <div class="panel">
         <div class="panel-head"><h2>最近领养蛋发放记录</h2></div>
         <div id="grantLogList" style="font-size:12.5px;color:var(--ink-soft)"></div>
       </div>
     </section>
 
-    <!-- 2. 任务分配中心 -->
+    <!-- 2. 任务中心（新增任务 / 当日任务 / 所有任务） -->
     <section id="tab-tasks" style="display:none">
-      <div class="panel">
-        <div class="panel-head"><h2>发布新任务（支持全体通用 / 多孩勾选 / 单孩专有）</h2></div>
+      <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
+        <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
+        <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
+        <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
+      </div>
+
+      <div id="subtab-add" class="panel" style="display:none">
+        <div class="panel-head"><h2>新增任务（支持单次 / 周一至周日循环）</h2></div>
         <div class="row3">
           <div class="field"><label>图标 Emoji</label><input type="text" id="tEmoji" value="✨" maxlength="4"></div>
           <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="18" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
@@ -187,6 +186,27 @@
               <option value="normal">普通习惯打卡</option>
               <option value="rope_jump">🪢 定时跳绳挑战（安卓摄像头计数）</option>
             </select>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>执行周期</label>
+            <select id="tRepeatMode">
+              <option value="weekly">🔁 循环任务（按星期重复）</option>
+              <option value="once">📅 单次任务（仅指定日期）</option>
+            </select>
+          </div>
+          <div class="field" id="tDueDateBox" style="display:none"><label>单次任务日期</label><input type="date" id="tDueDate"></div>
+        </div>
+        <div class="scope-box" id="tRepeatDaysBox">
+          <div style="font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:6px">选择循环星期（周一至周日）：</div>
+          <div class="check-pills" id="tRepeatDays">
+            <label class="check-pill"><input type="checkbox" value="1" checked><span>周一</span></label>
+            <label class="check-pill"><input type="checkbox" value="2" checked><span>周二</span></label>
+            <label class="check-pill"><input type="checkbox" value="3" checked><span>周三</span></label>
+            <label class="check-pill"><input type="checkbox" value="4" checked><span>周四</span></label>
+            <label class="check-pill"><input type="checkbox" value="5" checked><span>周五</span></label>
+            <label class="check-pill"><input type="checkbox" value="6" checked><span>周六</span></label>
+            <label class="check-pill"><input type="checkbox" value="7" checked><span>周日</span></label>
           </div>
         </div>
         <div class="scope-box" id="tRopeBox" style="display:none">
@@ -225,14 +245,14 @@
         <div class="msg" id="taskMsg"></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head"><h2>按孩子查看「个人专属任务列表」</h2></div>
+      <div id="subtab-today" class="panel">
+        <div class="panel-head"><h2>📅 当日任务（可切换孩子 · 家长可代打卡或取消打卡）</h2></div>
         <div class="child-filter-bar" id="kidPreviewTabs"></div>
         <div id="kidPreviewList"></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head"><h2>全部任务管理（可随时修改分配对象）</h2></div>
+      <div id="subtab-all" class="panel" style="display:none">
+        <div class="panel-head"><h2>📋 所有任务管理（可随时修改周期、分配对象）</h2></div>
         <div id="allTaskList"></div>
       </div>
     </section>
@@ -319,13 +339,6 @@
         <div class="msg" id="coMsg"></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-head"><h2>导入单机旧版备份码（GB1| / GB2|）</h2></div>
-        <div class="field"><label>导入到哪位孩子名下</label><select id="impChildSelect"></select></div>
-        <div class="field"><label>粘贴备份码</label><textarea id="impCode" rows="3" placeholder="粘贴 GB1| 或 GB2| 开头的备份码"></textarea></div>
-        <button id="btnImportBackup" style="width:100%">导入到云端</button>
-        <div class="msg" id="impMsg"></div>
-      </div>
       <div class="card">
         <h3>📚 冒险小剧场题库（一年级预设 + 自定义）</h3>
         <div class="row2">
@@ -358,6 +371,24 @@
       <div class="field"><label>成长值</label><input type="number" id="etPts" min="1" max="50"></div>
       <div class="field"><label>任务类型</label>
         <select id="etType"><option value="normal">普通习惯打卡</option><option value="rope_jump">🪢 定时跳绳挑战</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>执行周期</label>
+        <select id="etRepeatMode"><option value="weekly">🔁 循环任务</option><option value="once">📅 单次任务</option></select>
+      </div>
+      <div class="field" id="etDueDateBox" style="display:none"><label>单次日期</label><input type="date" id="etDueDate"></div>
+    </div>
+    <div class="scope-box" id="etRepeatDaysBox">
+      <div style="font-size:12px;color:var(--ink-soft);margin-bottom:4px">循环星期（周一至周日）：</div>
+      <div class="check-pills" id="etRepeatDays">
+        <label class="check-pill"><input type="checkbox" value="1"><span>周一</span></label>
+        <label class="check-pill"><input type="checkbox" value="2"><span>周二</span></label>
+        <label class="check-pill"><input type="checkbox" value="3"><span>周三</span></label>
+        <label class="check-pill"><input type="checkbox" value="4"><span>周四</span></label>
+        <label class="check-pill"><input type="checkbox" value="5"><span>周五</span></label>
+        <label class="check-pill"><input type="checkbox" value="6"><span>周六</span></label>
+        <label class="check-pill"><input type="checkbox" value="7"><span>周日</span></label>
       </div>
     </div>
     <div class="scope-box" id="etRopeBox" style="display:none">
@@ -580,15 +611,9 @@
 
   function renderOverview(){
     var g=$id("kidOverviewGrid");g.innerHTML="";
-    var allPhotos=[];
     data.children.forEach(function(c){
       var box=document.createElement("div");box.className="kid-box";
       var lvName=GBArt.LEVELS[c.level]?GBArt.LEVELS[c.level].name:"一颗蛋";
-      (c.recent_logs||[]).forEach(function(l){
-        if(l.has_photo&&l.photo_url){
-          allPhotos.push({kidName:c.name,avatarIdx:c.avatar_idx,log:l});
-        }
-      });
       var logsHtml=(c.recent_logs||[]).slice(0,5).map(function(l,idx){
         var metric=(l.actual_count!==null&&l.actual_count!==undefined)?" · "+l.actual_count+"个/"+(l.actual_duration||60)+"秒":"";
         var tm=fmtTime(l.created_at);
@@ -606,12 +631,18 @@
         +'<span>图鉴 '+c.owned_count+' 只</span>'
         +'</div></div></div>'
         +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +'<a class="pill enter-kid" style="text-decoration:none;background:var(--accent);color:#fff;border-color:var(--accent)" href="/child.html?childId='+encodeURIComponent(c.id)+'">🏠 进入 '+GBArt.esc(c.name)+' 的小屋 →</a>'
+        +'<button type="button" class="sm go-checkin-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)">✅ 帮 '+GBArt.esc(c.name)+' 打卡</button>'
         +'<button class="primary sm grant-btn" style="flex:1">🥚 确认扣25分 → 奖1枚领养蛋</button>'
         +'<button class="sm undo-btn">↩ 撤销最近打卡</button>'
         +'</div>'
         +'<div class="recent-logs"><strong>近期动态：</strong>'+logsHtml+'</div>';
 
+      box.querySelector(".go-checkin-btn").addEventListener("click",function(){
+        previewKidId=c.id;
+        switchMainTab("tasks");
+        switchTaskSubTab("today");
+        renderTasksTab();
+      });
       box.querySelectorAll(".view-log-photo").forEach(function(btn){
         btn.addEventListener("click",function(){
           var l=c.recent_logs[parseInt(btn.getAttribute("data-idx"),10)];
@@ -630,25 +661,6 @@
       });
       g.appendChild(box);
     });
-
-    allPhotos.sort(function(a,b){return (b.log.created_at||0)-(a.log.created_at||0);});
-    $id("photoWallCount").textContent=allPhotos.length+" 张照片";
-    var pw=$id("checkinPhotoWall");pw.innerHTML="";
-    if(!allPhotos.length){
-      pw.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px">孩子在打卡时点击「📷 拍照打卡」上传作业或完成成果后，照片会实时展示在这里供家长查验。</div>';
-    }else{
-      allPhotos.forEach(function(item){
-        var l=item.log, tm=fmtTime(l.created_at);
-        var card=document.createElement("div");card.className="photo-card";
-        card.innerHTML='<img src="'+GBArt.esc(l.photo_url)+'" alt="打卡照片" loading="lazy">'
-          +'<div class="pc-meta"><span>'+GBArt.esc(item.kidName)+' · '+GBArt.esc(l.task_label)+'</span><span style="color:var(--amber)">+'+l.pts+'</span></div>'
-          +'<div class="pc-sub">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+' · 点击放大</div>';
-        card.addEventListener("click",function(){
-          openPhotoPreview(l.photo_url,item.kidName,l.task_label,l.checkin_date,l.created_at);
-        });
-        pw.appendChild(card);
-      });
-    }
 
     var gl=$id("grantLogList");
     if(!data.egg_grants.length){gl.textContent="还没有发放记录。";}
@@ -695,6 +707,52 @@
     $id("etRopeBox").style.display=isRope?"block":"none";
     $id("etTimerPhotoRow").style.display=isRope?"none":"block";
   });
+  function switchMainTab(tg){
+    document.querySelectorAll(".tabs button").forEach(function(x){
+      x.classList.toggle("on",x.getAttribute("data-tab")===tg);
+    });
+    ["overview","tasks","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+  }
+  function switchTaskSubTab(st){
+    document.querySelectorAll("#taskSubTabs button").forEach(function(x){
+      x.classList.toggle("on",x.getAttribute("data-subtab")===st);
+    });
+    ["today","add","all"].forEach(function(k){$id("subtab-"+k).style.display=(k===st)?"":"none";});
+  }
+  document.querySelectorAll("#taskSubTabs button").forEach(function(b){
+    b.addEventListener("click",function(){switchTaskSubTab(b.getAttribute("data-subtab"));});
+  });
+
+  function getCheckedRepeatDays(containerId){
+    return Array.from($id(containerId).querySelectorAll("input[type=checkbox]:checked")).map(function(el){return el.value;}).join(",");
+  }
+  function setCheckedRepeatDays(containerId, csv){
+    var set={};
+    (csv||"1,2,3,4,5,6,7").split(",").forEach(function(d){if(d.trim())set[d.trim()]=1;});
+    $id(containerId).querySelectorAll("input[type=checkbox]").forEach(function(el){el.checked=!!set[el.value];});
+  }
+  $id("tDueDate").value=today();
+  $id("tRepeatMode").addEventListener("change",function(){
+    var isOnce=this.value==="once";
+    $id("tRepeatDaysBox").style.display=isOnce?"none":"block";
+    $id("tDueDateBox").style.display=isOnce?"block":"none";
+  });
+  $id("etRepeatMode").addEventListener("change",function(){
+    var isOnce=this.value==="once";
+    $id("etRepeatDaysBox").style.display=isOnce?"none":"block";
+    $id("etDueDateBox").style.display=isOnce?"block":"none";
+  });
+
+  function repeatBadgeHtml(t){
+    if(t.repeat_mode==="once"){
+      return '<span class="tag-sel" style="background:#f5eef8;color:#7d3c98">📅 单次 '+(GBArt.esc(t.due_date)||"今日")+'</span>';
+    }
+    var days=(t.repeat_days||"1,2,3,4,5,6,7").split(",").filter(Boolean);
+    if(days.length===7) return '<span class="tag-all">🔁 每天</span>';
+    var map={"1":"一","2":"二","3":"三","4":"四","5":"五","6":"六","7":"日"};
+    return '<span class="tag-sel">🔁 周'+days.map(function(d){return map[d]||d;}).join("、")+'</span>';
+  }
+
   $id("etTimerMode").addEventListener("change",function(){
     $id("etFocusMinBox").style.display=this.value==="countdown"?"block":"none";
   });
@@ -744,13 +802,33 @@
           var row=document.createElement("div");row.className="task-item";
           var tag=t.scope==="all"?'<span class="tag-all">全体通用</span>':'<span class="tag-sel">指定/专有</span>';
           var pLog=todayPhotoByTask[t.id]||todayPhotoByTask["lbl:"+t.label]||null;
-          var phBtn=pLog?' <button type="button" class="photo-pill task-photo-btn">📷 查看今日完成照片</button>':"";
-          var st=doneSet[t.id]?('<span style="color:var(--accent);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">✓ 今日已完成'+phBtn+'</span>'):'<span style="color:var(--muted);font-size:12px">待打卡</span>';
-          row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+tag+'</div>'+st;
+          var phBtn=pLog?' <button type="button" class="photo-pill task-photo-btn">📷 查看今日照片</button>':"";
+          var st=doneSet[t.id]
+            ?('<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="color:var(--accent);font-size:12px;font-weight:600">✓ 今日已完成</span>'+phBtn+'<button type="button" class="sm parent-undo-btn">↩ 取消打卡</button></div>')
+            :'<button type="button" class="primary sm parent-checkin-btn">✅ 帮TA打卡</button>';
+          row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+tag+'</div>'+st;
           var tpb=row.querySelector(".task-photo-btn");
           if(tpb&&pLog){
             tpb.addEventListener("click",function(){
               openPhotoPreview(pLog.photo_url,curKid.name,t.label,pLog.checkin_date,pLog.created_at);
+            });
+          }
+          var pcb=row.querySelector(".parent-checkin-btn");
+          if(pcb){
+            pcb.addEventListener("click",async function(){
+              try{
+                await api("/api/parent/checkin",{method:"POST",body:JSON.stringify({childId:curKid.id,taskId:t.id,date:today()})});
+                await loadOverview();
+              }catch(e){alert(e.message);}
+            });
+          }
+          var pub=row.querySelector(".parent-undo-btn");
+          if(pub){
+            pub.addEventListener("click",async function(){
+              try{
+                await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:curKid.id,taskId:t.id,date:today()})});
+                await loadOverview();
+              }catch(e){alert(e.message);}
             });
           }
           plist.appendChild(row);
@@ -769,7 +847,7 @@
         scopeBadge='<span class="tag-sel">'+(t.assigned_child_ids.length===1?"专有：":"指定：")+GBArt.esc(names)+'</span>';
       }
       var offBadge=t.enabled?"":'<span class="tag-off">已停用</span>';
-      row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+scopeBadge+offBadge+'</div>'
+      row.innerHTML='<div class="task-meta"><span>'+GBArt.esc(t.emoji)+'</span><strong>'+GBArt.esc(t.label)+'</strong><span style="color:var(--amber);font-weight:600">+'+t.pts+'</span>'+ropeBadgeHtml(t)+repeatBadgeHtml(t)+scopeBadge+offBadge+'</div>'
         +'<div style="display:flex;gap:6px"><button class="sm edit-t">分配/编辑</button><button class="sm toggle-t">'+(t.enabled?"停用":"启用")+'</button><button class="sm danger del-t">删除</button></div>';
       row.querySelector(".edit-t").addEventListener("click",function(){openEditTask(t);});
       row.querySelector(".toggle-t").addEventListener("click",async function(){
@@ -792,6 +870,10 @@
       var timerMode=(taskType==="rope_jump")?"none":$id("tTimerMode").value;
       var durSec=(taskType==="rope_jump")?$id("tDuration").value:(timerMode==="countdown"?Math.max(1,parseInt($id("tFocusMin").value,10)||15)*60:60);
       var reqPhoto=(taskType!=="rope_jump")&&$id("tRequirePhoto").checked;
+      var repeatMode=$id("tRepeatMode").value;
+      var repeatDays=repeatMode==="weekly"?getCheckedRepeatDays("tRepeatDays"):"";
+      if(repeatMode==="weekly"&&!repeatDays){throw new Error("请至少选择一天循环星期");}
+      var dueDate=repeatMode==="once"?($id("tDueDate").value||today()):"";
       var childIds=scope==="selected"?getCheckedChildIds("tChildChecks"):[];
       await api("/api/parent/tasks",{
         method:"POST",
@@ -805,6 +887,9 @@
           target_count:$id("tTarget").value,
           timer_mode:timerMode,
           require_photo:reqPhoto,
+          repeat_mode:repeatMode,
+          repeat_days:repeatDays,
+          due_date:dueDate,
           childIds:childIds
         })
       });
@@ -830,6 +915,12 @@
     $id("etFocusMin").value=Math.max(1,Math.round((t.duration_sec||900)/60));
     $id("etFocusMinBox").style.display=(tm==="countdown")?"block":"none";
     $id("etRequirePhoto").checked=!!t.require_photo;
+    var rm=(t.repeat_mode==="once")?"once":"weekly";
+    $id("etRepeatMode").value=rm;
+    $id("etDueDate").value=t.due_date||today();
+    $id("etRepeatDaysBox").style.display=(rm==="once")?"none":"block";
+    $id("etDueDateBox").style.display=(rm==="once")?"block":"none";
+    setCheckedRepeatDays("etRepeatDays",t.repeat_days||"1,2,3,4,5,6,7");
     $id("etScope").value=t.scope;
     $id("etAssignBox").style.display=t.scope==="selected"?"block":"none";
     renderChildCheckboxes("etChildChecks",t.assigned_child_ids);
@@ -844,6 +935,10 @@
       var timerMode=(taskType==="rope_jump")?"none":$id("etTimerMode").value;
       var durSec=(taskType==="rope_jump")?$id("etDuration").value:(timerMode==="countdown"?Math.max(1,parseInt($id("etFocusMin").value,10)||15)*60:60);
       var reqPhoto=(taskType!=="rope_jump")&&$id("etRequirePhoto").checked;
+      var repeatMode=$id("etRepeatMode").value;
+      var repeatDays=repeatMode==="weekly"?getCheckedRepeatDays("etRepeatDays"):"";
+      if(repeatMode==="weekly"&&!repeatDays){throw new Error("请至少选择一天循环星期");}
+      var dueDate=repeatMode==="once"?($id("etDueDate").value||today()):"";
       var childIds=scope==="selected"?getCheckedChildIds("etChildChecks"):[];
       await api("/api/parent/tasks/"+editingTaskId,{
         method:"PATCH",
@@ -857,6 +952,9 @@
           target_count:$id("etTarget").value,
           timer_mode:timerMode,
           require_photo:reqPhoto,
+          repeat_mode:repeatMode,
+          repeat_days:repeatDays,
+          due_date:dueDate,
           childIds:childIds
         })
       });
@@ -1011,7 +1109,6 @@
       });
       cm.appendChild(row);
     });
-    $id("impChildSelect").innerHTML=data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
   }
 
   $id("btnAddChild").addEventListener("click",async function(){
@@ -1036,21 +1133,10 @@
       note("coMsg","共同管理家长添加成功！");
     }catch(e){note("coMsg",e.message,true);}
   });
-  $id("btnImportBackup").addEventListener("click",async function(){
-    try{
-      var res=await api("/api/parent/import-backup",{method:"POST",body:JSON.stringify({childId:$id("impChildSelect").value,backupCode:$id("impCode").value.trim()})});
-      $id("impCode").value="";
-      note("impMsg","导入成功！当前成长值 "+res.xp+"，领养蛋 "+res.coupons+" 枚");
-      await loadOverview();
-    }catch(e){note("impMsg",e.message,true);}
-  });
 
   document.querySelectorAll(".tabs button").forEach(function(t){
     t.addEventListener("click",function(){
-      document.querySelectorAll(".tabs button").forEach(function(x){x.classList.remove("on");});
-      t.classList.add("on");
-      var tg=t.getAttribute("data-tab");
-      ["overview","tasks","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+      switchMainTab(t.getAttribute("data-tab"));
     });
   });
 

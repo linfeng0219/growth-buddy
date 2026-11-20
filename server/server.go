@@ -866,6 +866,9 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			TargetCount:  mapOptInt(body, "target_count"),
 			TimerMode:    mapOptStr(body, "timer_mode"),
 			RequirePhoto: mapOptBool(body, "require_photo"),
+			RepeatMode:   mapOptStr(body, "repeat_mode"),
+			RepeatDays:   mapOptStr(body, "repeat_days"),
+			DueDate:      mapOptStr(body, "due_date"),
 			ChildIDs:     cids,
 			HasChildIDs: hasCids,
 		})
@@ -897,6 +900,9 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 					TargetCount:  mapOptInt(body, "target_count"),
 					TimerMode:    mapOptStr(body, "timer_mode"),
 					RequirePhoto: mapOptBool(body, "require_photo"),
+					RepeatMode:   mapOptStr(body, "repeat_mode"),
+					RepeatDays:   mapOptStr(body, "repeat_days"),
+					DueDate:      mapOptStr(body, "due_date"),
 					Enabled:      mapOptBool(body, "enabled"),
 					ChildIDs:    cids,
 					HasChildIDs: hasCids,
@@ -934,13 +940,34 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodPost && p == "/api/parent/checkin" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		todayStr := sanitizeDate(mapStr(body, "date"))
+		if err := a.store.ParentCheckin(fid, mapStr(body, "childId"), mapStr(body, "taskId"), todayStr); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/parent/undo-checkin" {
 		body, err := readJSONMap(r, 0)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		undone, _, err := a.store.UndoLastCheckin(fid, mapStr(body, "childId"), "")
+		taskID := mapStr(body, "taskId")
+		var undone *CheckinLogDTO
+		if taskID != "" {
+			undone, err = a.store.UndoTaskCheckin(fid, mapStr(body, "childId"), taskID, sanitizeDate(mapStr(body, "date")))
+		} else {
+			undone, _, err = a.store.UndoLastCheckin(fid, mapStr(body, "childId"), "")
+		}
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
