@@ -914,12 +914,26 @@ class SpeciesThumbView @JvmOverloads constructor(
 }
 
 /**
- * 冒险小剧场舞台：左侧己方宠物，右侧「拖延怪」，支持出猎一击动画与特效。
+ * 冒险小剧场舞台：左侧己方宠物，右侧史莱姆风「拖延怪」，
+ * 支持 Q 弹待机呼吸、蓄力光环、残影冲刺、冲击波与凝胶飞溅等丰富战斗演出。
  */
 class BattleStageView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
+
+    private data class BurstParticle(
+        val bornMs: Float,
+        val lifeMs: Float,
+        val originRelX: Float,
+        val originRelY: Float,
+        val vx: Float,
+        val vy: Float,
+        val gravity: Float,
+        val size: Float,
+        val color: Int,
+        val kind: Int // 0=圆形光粒, 1=水滴飞沫, 2=四角星芒
+    )
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val monsterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -927,24 +941,46 @@ class BattleStageView @JvmOverloads constructor(
     private var stage: Int = 0
     private var asleep: Boolean = false
 
+    private var monsterHp: Int = 3
+    private var monsterMaxHp: Int = 3
+    private var finishingBlow: Boolean = false
+
     private var busy = false
     private var animStartMs = 0L
+    private val idleBaseMs = SystemClock.uptimeMillis()
     private var hitFired = false
     private var onHitCallback: (() -> Unit)? = null
     private var onWinCallback: (() -> Unit)? = null
+    private var particles: List<BurstParticle> = emptyList()
+    private var attached = false
+
+    private val battleDurationMs = 1480L
+    private val hitTriggerMs = 500L
+
+    private val idleTicker = object : Runnable {
+        override fun run() {
+            if (!attached || busy) return
+            invalidate()
+            postDelayed(this, 33L)
+        }
+    }
 
     private val animator = object : Runnable {
         override fun run() {
             if (!busy) return
             val elapsed = SystemClock.uptimeMillis() - animStartMs
-            if (elapsed >= 340L && !hitFired) {
+            if (elapsed >= hitTriggerMs && !hitFired) {
                 hitFired = true
                 onHitCallback?.invoke()
             }
-            if (elapsed >= 1300L) {
+            if (elapsed >= battleDurationMs) {
                 busy = false
                 invalidate()
                 onWinCallback?.invoke()
+                if (attached) {
+                    removeCallbacks(idleTicker)
+                    postDelayed(idleTicker, 33L)
+                }
                 return
             }
             invalidate()
@@ -959,212 +995,748 @@ class BattleStageView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun triggerAttack(onHit: () -> Unit, onWin: () -> Unit) {
+    fun setMonsterHp(hp: Int, maxHp: Int = 3) {
+        this.monsterMaxHp = maxHp.coerceAtLeast(1)
+        this.monsterHp = hp.coerceIn(0, this.monsterMaxHp)
+        invalidate()
+    }
+
+    fun triggerAttack(isFinishingBlow: Boolean = false, onHit: () -> Unit, onWin: () -> Unit) {
         if (busy) return
         busy = true
         hitFired = false
+        finishingBlow = isFinishingBlow
         animStartMs = SystemClock.uptimeMillis()
         onHitCallback = onHit
         onWinCallback = onWin
+        particles = buildBattleParticles(isFinishingBlow)
+        removeCallbacks(idleTicker)
         postOnAnimation(animator)
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        attached = true
+        if (!busy) {
+            removeCallbacks(idleTicker)
+            postDelayed(idleTicker, 33L)
+        }
+    }
+
     override fun onDetachedFromWindow() {
+        attached = false
         super.onDetachedFromWindow()
         removeCallbacks(animator)
+        removeCallbacks(idleTicker)
         busy = false
+    }
+
+    private fun buildBattleParticles(isKo: Boolean): List<BurstParticle> {
+        val list = ArrayList<BurstParticle>(28)
+        // 冲刺起跳尘埃粒子
+        for (i in 0 until 5) {
+            val angle = Math.toRadians(145.0 + i * 16.0)
+            val spd = 48f + (i % 3) * 18f
+            list.add(
+                BurstParticle(
+                    bornMs = 260f,
+                    lifeMs = 420f,
+                    originRelX = 0.24f,
+                    originRelY = 0.76f,
+                    vx = (cos(angle) * spd).toFloat(),
+                    vy = (sin(angle) * spd - 20f).toFloat(),
+                    gravity = 90f,
+                    size = 6f + (i % 2) * 3f,
+                    color = 0xFFD9CDB8.toInt(),
+                    kind = 0
+                )
+            )
+        }
+        // 命中瞬间星芒 + 史莱姆凝胶飞沫
+        val burstCount = if (isKo) 20 else 14
+        val colors = intArrayOf(0xFFF6C445.toInt(), 0xFF4BE3D0.toInt(), 0xFFFF8577.toInt(), 0xFF7BE8FF.toInt(), 0xFFFFE57F.toInt())
+        for (i in 0 until burstCount) {
+            val angle = (2.0 * PI * i / burstCount) + (i % 3) * 0.17
+            val speed = (if (isKo) 150f else 115f) + (i % 4) * 32f
+            val kind = when {
+                i % 3 == 0 -> 2
+                i % 3 == 1 -> 1
+                else -> 0
+            }
+            list.add(
+                BurstParticle(
+                    bornMs = 500f,
+                    lifeMs = if (isKo) 760f else 600f,
+                    originRelX = 0.74f,
+                    originRelY = 0.56f,
+                    vx = (cos(angle) * speed).toFloat(),
+                    vy = (sin(angle) * speed - 55f).toFloat(),
+                    gravity = 210f,
+                    size = if (kind == 2) 11f else 7.5f + (i % 3) * 2.5f,
+                    color = colors[i % colors.size],
+                    kind = kind
+                )
+            )
+        }
+        return list
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat().coerceAtLeast(1f)
         val h = height.toFloat().coerceAtLeast(1f)
-        val elapsed = if (busy) (SystemClock.uptimeMillis() - animStartMs).toFloat() else -1f
+        val nowMs = SystemClock.uptimeMillis()
+        val idleSec = (nowMs - idleBaseMs) / 1000f
+        val elapsed = if (busy) (nowMs - animStartMs).toFloat() else -1f
 
-        // 1. 己方宠物位置与冲刺动画 (0..900ms)
+        // 命中瞬间轻微震屏 (500..760ms)
+        var shakeX = 0f
+        var shakeY = 0f
+        if (elapsed in 500f..760f) {
+            val st = (elapsed - 500f) / 260f
+            val amp = (1f - st) * (if (finishingBlow) 11f else 7.5f)
+            shakeX = sin(st * PI * 7.0).toFloat() * amp
+            shakeY = cos(st * PI * 5.0).toFloat() * (amp * 0.65f)
+        }
+
+        canvas.save()
+        canvas.translate(shakeX, shakeY)
+
+        drawArenaBackdrop(canvas, w, h, idleSec, elapsed)
+
+        // 1. 己方宠物运动轨迹与形变
+        val basePetX = w * 0.23f
+        val basePetY = h * 0.59f
+        val petScale = min(w / 320f, h / 145f) * 0.90f
         var fighterDx = 0f
         var fighterDy = 0f
-        if (elapsed in 0f..900f) {
-            val t = elapsed / 900f
-            fighterDx = when {
-                t < 0.42f -> (t / 0.42f) * (w * 0.18f)
-                t < 0.55f -> w * 0.18f + ((t - 0.42f) / 0.13f) * (w * 0.03f)
-                else -> (1f - (t - 0.55f) / 0.45f) * (w * 0.21f)
-            }
-            if (t in 0.35f..0.65f) {
-                val jt = (t - 0.35f) / 0.30f
-                fighterDy = -sin(jt * Math.PI).toFloat() * (h * 0.10f)
+        var petSx = 1f
+        var petSy = 1f
+        var petRot = 0f
+
+        if (elapsed < 0f) {
+            // 待机元气呼吸
+            fighterDy = -kotlin.math.abs(sin(idleSec * 2.8f)) * (h * 0.025f)
+        } else {
+            when {
+                elapsed < 260f -> {
+                    // 蓄力压低蹲起
+                    val t = elapsed / 260f
+                    val s = sin(t * PI * 0.5).toFloat()
+                    petSx = 1f + 0.14f * s
+                    petSy = 1f - 0.14f * s
+                    fighterDy = h * 0.05f * s
+                    petRot = -6f * s
+                }
+                elapsed < 530f -> {
+                    // 高速跃起冲向史莱姆
+                    val t = (elapsed - 260f) / 270f
+                    val ease = 1f - (1f - t) * (1f - t)
+                    fighterDx = w * 0.34f * ease
+                    fighterDy = -sin(t * PI).toFloat() * (h * 0.19f)
+                    petSx = 1.12f - 0.08f * t
+                    petSy = 0.92f + 0.08f * t
+                    petRot = 12f * (1f - t * 0.5f)
+                }
+                elapsed < 980f -> {
+                    // 命中后优雅后空翻/弹回落地
+                    val t = (elapsed - 530f) / 450f
+                    fighterDx = w * 0.34f * (1f - t)
+                    fighterDy = -sin(t * PI).toFloat() * (h * 0.14f)
+                    petRot = if (t < 0.7f) -10f * sin((t / 0.7f) * PI).toFloat() else 0f
+                    if (t > 0.85f) {
+                        val lt = (t - 0.85f) / 0.15f
+                        petSx = 1f + 0.10f * sin(lt * PI).toFloat()
+                        petSy = 1f - 0.10f * sin(lt * PI).toFloat()
+                    }
+                }
             }
         }
 
-        val fighterCx = w * 0.24f + fighterDx
-        val fighterCy = h * 0.58f + fighterDy
-        val petScale = min(w / 320f, h / 145f) * 0.92f
+        // 蓄力金色光环 (40..320ms)
+        if (elapsed in 40f..320f) {
+            drawChargeAura(canvas, basePetX + fighterDx, basePetY + fighterDy, min(w, h) * 0.24f, (elapsed - 40f) / 280f)
+        }
+
+        // 冲刺速度线 & 残影拖尾 (260..540ms)
+        if (elapsed in 260f..540f) {
+            val st = (elapsed - 260f) / 280f
+            drawSpeedLinesAndAfterimages(canvas, w, h, basePetX, basePetY, fighterDx, fighterDy, petScale, st)
+        }
+
+        // 绘制己方主角宠物
+        val fighterCx = basePetX + fighterDx
+        val fighterCy = basePetY + fighterDy
+        canvas.save()
+        canvas.translate(fighterCx, fighterCy)
+        canvas.rotate(petRot)
+        canvas.scale(petSx, petSy)
         val sp = species
         if (sp != null) {
-            PetArtCanvas.drawSpecies(canvas, sp, fighterCx, fighterCy, petScale, silhouette = false, paint = paint)
+            PetArtCanvas.drawSpecies(canvas, sp, 0f, 0f, petScale, silhouette = false, paint = paint)
         } else {
-            PetArtCanvas.drawMainPet(canvas, stage.coerceIn(0, 5), fighterCx, fighterCy, petScale, sleep = asleep, breath = 0f, paint = paint)
+            PetArtCanvas.drawMainPet(canvas, stage.coerceIn(0, 5), 0f, 0f, petScale, sleep = asleep, breath = sin(idleSec * 2.5f) * 0.5f, paint = paint)
+        }
+        canvas.restore()
+
+        // 2. 飞驰元气光弹 (310..520ms)
+        if (elapsed in 310f..520f) {
+            drawEnergyProjectile(canvas, w, h, (elapsed - 310f) / 210f)
         }
 
-        // 2. 右侧「拖延怪」位置与受击晃动 (460..1110ms)
-        val foeCx = w * 0.76f
-        val foeCy = h * 0.56f
-        var foeRot = 0f
-        if (elapsed in 460f..1110f) {
-            val t = (elapsed - 460f) / 650f
-            foeRot = when {
-                t < 0.3f -> -(t / 0.3f) * 12f
-                t < 0.6f -> -12f + ((t - 0.3f) / 0.3f) * 20f
-                else -> 8f * (1f - (t - 0.6f) / 0.4f)
+        // 3. 右侧史莱姆风「拖延怪」
+        val foeCx = w * 0.77f
+        val foeCy = h * 0.59f
+        val r = min(w, h) * 0.255f
+        drawSlimeMonster(canvas, foeCx, foeCy, r, idleSec, elapsed)
+
+        // 4. 命中爆发冲击波 & 星芒斩击 (490..920ms)
+        if (elapsed in 490f..920f) {
+            drawImpactBurst(canvas, foeCx - r * 0.15f, foeCy - r * 0.12f, r, (elapsed - 490f) / 430f)
+        }
+
+        // 5. 物理飞溅粒子 (260..1350ms)
+        if (elapsed >= 260f) {
+            drawParticles(canvas, w, h, elapsed)
+        }
+
+        // 6. 战斗飘字与胜利星芒 (540..1480ms)
+        if (elapsed in 540f..1480f) {
+            drawFloatingCombatText(canvas, foeCx, foeCy - r * 1.15f, elapsed)
+        }
+
+        canvas.restore()
+    }
+
+    private fun drawArenaBackdrop(canvas: Canvas, w: Float, h: Float, idleSec: Float, elapsed: Float) {
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+
+        // 主角脚下草坪阴影
+        paint.color = 0xFFDDE5D0.toInt()
+        canvas.drawOval(w * 0.11f, h * 0.77f, w * 0.35f, h * 0.87f, paint)
+
+        // 史莱姆脚下黏液微光水洼阴影
+        paint.color = 0xFFD5E9E8.toInt()
+        canvas.drawOval(w * 0.63f, h * 0.77f, w * 0.91f, h * 0.88f, paint)
+
+        // 舞台背景漂浮微光点
+        for (i in 0 until 4) {
+            val px = w * (0.38f + i * 0.08f)
+            val py = h * (0.20f + 0.10f * sin(idleSec * 1.6f + i * 1.4f))
+            val alpha = (70 + 45 * sin(idleSec * 2.2f + i)).toInt().coerceIn(25, 130)
+            paint.color = (alpha shl 24) or 0x00F6C445
+            canvas.drawCircle(px, py, 3.2f + (i % 2) * 1.5f, paint)
+        }
+
+        // 命中高光短暂闪烁背景
+        if (elapsed in 495f..585f) {
+            val alpha = ((1f - (elapsed - 495f) / 90f) * 85f).toInt().coerceIn(0, 85)
+            paint.color = (alpha shl 24) or 0x00FFFFFF
+            canvas.drawRect(0f, 0f, w, h, paint)
+        }
+    }
+
+    private fun drawChargeAura(canvas: Canvas, cx: Float, cy: Float, radius: Float, t: Float) {
+        paint.reset()
+        paint.isAntiAlias = true
+        val alpha = ((sin(t * PI).toFloat()) * 210).toInt().coerceIn(0, 210)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4.5f
+        paint.color = (alpha shl 24) or 0x00F6C445
+        val ringR = radius * (1.35f - 0.55f * t)
+        canvas.drawCircle(cx, cy, ringR, paint)
+
+        paint.style = Paint.Style.FILL
+        for (i in 0 until 6) {
+            val a = t * 4.5f + i * (PI.toFloat() * 2f / 6f)
+            val dist = radius * (1.25f * (1f - t) + 0.25f)
+            val ox = cx + cos(a) * dist
+            val oy = cy + sin(a) * dist * 0.72f
+            paint.color = (alpha shl 24) or (if (i % 2 == 0) 0x00FFE082 else 0x005CE1E6)
+            canvas.drawCircle(ox, oy, 4.5f * (1f - t * 0.35f), paint)
+        }
+    }
+
+    private fun drawSpeedLinesAndAfterimages(
+        canvas: Canvas,
+        w: Float,
+        h: Float,
+        baseX: Float,
+        baseY: Float,
+        dx: Float,
+        dy: Float,
+        petScale: Float,
+        t: Float
+    ) {
+        // 3 个残影（仅对默认及通用绘制做半透明光影替代，零重度性能损耗）
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        for (idx in 1..3) {
+            val trailFrac = idx * 0.24f
+            val tx = baseX + dx * (1f - trailFrac)
+            val ty = baseY + dy * (1f - trailFrac * 0.6f)
+            val alpha = ((1f - t) * (120 - idx * 28)).toInt().coerceIn(0, 120)
+            paint.color = (alpha shl 24) or 0x00F8D678
+            canvas.drawCircle(tx, ty, 20f * petScale * (1f - idx * 0.12f), paint)
+        }
+        // 高速气流线
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 3f
+        val lineAlpha = ((1f - t) * 185).toInt().coerceIn(0, 185)
+        paint.color = (lineAlpha shl 24) or 0x00FFFDF5
+        for (k in 0..2) {
+            val ly = baseY + (k - 1) * (h * 0.10f)
+            val startX = baseX + dx * 0.15f - k * 14f
+            val endX = startX + w * 0.18f
+            canvas.drawLine(startX, ly, endX, ly, paint)
+        }
+    }
+
+    private fun drawEnergyProjectile(canvas: Canvas, w: Float, h: Float, t: Float) {
+        val sx = w * 0.36f
+        val sy = h * 0.50f
+        val ex = w * 0.72f
+        val ey = h * 0.53f
+        val cx = w * 0.54f
+        val cy = h * 0.24f
+        val u = 1f - t
+        val px = u * u * sx + 2 * u * t * cx + t * t * ex
+        val py = u * u * sy + 2 * u * t * cy + t * t * ey
+
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        // 拖尾光球
+        for (tail in 1..4) {
+            val tt = (t - tail * 0.06f).coerceAtLeast(0f)
+            val tu = 1f - tt
+            val tx = tu * tu * sx + 2 * tu * tt * cx + tt * tt * ex
+            val ty = tu * tu * sy + 2 * tu * tt * cy + tt * tt * ey
+            paint.color = ((180 - tail * 36) shl 24) or 0x00FFD54F
+            canvas.drawCircle(tx, ty, (11f - tail * 1.8f), paint)
+        }
+        // 核心闪烁星光球
+        paint.color = 0x88FFF59D.toInt()
+        canvas.drawCircle(px, py, 16f, paint)
+        paint.color = Color.WHITE
+        drawFourPointStar(canvas, px, py, 13f, t * 180f, paint)
+    }
+
+    private fun drawSlimeMonster(
+        canvas: Canvas,
+        foeCx: Float,
+        foeCy: Float,
+        r: Float,
+        idleSec: Float,
+        elapsed: Float
+    ) {
+        val baseY = foeCy + r * 0.84f
+        val hpRatio = monsterHp.toFloat() / monsterMaxHp.toFloat()
+        val isDefeated = (monsterHp <= 0 && !busy) || (finishingBlow && elapsed >= 620f)
+
+        // 计算史莱姆 Q 弹缩放、旋转、受击位移与颤抖
+        var sx = 1f
+        var sy = 1f
+        var dx = 0f
+        var dy = 0f
+        var rot = 0f
+        var hitWhiteAlpha = 0
+        var isHitReact = false
+
+        when {
+            isDefeated -> {
+                // 被彻底击败：软趴趴摊成水洼
+                val settle = if (elapsed in 620f..1100f) {
+                    val dt = (elapsed - 620f) / 480f
+                    1f + 0.14f * sin(dt * PI * 3.0).toFloat() * (1f - dt)
+                } else 1f
+                sx = 1.46f * settle
+                sy = 0.42f / settle
+                dy = r * 0.04f
+            }
+            elapsed in 120f..499f -> {
+                // 看到主角蓄力冲刺：紧张发抖、微微后仰
+                val lt = (elapsed - 120f) / 380f
+                dx = sin(lt * PI * 10.0).toFloat() * 2.5f
+                sx = 0.96f
+                sy = 1.04f
+            }
+            elapsed in 500f..1160f -> {
+                // 命中后：先猛烈压扁回弹，再阻尼果冻晃动
+                isHitReact = true
+                val ht = (elapsed - 500f) / 660f
+                if (ht < 0.22f) {
+                    val p = ht / 0.22f
+                    sx = 1f + 0.44f * sin(p * PI * 0.5).toFloat()
+                    sy = 1f - 0.42f * sin(p * PI * 0.5).toFloat()
+                    dx = r * 0.22f * p
+                    rot = 14f * p
+                    hitWhiteAlpha = ((1f - p * 0.4f) * 180).toInt()
+                } else {
+                    val wt = (ht - 0.22f) / 0.78f
+                    val damp = (1f - wt) * (1f - wt)
+                    val osc = sin(wt * PI * 4.5).toFloat() * damp
+                    sx = 1f + 0.26f * osc
+                    sy = 1f - 0.24f * osc
+                    dx = r * 0.22f * (1f - wt)
+                    rot = 12f * osc
+                    hitWhiteAlpha = ((1f - wt * 2.2f).coerceAtLeast(0f) * 110).toInt()
+                }
+            }
+            else -> {
+                // Q 弹史莱姆待机：水滴形上下呼吸弹跳
+                val phase = idleSec * 3.6f
+                val bounce = sin(phase)
+                sx = 1f - 0.07f * bounce
+                sy = 1f + 0.08f * bounce
+                if (monsterHp == 1 && monsterMaxHp > 1) {
+                    // 残血微微发抖
+                    dx = sin(idleSec * 28f) * 2.2f
+                }
             }
         }
-        canvas.save()
-        canvas.rotate(foeRot, foeCx, foeCy)
-        val r = min(w, h) * 0.25f
 
-        // 地面阴影
+        // 地面半透明小水滴（史莱姆身旁晃动的小分身凝胶滴）
         monsterPaint.reset()
         monsterPaint.isAntiAlias = true
         monsterPaint.style = Paint.Style.FILL
-        monsterPaint.color = 0xFFE3DDD0.toInt()
-        canvas.drawOval(foeCx - r * 0.95f, foeCy + r * 0.78f, foeCx + r * 0.95f, foeCy + r * 1.12f, monsterPaint)
+        val dropBob = sin(idleSec * 3.2f) * 3.5f
+        monsterPaint.color = 0xAA4BE3D0.toInt()
+        canvas.drawCircle(foeCx - r * 1.12f + dx * 0.3f, baseY - r * 0.14f - dropBob, r * 0.13f, monsterPaint)
+        canvas.drawCircle(foeCx + r * 1.06f + dx * 0.3f, baseY - r * 0.10f + dropBob * 0.7f, r * 0.10f, monsterPaint)
 
-        // 小短脚
-        monsterPaint.color = 0xFF476C4F.toInt()
-        canvas.drawOval(foeCx - r * 0.62f, foeCy + r * 0.62f, foeCx - r * 0.18f, foeCy + r * 0.96f, monsterPaint)
-        canvas.drawOval(foeCx + r * 0.18f, foeCy + r * 0.62f, foeCx + r * 0.62f, foeCy + r * 0.96f, monsterPaint)
+        canvas.save()
+        canvas.translate(foeCx + dx, baseY + dy)
+        canvas.rotate(rot, 0f, -r * 0.35f)
+        canvas.scale(sx, sy, 0f, 0f)
 
-        // 头顶一对小歪角
-        monsterPaint.color = 0xFFF3B749.toInt()
-        val leftHorn = Path().apply {
-            moveTo(foeCx - r * 0.55f, foeCy - r * 0.55f)
-            lineTo(foeCx - r * 0.78f, foeCy - r * 1.05f)
-            lineTo(foeCx - r * 0.22f, foeCy - r * 0.72f)
+        // 1. 史莱姆经典水滴尖顶轮廓（底部坐标 y=0）
+        val tipSway = sin(idleSec * 4.2f) * r * 0.06f
+        val bodyPath = Path().apply {
+            moveTo(tipSway, -r * 1.82f)
+            // 右侧上弧 -> 饱满右颊 -> 贴地右底
+            cubicTo(
+                r * 0.18f, -r * 1.46f,
+                r * 1.06f, -r * 1.12f,
+                r * 1.05f, -r * 0.42f
+            )
+            cubicTo(
+                r * 1.05f, -r * 0.02f,
+                r * 0.68f, 0f,
+                0f, 0f
+            )
+            // 左侧贴地 -> 饱满左颊 -> 回到顶部水滴尖
+            cubicTo(
+                -r * 0.68f, 0f,
+                -r * 1.05f, -r * 0.02f,
+                -r * 1.05f, -r * 0.42f
+            )
+            cubicTo(
+                -r * 1.06f, -r * 1.12f,
+                -r * 0.18f, -r * 1.46f,
+                tipSway, -r * 1.82f
+            )
             close()
         }
-        val rightHorn = Path().apply {
-            moveTo(foeCx + r * 0.55f, foeCy - r * 0.55f)
-            lineTo(foeCx + r * 0.78f, foeCy - r * 1.05f)
-            lineTo(foeCx + r * 0.22f, foeCy - r * 0.72f)
-            close()
-        }
-        canvas.drawPath(leftHorn, monsterPaint)
-        canvas.drawPath(rightHorn, monsterPaint)
 
-        // 身体（糖霜渐变）
+        // 果冻渐变填充（残血略偏蓝紫，平时亮薄荷青）
+        val topCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFFE8E6FF.toInt() else 0xFFD9FFF9.toInt()
+        val midCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFF7FA8F8.toInt() else 0xFF54DEC9.toInt()
+        val deepCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFF3E61B8.toInt() else 0xFF1D949E.toInt()
+
         monsterPaint.shader = RadialGradient(
-            foeCx - r * 0.28f, foeCy - r * 0.35f, r * 1.35f,
-            intArrayOf(0xFFA7D3AD.toInt(), 0xFF6B9E74.toInt(), 0xFF487350.toInt()),
-            floatArrayOf(0f, 0.58f, 1f),
+            -r * 0.25f, -r * 1.05f, r * 1.65f,
+            intArrayOf(topCol, midCol, deepCol),
+            floatArrayOf(0f, 0.56f, 1f),
             Shader.TileMode.CLAMP
         )
-        canvas.drawOval(foeCx - r, foeCy - r * 0.82f, foeCx + r, foeCy + r * 0.84f, monsterPaint)
+        canvas.drawPath(bodyPath, monsterPaint)
         monsterPaint.shader = null
 
-        // 身体描边
-        monsterPaint.style = Paint.Style.STROKE
-        monsterPaint.strokeWidth = 3f
-        monsterPaint.color = 0xFF34563B.toInt()
-        canvas.drawOval(foeCx - r, foeCy - r * 0.82f, foeCx + r, foeCy + r * 0.84f, monsterPaint)
+        // 体内半透明上升气泡
+        monsterPaint.color = 0x55FFFFFF
+        val bShift = (idleSec * 18f) % (r * 0.5f)
+        canvas.drawCircle(r * 0.48f, -r * 0.34f - bShift * 0.5f, r * 0.09f, monsterPaint)
+        canvas.drawCircle(-r * 0.52f, -r * 0.58f + bShift * 0.3f, r * 0.06f, monsterPaint)
+        canvas.drawCircle(r * 0.15f, -r * 1.18f, r * 0.055f, monsterPaint)
 
-        // 小手臂
-        monsterPaint.style = Paint.Style.FILL
-        monsterPaint.color = 0xFF5D8F66.toInt()
-        canvas.drawOval(foeCx - r * 1.18f, foeCy - r * 0.05f, foeCx - r * 0.82f, foeCy + r * 0.32f, monsterPaint)
-        canvas.drawOval(foeCx + r * 0.82f, foeCy - r * 0.05f, foeCx + r * 1.18f, foeCy + r * 0.32f, monsterPaint)
-
-        // 浅色肚皮
-        monsterPaint.color = 0xFFE6F3E8.toInt()
-        canvas.drawOval(foeCx - r * 0.62f, foeCy + r * 0.08f, foeCx + r * 0.62f, foeCy + r * 0.74f, monsterPaint)
-
-        // 眼白与黑眼珠
-        monsterPaint.color = Color.WHITE
-        canvas.drawCircle(foeCx - r * 0.34f, foeCy - r * 0.24f, r * 0.21f, monsterPaint)
-        canvas.drawCircle(foeCx + r * 0.34f, foeCy - r * 0.24f, r * 0.21f, monsterPaint)
-        monsterPaint.color = 0xFF22301F.toInt()
-        canvas.drawCircle(foeCx - r * 0.32f, foeCy - r * 0.22f, r * 0.11f, monsterPaint)
-        canvas.drawCircle(foeCx + r * 0.32f, foeCy - r * 0.22f, r * 0.11f, monsterPaint)
-        monsterPaint.color = Color.WHITE
-        canvas.drawCircle(foeCx - r * 0.36f, foeCy - r * 0.26f, r * 0.04f, monsterPaint)
-        canvas.drawCircle(foeCx + r * 0.28f, foeCy - r * 0.26f, r * 0.04f, monsterPaint)
-
-        // 搞怪八字眉
-        monsterPaint.style = Paint.Style.STROKE
-        monsterPaint.strokeWidth = 4.5f
-        monsterPaint.strokeCap = Paint.Cap.ROUND
-        monsterPaint.color = 0xFF22301F.toInt()
-        canvas.drawLine(foeCx - r * 0.56f, foeCy - r * 0.50f, foeCx - r * 0.16f, foeCy - r * 0.38f, monsterPaint)
-        canvas.drawLine(foeCx + r * 0.56f, foeCy - r * 0.50f, foeCx + r * 0.16f, foeCy - r * 0.38f, monsterPaint)
-
-        // 腮红
-        monsterPaint.style = Paint.Style.FILL
-        monsterPaint.color = 0x66F28B82
-        canvas.drawOval(foeCx - r * 0.72f, foeCy - r * 0.06f, foeCx - r * 0.45f, foeCy + r * 0.10f, monsterPaint)
-        canvas.drawOval(foeCx + r * 0.45f, foeCy - r * 0.06f, foeCx + r * 0.72f, foeCy + r * 0.10f, monsterPaint)
-
-        // 搞怪大嘴 + 两颗小虎牙
-        monsterPaint.style = Paint.Style.STROKE
-        monsterPaint.strokeWidth = 3.8f
-        monsterPaint.color = 0xFF22301F.toInt()
-        val mouth = Path().apply {
-            moveTo(foeCx - r * 0.36f, foeCy + r * 0.24f)
-            quadTo(foeCx, foeCy + r * 0.48f, foeCx + r * 0.36f, foeCy + r * 0.24f)
-        }
-        canvas.drawPath(mouth, monsterPaint)
-
-        monsterPaint.style = Paint.Style.FILL
-        monsterPaint.color = Color.WHITE
-        val fangL = Path().apply {
-            moveTo(foeCx - r * 0.24f, foeCy + r * 0.29f)
-            lineTo(foeCx - r * 0.18f, foeCy + r * 0.43f)
-            lineTo(foeCx - r * 0.11f, foeCy + r * 0.32f)
+        // 果冻左上角弯月高光
+        monsterPaint.color = 0xA8FFFFFF.toInt()
+        val shine = Path().apply {
+            moveTo(-r * 0.58f, -r * 0.88f)
+            quadTo(-r * 0.42f, -r * 1.24f, -r * 0.16f, -r * 1.32f)
+            quadTo(-r * 0.34f, -r * 1.06f, -r * 0.42f, -r * 0.80f)
             close()
         }
-        val fangR = Path().apply {
-            moveTo(foeCx + r * 0.11f, foeCy + r * 0.32f)
-            lineTo(foeCx + r * 0.18f, foeCy + r * 0.43f)
-            lineTo(foeCx + r * 0.24f, foeCy + r * 0.29f)
-            close()
+        canvas.drawPath(shine, monsterPaint)
+        canvas.drawCircle(-r * 0.62f, -r * 0.68f, r * 0.065f, monsterPaint)
+
+        // 外圈果冻描边
+        monsterPaint.style = Paint.Style.STROKE
+        monsterPaint.strokeWidth = 3.2f
+        monsterPaint.color = 0xFF146572.toInt()
+        canvas.drawPath(bodyPath, monsterPaint)
+
+        // 命中瞬间闪白遮罩
+        if (hitWhiteAlpha > 0) {
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = (hitWhiteAlpha shl 24) or 0x00FFFFFF
+            canvas.drawPath(bodyPath, monsterPaint)
         }
-        canvas.drawPath(fangL, monsterPaint)
-        canvas.drawPath(fangR, monsterPaint)
+
+        // 2. 史莱姆表情（相对于身体锚点）
+        val faceY = -r * 0.64f
+        monsterPaint.style = Paint.Style.FILL
+        monsterPaint.color = 0x66FF85A1
+        canvas.drawOval(-r * 0.68f, faceY + r * 0.06f, -r * 0.42f, faceY + r * 0.20f, monsterPaint)
+        canvas.drawOval(r * 0.42f, faceY + r * 0.06f, r * 0.68f, faceY + r * 0.20f, monsterPaint)
+
+        if (isDefeated) {
+            // 晕倒 × × 眼
+            monsterPaint.style = Paint.Style.STROKE
+            monsterPaint.strokeWidth = 4f
+            monsterPaint.strokeCap = Paint.Cap.ROUND
+            monsterPaint.color = 0xFF0E3942.toInt()
+            for (side in intArrayOf(-1, 1)) {
+                val ex = side * r * 0.32f
+                val ey = faceY - r * 0.08f
+                val d = r * 0.11f
+                canvas.drawLine(ex - d, ey - d, ex + d, ey + d, monsterPaint)
+                canvas.drawLine(ex + d, ey - d, ex - d, ey + d, monsterPaint)
+            }
+            // 波浪晕嘴
+            val mouth = Path().apply {
+                moveTo(-r * 0.20f, faceY + r * 0.18f)
+                quadTo(-r * 0.08f, faceY + r * 0.08f, 0f, faceY + r * 0.18f)
+                quadTo(r * 0.08f, faceY + r * 0.28f, r * 0.20f, faceY + r * 0.18f)
+            }
+            canvas.drawPath(mouth, monsterPaint)
+        } else if (isHitReact) {
+            // > < 委屈挤眼 + O 形惊讶嘴
+            monsterPaint.style = Paint.Style.STROKE
+            monsterPaint.strokeWidth = 4.2f
+            monsterPaint.strokeCap = Paint.Cap.ROUND
+            monsterPaint.color = 0xFF0E3942.toInt()
+            val ey = faceY - r * 0.06f
+            // 左 >
+            canvas.drawLine(-r * 0.44f, ey - r * 0.11f, -r * 0.24f, ey, monsterPaint)
+            canvas.drawLine(-r * 0.44f, ey + r * 0.11f, -r * 0.24f, ey, monsterPaint)
+            // 右 <
+            canvas.drawLine(r * 0.44f, ey - r * 0.11f, r * 0.24f, ey, monsterPaint)
+            canvas.drawLine(r * 0.44f, ey + r * 0.11f, r * 0.24f, ey, monsterPaint)
+            // 惊讶 O 嘴
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFF144954.toInt()
+            canvas.drawOval(-r * 0.12f, faceY + r * 0.06f, r * 0.12f, faceY + r * 0.28f, monsterPaint)
+        } else {
+            // 水汪汪黑亮大眼（每 ~3 秒眨眼一次）
+            val blinkPhase = idleSec % 3.2f
+            val blinking = blinkPhase > 3.04f
+            val ey = faceY - r * 0.08f
+            if (blinking) {
+                monsterPaint.style = Paint.Style.STROKE
+                monsterPaint.strokeWidth = 4f
+                monsterPaint.strokeCap = Paint.Cap.ROUND
+                monsterPaint.color = 0xFF0E3942.toInt()
+                canvas.drawLine(-r * 0.44f, ey, -r * 0.20f, ey, monsterPaint)
+                canvas.drawLine(r * 0.20f, ey, r * 0.44f, ey, monsterPaint)
+            } else {
+                monsterPaint.style = Paint.Style.FILL
+                monsterPaint.color = 0xFF0E3942.toInt()
+                canvas.drawOval(-r * 0.42f, ey - r * 0.18f, -r * 0.20f, ey + r * 0.12f, monsterPaint)
+                canvas.drawOval(r * 0.20f, ey - r * 0.18f, r * 0.42f, ey + r * 0.12f, monsterPaint)
+                monsterPaint.color = Color.WHITE
+                canvas.drawCircle(-r * 0.34f, ey - r * 0.07f, r * 0.065f, monsterPaint)
+                canvas.drawCircle(r * 0.28f, ey - r * 0.07f, r * 0.065f, monsterPaint)
+                canvas.drawCircle(-r * 0.26f, ey + r * 0.04f, r * 0.03f, monsterPaint)
+                canvas.drawCircle(r * 0.36f, ey + r * 0.04f, r * 0.03f, monsterPaint)
+            }
+
+            // 受伤贴纸：HP < MaxHP 时右颊多贴一块可爱创可贴
+            if (monsterHp < monsterMaxHp) {
+                canvas.save()
+                canvas.translate(r * 0.48f, -r * 1.02f)
+                canvas.rotate(-22f)
+                monsterPaint.style = Paint.Style.FILL
+                monsterPaint.color = 0xFFFFE4B5.toInt()
+                canvas.drawRoundRect(-r * 0.18f, -r * 0.08f, r * 0.18f, r * 0.08f, 4f, 4f, monsterPaint)
+                monsterPaint.color = 0xFFF3B773.toInt()
+                canvas.drawRect(-r * 0.06f, -r * 0.06f, r * 0.06f, r * 0.06f, monsterPaint)
+                canvas.restore()
+            }
+
+            // 搞怪小嘴：满血俏皮 w 嘴，受伤委屈波浪嘴
+            monsterPaint.style = Paint.Style.STROKE
+            monsterPaint.strokeWidth = 3.6f
+            monsterPaint.strokeCap = Paint.Cap.ROUND
+            monsterPaint.color = 0xFF0E3942.toInt()
+            val mouth = Path()
+            if (monsterHp < monsterMaxHp) {
+                mouth.moveTo(-r * 0.22f, faceY + r * 0.22f)
+                mouth.quadTo(0f, faceY + r * 0.08f, r * 0.22f, faceY + r * 0.22f)
+            } else {
+                mouth.moveTo(-r * 0.24f, faceY + r * 0.12f)
+                mouth.quadTo(-r * 0.12f, faceY + r * 0.26f, 0f, faceY + r * 0.14f)
+                mouth.quadTo(r * 0.12f, faceY + r * 0.26f, r * 0.24f, faceY + r * 0.12f)
+            }
+            canvas.drawPath(mouth, monsterPaint)
+        }
 
         canvas.restore()
 
-        // 3. 金色能量弧 (300..900ms)
-        if (elapsed in 300f..900f) {
-            val t = (elapsed - 300f) / 600f
-            val alpha = ((if (t < 0.35f) t / 0.35f else 1f - (t - 0.35f) / 0.65f) * 255).toInt().coerceIn(0, 255)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 8f
-            paint.strokeCap = Paint.Cap.ROUND
-            paint.color = (alpha shl 24) or 0x00F0C24B
-            val bolt = Path().apply {
-                moveTo(w * 0.36f, h * 0.54f)
-                quadTo(w * 0.52f, h * 0.25f, w * 0.68f, h * 0.48f)
+        // 战败或残血头顶绕圈晕眩金星
+        if (isDefeated || (monsterHp == 1 && monsterMaxHp > 1 && !busy)) {
+            paint.reset()
+            paint.isAntiAlias = true
+            paint.style = Paint.Style.FILL
+            val orbitY = if (isDefeated) baseY - r * 1.05f else baseY - r * 1.98f
+            for (s in 0 until 3) {
+                val a = idleSec * 4.2f + s * (2f * PI.toFloat() / 3f)
+                val sxPos = foeCx + cos(a) * (r * 0.65f)
+                val syPos = orbitY + sin(a) * (r * 0.16f)
+                paint.color = 0xFFF5B727.toInt()
+                drawFourPointStar(canvas, sxPos, syPos, 7.5f, idleSec * 90f + s * 40f, paint)
             }
-            canvas.drawPath(bolt, paint)
+        }
+    }
+
+    private fun drawImpactBurst(canvas: Canvas, cx: Float, cy: Float, r: Float, t: Float) {
+        paint.reset()
+        paint.isAntiAlias = true
+        val fade = (1f - t).coerceIn(0f, 1f)
+
+        // 双层扩散冲击圆环
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 6f * fade + 1.5f
+        paint.color = ((fade * 220).toInt().coerceIn(0, 220) shl 24) or 0x00FFD54F
+        canvas.drawCircle(cx, cy, r * (0.35f + 1.25f * t), paint)
+
+        if (t > 0.15f) {
+            val t2 = ((t - 0.15f) / 0.85f).coerceIn(0f, 1f)
+            val f2 = 1f - t2
+            paint.strokeWidth = 4.5f * f2 + 1f
+            paint.color = ((f2 * 190).toInt().coerceIn(0, 190) shl 24) or 0x004BE3D0
+            canvas.drawCircle(cx, cy, r * (0.25f + 1.35f * t2), paint)
         }
 
-        // 4. "元气!" 与 "⭐" 飘字 (500..1400ms)
-        if (elapsed in 500f..1300f) {
-            val t = (elapsed - 500f) / 800f
-            val alpha = ((if (t < 0.4f) t / 0.4f else 1f - (t - 0.4f) / 0.6f) * 255).toInt().coerceIn(0, 255)
+        // 放射状漫画打击线
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = 4f * fade
+        paint.color = ((fade * 240).toInt().coerceIn(0, 240) shl 24) or 0x00FFFFFF
+        for (i in 0 until 8) {
+            val a = i * (PI / 4.0) + 0.2
+            val inner = r * (0.25f + 0.55f * t)
+            val outer = r * (0.60f + 0.95f * t)
+            canvas.drawLine(
+                cx + (cos(a) * inner).toFloat(),
+                cy + (sin(a) * inner).toFloat(),
+                cx + (cos(a) * outer).toFloat(),
+                cy + (sin(a) * outer).toFloat(),
+                paint
+            )
+        }
+
+        // 中心高光十字闪星
+        if (t < 0.45f) {
+            val sf = 1f - t / 0.45f
+            paint.style = Paint.Style.FILL
+            paint.color = ((sf * 255).toInt().coerceIn(0, 255) shl 24) or 0x00FFFDE7
+            drawFourPointStar(canvas, cx, cy, r * (0.75f * sin(sf * PI * 0.5).toFloat()), t * 140f, paint)
+        }
+    }
+
+    private fun drawParticles(canvas: Canvas, w: Float, h: Float, elapsed: Float) {
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        for (p in particles) {
+            if (elapsed < p.bornMs || elapsed > p.bornMs + p.lifeMs) continue
+            val t = (elapsed - p.bornMs) / p.lifeMs
+            val dtSec = (elapsed - p.bornMs) / 1000f
+            val px = w * p.originRelX + p.vx * dtSec
+            val py = h * p.originRelY + p.vy * dtSec + 0.5f * p.gravity * dtSec * dtSec
+            val alpha = ((1f - t * t) * 245).toInt().coerceIn(0, 245)
+            paint.color = (alpha shl 24) or (p.color and 0x00FFFFFF)
+            when (p.kind) {
+                2 -> drawFourPointStar(canvas, px, py, p.size * (1f - t * 0.35f), t * 240f, paint)
+                1 -> canvas.drawOval(px - p.size * 0.6f, py - p.size * 0.8f, px + p.size * 0.6f, py + p.size * 0.8f, paint)
+                else -> canvas.drawCircle(px, py, p.size * (1f - t * 0.45f), paint)
+            }
+        }
+    }
+
+    private fun drawFloatingCombatText(canvas: Canvas, cx: Float, baseY: Float, elapsed: Float) {
+        val t = ((elapsed - 540f) / 940f).coerceIn(0f, 1f)
+        val alpha = ((if (t < 0.25f) t / 0.25f else 1f - (t - 0.25f) / 0.75f) * 255).toInt().coerceIn(0, 255)
+        val popScale = if (t < 0.22f) {
+            0.7f + 0.55f * sin((t / 0.22f) * PI * 0.5).toFloat()
+        } else {
+            1.25f - 0.22f * ((t - 0.22f) / 0.78f).coerceIn(0f, 1f)
+        }
+        val label = if (finishingBlow) "KO! 暴击!" else "元气暴击!"
+        val yPos = baseY - t * 34f
+
+        canvas.save()
+        canvas.translate(cx, yPos)
+        canvas.scale(popScale, popScale)
+
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 34f
+        paint.isFakeBoldText = true
+
+        // 描边
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 6.5f
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.color = (alpha shl 24) or 0x003D2516
+        canvas.drawText(label, 0f, 0f, paint)
+
+        // 亮色填充
+        paint.style = Paint.Style.FILL
+        paint.color = (alpha shl 24) or (if (finishingBlow) 0x00FFD54F else 0x00FF7043)
+        canvas.drawText(label, 0f, 0f, paint)
+
+        canvas.restore()
+
+        if (elapsed in 680f..1460f) {
+            val st = (elapsed - 680f) / 780f
+            val sAlpha = ((if (st < 0.35f) st / 0.35f else 1f - (st - 0.35f) / 0.65f) * 255).toInt().coerceIn(0, 255)
+            paint.reset()
+            paint.isAntiAlias = true
             paint.style = Paint.Style.FILL
             paint.textAlign = Paint.Align.CENTER
-            paint.textSize = 36f
-            paint.color = (alpha shl 24) or 0x00D9534F
-            canvas.drawText("元气!", foeCx, foeCy - r - t * 36f, paint)
+            paint.textSize = 28f
+            paint.color = (sAlpha shl 24) or 0x00F6A821
+            canvas.drawText("⭐", cx + 48f, baseY - st * 42f, paint)
+            if (finishingBlow) {
+                canvas.drawText("✨", cx - 50f, baseY + 10f - st * 48f, paint)
+            }
         }
-        if (elapsed in 700f..1300f) {
-            val t = (elapsed - 700f) / 600f
-            val alpha = ((if (t < 0.45f) t / 0.45f else 1f - (t - 0.45f) / 0.55f) * 255).toInt().coerceIn(0, 255)
-            paint.style = Paint.Style.FILL
-            paint.textAlign = Paint.Align.CENTER
-            paint.textSize = 34f
-            paint.color = (alpha shl 24) or 0x00F0A500
-            canvas.drawText("⭐", foeCx + r * 0.7f, foeCy - r * 0.4f - t * 28f, paint)
+    }
+
+    private fun drawFourPointStar(canvas: Canvas, cx: Float, cy: Float, radius: Float, deg: Float, p: Paint) {
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.rotate(deg)
+        val inner = radius * 0.34f
+        val path = Path().apply {
+            moveTo(0f, -radius)
+            lineTo(inner, -inner)
+            lineTo(radius, 0f)
+            lineTo(inner, inner)
+            lineTo(0f, radius)
+            lineTo(-inner, inner)
+            lineTo(-radius, 0f)
+            lineTo(-inner, -inner)
+            close()
         }
+        canvas.drawPath(path, p)
+        canvas.restore()
     }
 }

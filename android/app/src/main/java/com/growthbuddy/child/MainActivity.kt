@@ -300,11 +300,16 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnRunBattle.setOnClickListener {
             binding.tvBattleMsg.text = ""
+            binding.battleStageView.setMonsterHp(3, 3)
             binding.battleStageView.triggerAttack(
-                onHit = { sound.playFeed() },
+                isFinishingBlow = true,
+                onHit = {
+                    binding.battleStageView.setMonsterHp(0, 3)
+                    sound.playFeed()
+                },
                 onWin = {
                     sound.playWin()
-                    binding.tvBattleMsg.text = "拖延怪被击退啦！继续保持打卡节奏~"
+                    binding.tvBattleMsg.text = "拖延怪史莱姆被击退啦！继续保持打卡节奏~"
                 }
             )
         }

@@ -66,6 +66,7 @@ class AdventureActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         val speciesItem = intent.getSerializableExtra(EXTRA_SPECIES_ITEM) as? SpeciesItem
         binding.advBattleStage.setPet(speciesItem, petStage, petAsleep)
+        binding.advBattleStage.setMonsterHp(monsterHp, maxHp)
 
         binding.btnAdvExit.setOnClickListener { finish() }
         binding.btnOpt0.setOnClickListener { submitAnswer(0) }
@@ -244,11 +245,18 @@ class AdventureActivity : AppCompatActivity() {
         val q = questions[qIndex % questions.size]
         if (choiceIdx == q.answerIdx) {
             busy = true
-            binding.tvAdvStatus.text = "⚡ 答对了！小伙伴充能完毕，出猎一击！"
+            val isFatal = (monsterHp - 1) <= 0
+            binding.tvAdvStatus.text = "⚡ 答对了！小伙伴蓄力发动元气暴击！"
             binding.advBattleStage.triggerAttack(
-                onHit = { sound.playFeed() },
+                isFinishingBlow = isFatal,
+                onHit = {
+                    sound.playFeed()
+                    val previewHp = (monsterHp - 1).coerceAtLeast(0)
+                    binding.advBattleStage.setMonsterHp(previewHp, maxHp)
+                },
                 onWin = {
                     monsterHp = (monsterHp - 1).coerceAtLeast(0)
+                    binding.advBattleStage.setMonsterHp(monsterHp, maxHp)
                     binding.pbMonsterHp.progress = monsterHp
                     binding.tvAdvHp.text = "怪兽体力 $monsterHp/$maxHp"
                     busy = false
@@ -337,6 +345,7 @@ class AdventureActivity : AppCompatActivity() {
     private fun resetRound() {
         monsterHp = maxHp
         wrongCountInRound = 0
+        binding.advBattleStage.setMonsterHp(maxHp, maxHp)
         binding.pbMonsterHp.progress = maxHp
         binding.tvAdvHp.text = "怪兽体力 $maxHp/$maxHp"
         qIndex++
