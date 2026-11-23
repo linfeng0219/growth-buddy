@@ -548,3 +548,31 @@ func TestChangelogLatestDate(t *testing.T) {
 		t.Fatalf("expected newest changelog entry date 2026-11-23, got %+v", arr[0])
 	}
 }
+
+func TestCuratedBankIntegrity(t *testing.T) {
+	seenIDs := map[string]bool{}
+	seenQs := map[string]bool{}
+	for _, q := range onlineCuratedBank {
+		if q.ID == "" || seenIDs[q.ID] {
+			t.Fatalf("invalid or duplicate ID: %q", q.ID)
+		}
+		seenIDs[q.ID] = true
+		if q.Question == "" || seenQs[q.Question] {
+			t.Fatalf("empty or duplicate question for %s: %q", q.ID, q.Question)
+		}
+		seenQs[q.Question] = true
+		if len(q.Options) < 2 || q.AnswerIdx < 0 || q.AnswerIdx >= len(q.Options) {
+			t.Fatalf("invalid options/answer for %s", q.ID)
+		}
+		optSet := map[string]bool{}
+		for _, o := range q.Options {
+			if o == "" || optSet[o] {
+				t.Fatalf("duplicate/empty option in %s: %+v", q.ID, q.Options)
+			}
+			optSet[o] = true
+		}
+	}
+	if len(onlineCuratedBank) < 140 {
+		t.Fatalf("expected expanded curated bank >= 140 questions, got %d", len(onlineCuratedBank))
+	}
+}
