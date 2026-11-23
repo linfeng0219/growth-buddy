@@ -32,6 +32,12 @@
   .tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:500}
   .tag.amber{background:var(--amber-soft);color:#9f5c13}
   .tag.gray{background:#f1ece2;color:var(--muted)}
+  .quick-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .qchip{
+    border:1px solid #d5e2d9;background:#f5faf7;color:var(--accent);border-radius:999px;
+    padding:2px 9px;font-size:11.5px;cursor:pointer;line-height:1.5;font-weight:500;
+  }
+  .qchip:hover{background:#e4f1e9;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -108,7 +114,15 @@
           <label>版本号（默认自动使用当前/文件编译时间，如 2026.11.20-1710）</label>
           <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.20-1710">
         </div>
-        <div class="field"><label>更新日志（会直接展示在 App 升级弹窗中）</label><textarea id="relNotes" rows="2" placeholder="例如：优化跳绳防漏计与界面流畅度"></textarea></div>
+        <div class="field">
+          <label>更新日志（会直接展示在 App 升级弹窗中）</label>
+          <textarea id="relNotes" rows="2" placeholder="例如：优化跳绳防漏计与界面流畅度"></textarea>
+          <div class="quick-chips">
+            <button type="button" class="qchip" data-qtarget="relNotes" data-qval="常规体验优化与已知问题修复">常规优化与修复</button>
+            <button type="button" class="qchip" data-qtarget="relNotes" data-qval="新增在线趣味题库与战斗动画升级">题库与战斗升级</button>
+            <button type="button" class="qchip" data-qtarget="relNotes" data-qval="界面交互优化与稳定性提升">交互与稳定性提升</button>
+          </div>
+        </div>
         <div class="row2">
           <div class="field"><label>方式一：直接上传 .apk 安装包（推荐，最大 150 MB）</label><input type="file" id="relApkFile" accept=".apk"></div>
           <div class="field"><label>方式二：或填写外部 APK 直链（不上传文件时生效）</label><input type="text" id="relExtUrl" placeholder="https://..."></div>
@@ -139,15 +153,44 @@
   <div class="modal-card" style="text-align:left;max-width:460px">
     <h3 style="font-family:var(--serif);margin-bottom:8px">新建家庭（含初始家长与儿童账号）</h3>
     <div class="row2">
-      <div class="field"><label>家庭名称</label><input type="text" id="nfName" placeholder="如：林家小院"></div>
-      <div class="field"><label>家长称呼</label><input type="text" id="nfDisplay" placeholder="如：妈妈"></div>
+      <div class="field">
+        <label>家庭名称</label>
+        <input type="text" id="nfName" placeholder="如：林家小院">
+        <div class="quick-chips">
+          <button type="button" class="qchip" data-qtarget="nfName" data-qval="林家小院">林家小院</button>
+          <button type="button" class="qchip" data-qtarget="nfName" data-qval="幸福小家">幸福小家</button>
+          <button type="button" class="qchip" data-qtarget="nfName" data-qval="快乐星球">快乐星球</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>家长称呼（可直接选择）</label>
+        <select id="nfDisplaySel">
+          <option value="妈妈" selected>妈妈</option>
+          <option value="爸爸">爸爸</option>
+          <option value="爷爷">爷爷</option>
+          <option value="奶奶">奶奶</option>
+          <option value="外公">外公</option>
+          <option value="外婆">外婆</option>
+          <option value="家长">家长</option>
+          <option value="__custom__">✏️ 其他自定义...</option>
+        </select>
+        <input type="text" id="nfDisplay" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+      </div>
     </div>
     <div class="row2">
       <div class="field"><label>家长登录账号</label><input type="text" id="nfUser" placeholder="至少3位"></div>
       <div class="field"><label>家长登录密码</label><input type="password" id="nfPass" placeholder="至少4位"></div>
     </div>
     <div class="row2">
-      <div class="field"><label>首位儿童昵称</label><input type="text" id="nfChildName" placeholder="如：大宝"></div>
+      <div class="field">
+        <label>首位儿童昵称</label>
+        <input type="text" id="nfChildName" placeholder="如：大宝">
+        <div class="quick-chips">
+          <button type="button" class="qchip" data-qtarget="nfChildName" data-qval="大宝">大宝</button>
+          <button type="button" class="qchip" data-qtarget="nfChildName" data-qval="二宝">二宝</button>
+          <button type="button" class="qchip" data-qtarget="nfChildName" data-qval="小宝">小宝</button>
+        </div>
+      </div>
       <div class="field"><label>儿童登录账号（推荐）</label><input type="text" id="nfChildUser" placeholder="如 dabao01"></div>
     </div>
     <div class="field"><label>儿童登录密码（填账号时必填，至少4位）</label><input type="password" id="nfChildPass" placeholder="给孩子在 App 登录用"></div>
@@ -164,7 +207,20 @@
   <div class="modal-card" style="text-align:left;max-width:420px">
     <h3 id="pmTitle" style="font-family:var(--serif);margin-bottom:8px">家长账号</h3>
     <div class="field"><label>家长账号（至少3位）</label><input type="text" id="pmUser"></div>
-    <div class="field"><label>家长称呼</label><input type="text" id="pmDisplay"></div>
+    <div class="field">
+      <label>家长称呼（可直接选择）</label>
+      <select id="pmDisplaySel">
+        <option value="妈妈">妈妈</option>
+        <option value="爸爸">爸爸</option>
+        <option value="爷爷">爷爷</option>
+        <option value="奶奶">奶奶</option>
+        <option value="外公">外公</option>
+        <option value="外婆">外婆</option>
+        <option value="家长">家长</option>
+        <option value="__custom__">✏️ 其他自定义...</option>
+      </select>
+      <input type="text" id="pmDisplay" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+    </div>
     <div class="field"><label id="pmPassLabel">登录密码（留空表示不修改）</label><input type="password" id="pmPass" placeholder="至少4位"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="primary" id="btnSaveParent" style="flex:1">保存</button>
@@ -396,9 +452,40 @@
   $id("searchInput").addEventListener("input",renderFamilies);
   $id("btnRefresh").addEventListener("click",loadOverview);
 
+  function bindRolePicker(selId, inpId){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel||!inp) return;
+    sel.addEventListener("change",function(){
+      inp.style.display=(sel.value==="__custom__")?"block":"none";
+      if(sel.value==="__custom__") inp.focus();
+    });
+  }
+  function setRolePicker(selId, inpId, val, defRole){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel) return;
+    var v=(val||"").trim()||(defRole||"妈妈");
+    var hasPreset=Array.from(sel.options).some(function(o){return o.value===v&&o.value!=="__custom__";});
+    if(hasPreset){sel.value=v;if(inp){inp.value="";inp.style.display="none";}}
+    else{sel.value="__custom__";if(inp){inp.value=v;inp.style.display="block";}}
+  }
+  function readRolePicker(selId, inpId){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel) return inp?inp.value.trim():"";
+    return (sel.value==="__custom__")?(inp?inp.value.trim():""):sel.value;
+  }
+  bindRolePicker("nfDisplaySel","nfDisplay");
+  bindRolePicker("pmDisplaySel","pmDisplay");
+  document.addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest(".qchip"):null;
+    if(!b) return;
+    var tId=b.getAttribute("data-qtarget");
+    if(tId&&$id(tId)) $id(tId).value=b.getAttribute("data-qval")||"";
+  });
+
   /* 新建家庭 */
   $id("btnNewFamily").addEventListener("click",function(){
     ["nfName","nfDisplay","nfUser","nfPass","nfChildName","nfChildUser","nfChildPass"].forEach(function(k){$id(k).value="";});
+    setRolePicker("nfDisplaySel","nfDisplay","妈妈","妈妈");
     $id("nfMsg").textContent="";
     $id("newFamilyModal").classList.add("show");
   });
@@ -409,7 +496,7 @@
         method:"POST",
         body:JSON.stringify({
           familyName:$id("nfName").value.trim(),
-          displayName:$id("nfDisplay").value.trim(),
+          displayName:readRolePicker("nfDisplaySel","nfDisplay"),
           username:$id("nfUser").value.trim(),
           password:$id("nfPass").value,
           childName:$id("nfChildName").value.trim(),
@@ -429,7 +516,7 @@
     $id("pmTitle").textContent=mode==="create"?"添加家庭家长":"编辑家长账号";
     $id("pmPassLabel").textContent=mode==="create"?"登录密码（至少4位）":"重置密码（留空则不修改）";
     $id("pmUser").value=parent?parent.username:"";
-    $id("pmDisplay").value=parent?parent.display_name:"";
+    setRolePicker("pmDisplaySel","pmDisplay",parent?parent.display_name:"","妈妈");
     $id("pmPass").value="";
     $id("pmMsg").textContent="";
     $id("parentModal").classList.add("show");
@@ -438,13 +525,14 @@
   $id("btnSaveParent").addEventListener("click",async function(){
     if(!parentCtx) return;
     try{
+      var dn=readRolePicker("pmDisplaySel","pmDisplay");
       if(parentCtx.mode==="create"){
         await api("/api/admin/parents",{
           method:"POST",
-          body:JSON.stringify({familyId:parentCtx.familyId,username:$id("pmUser").value.trim(),displayName:$id("pmDisplay").value.trim(),password:$id("pmPass").value})
+          body:JSON.stringify({familyId:parentCtx.familyId,username:$id("pmUser").value.trim(),displayName:dn,password:$id("pmPass").value})
         });
       }else{
-        var payload={username:$id("pmUser").value.trim(),displayName:$id("pmDisplay").value.trim()};
+        var payload={username:$id("pmUser").value.trim(),displayName:dn};
         if($id("pmPass").value!=="") payload.password=$id("pmPass").value;
         await api("/api/admin/parents/"+parentCtx.parent.id,{method:"PATCH",body:JSON.stringify(payload)});
       }

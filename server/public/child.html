@@ -73,6 +73,12 @@
 
   .battle-box{display:none;margin-top:14px;border:1px dashed var(--hair-2);border-radius:16px;background:linear-gradient(180deg,#fdfaf4 0%,#f5efe3 100%);padding:12px 14px;text-align:center}
   .battle-box.show{display:block}
+  .quick-chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-top:6px}
+  .qchip{
+    border:1px solid #d5e2d9;background:#f5faf7;color:var(--accent);border-radius:999px;
+    padding:2px 9px;font-size:11.5px;cursor:pointer;line-height:1.5;font-weight:500;
+  }
+  .qchip:hover{background:#e4f1e9;border-color:var(--accent)}
   .battle-stage{position:relative;height:132px;overflow:hidden}
   .b-fighter{position:absolute;left:14%;top:54%;transform:translateY(-50%);width:100px}
   .b-foe{position:absolute;right:15%;top:54%;transform:translateY(-50%);width:94px}
@@ -171,6 +177,13 @@
           <button class="speak-mini" id="btnSpeak" title="语音朗读">🔊</button>
         </div>
         <div class="name-row"><input id="nameInput" maxlength="10" placeholder="给小伙伴起个名字"></div>
+        <div class="quick-chips" style="margin-bottom:4px">
+          <button type="button" class="qchip" data-qtarget="nameInput" data-qval="团子" data-qfire="change">团子</button>
+          <button type="button" class="qchip" data-qtarget="nameInput" data-qval="糯米" data-qfire="change">糯米</button>
+          <button type="button" class="qchip" data-qtarget="nameInput" data-qval="豆包" data-qfire="change">豆包</button>
+          <button type="button" class="qchip" data-qtarget="nameInput" data-qval="布丁" data-qfire="change">布丁</button>
+          <button type="button" class="qchip" data-qtarget="nameInput" data-qval="雪球" data-qfire="change">雪球</button>
+        </div>
         <div class="stat-row">
           <span id="statDays">陪伴 0 天</span>
           <span id="statFed">今日已喂 0/0 项</span>
@@ -261,7 +274,15 @@
           </div>
           <button class="ghost sm" id="btnOpenAvFromWall" type="button">更换头像</button>
         </div>
-        <div class="field"><input type="text" id="snapNote" maxlength="16" placeholder="写一句今天的合影心情（可选）"></div>
+        <div class="field">
+          <input type="text" id="snapNote" maxlength="16" placeholder="写一句今天的合影心情（可选）">
+          <div class="quick-chips" style="justify-content:flex-start">
+            <button type="button" class="qchip" data-qtarget="snapNote" data-qval="😄 今天超开心！">😄 今天超开心！</button>
+            <button type="button" class="qchip" data-qtarget="snapNote" data-qval="💪 任务全部完成">💪 任务全部完成</button>
+            <button type="button" class="qchip" data-qtarget="snapNote" data-qval="🌟 我又进步啦">🌟 我又进步啦</button>
+            <button type="button" class="qchip" data-qtarget="snapNote" data-qval="❤️ 最爱小伙伴">❤️ 最爱小伙伴</button>
+          </div>
+        </div>
         <button class="primary" id="btnSnap" style="width:100%">📷 拍一张今日合影（每天一张）</button>
         <div class="msg" id="wallMsg"></div>
         <div class="polaroid-wall" id="wallGrid"></div>
@@ -838,6 +859,16 @@
       ["home","dex"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
       if(tg==="home") setTimeout(resizeCanvas,30);
     });
+  });
+
+  document.addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest(".qchip"):null;
+    if(!b) return;
+    var tId=b.getAttribute("data-qtarget");
+    if(!tId||!$id(tId)) return;
+    $id(tId).value=b.getAttribute("data-qval")||"";
+    var fire=b.getAttribute("data-qfire");
+    if(fire) $id(tId).dispatchEvent(new Event(fire,{bubbles:true}));
   });
 
   if(PARENT_MODE) $id("btnKidChip").title="点击修改或上传 "+("孩子")+"头像";

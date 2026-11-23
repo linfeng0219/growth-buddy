@@ -76,6 +76,12 @@
   @media(max-width:420px){.avatar-grid{grid-template-columns:repeat(4,1fr)}}
   .avatar-grid button{height:48px;border-radius:12px;padding:3px;background:#fdfcfa;display:flex;align-items:center;justify-content:center}
   .avatar-grid button.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px rgba(47,107,79,.16)}
+  .quick-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+  .qchip{
+    border:1px solid #d5e2d9;background:#f5faf7;color:var(--accent);border-radius:999px;
+    padding:2px 9px;font-size:11.5px;cursor:pointer;line-height:1.5;font-weight:500;
+  }
+  .qchip:hover{background:#e4f1e9;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -99,8 +105,29 @@
       </div>
       <div id="pRegBox" style="display:none">
         <div class="row2">
-          <div class="field"><label>家庭名称</label><input type="text" id="regFamily" placeholder="如：幸福小家"></div>
-          <div class="field"><label>家长称呼</label><input type="text" id="regDisplay" placeholder="如：妈妈"></div>
+          <div class="field">
+            <label>家庭名称</label>
+            <input type="text" id="regFamily" placeholder="如：幸福小家">
+            <div class="quick-chips">
+              <button type="button" class="qchip" data-qtarget="regFamily" data-qval="幸福小家">幸福小家</button>
+              <button type="button" class="qchip" data-qtarget="regFamily" data-qval="温暖之家">温暖之家</button>
+              <button type="button" class="qchip" data-qtarget="regFamily" data-qval="快乐星球">快乐星球</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>家长称呼（可直接选择）</label>
+            <select id="regDisplaySel">
+              <option value="妈妈" selected>妈妈</option>
+              <option value="爸爸">爸爸</option>
+              <option value="爷爷">爷爷</option>
+              <option value="奶奶">奶奶</option>
+              <option value="外公">外公</option>
+              <option value="外婆">外婆</option>
+              <option value="家长">家长</option>
+              <option value="__custom__">✏️ 其他自定义...</option>
+            </select>
+            <input type="text" id="regDisplay" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+          </div>
         </div>
         <div class="row2">
           <div class="field"><label>家长账号</label><input type="text" id="regUser" placeholder="至少3位，如 mama01"></div>
@@ -108,7 +135,15 @@
         </div>
         <div style="font-size:12px;color:var(--muted);margin:6px 0 8px;padding-top:8px;border-top:1px dashed var(--hair)">👇 第一个孩子（之后可在「家庭与档案」中继续添加）</div>
         <div class="row2">
-          <div class="field"><label>孩子昵称</label><input type="text" id="regChild" placeholder="如：大宝"></div>
+          <div class="field">
+            <label>孩子昵称</label>
+            <input type="text" id="regChild" placeholder="如：大宝">
+            <div class="quick-chips">
+              <button type="button" class="qchip" data-qtarget="regChild" data-qval="大宝">大宝</button>
+              <button type="button" class="qchip" data-qtarget="regChild" data-qval="二宝">二宝</button>
+              <button type="button" class="qchip" data-qtarget="regChild" data-qval="小宝">小宝</button>
+            </div>
+          </div>
           <div class="field"><label>孩子登录账号</label><input type="text" id="regChildUser" placeholder="如 dabao01"></div>
         </div>
         <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="regChildPass" placeholder="孩子在安卓 App 中登录使用"></div>
@@ -211,10 +246,32 @@
             <input type="hidden" id="tEmoji" value="✨">
             <input type="hidden" id="tIconUrl" value="">
           </div>
-          <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="40" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
+          <div class="field" style="grid-column:span 2">
+            <label>任务名称（可点下方快捷模板免输入）</label>
+            <input type="text" id="tLabel" maxlength="40" placeholder="例如：背诵古诗一首 / 练琴20分钟">
+            <div class="quick-chips">
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="写作业" data-qemoji="✍️">✍️ 写作业</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="课外阅读15分钟" data-qemoji="📖">📖 课外阅读15分钟</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="口算练习" data-qemoji="🔢">🔢 口算练习</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="练琴20分钟" data-qemoji="🎹">🎹 练琴20分钟</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="背诵古诗" data-qemoji="🗣️">🗣️ 背诵古诗</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="整理书包" data-qemoji="🎒">🎒 整理书包</button>
+              <button type="button" class="qchip" data-qtarget="tLabel" data-qval="早晚刷牙" data-qemoji="🦷">🦷 早晚刷牙</button>
+            </div>
+          </div>
         </div>
         <div class="row2">
-          <div class="field"><label>奖励成长值</label><input type="number" id="tPts" value="4" min="1" max="50"></div>
+          <div class="field">
+            <label>奖励成长值</label>
+            <input type="number" id="tPts" value="4" min="1" max="50">
+            <div class="quick-chips">
+              <button type="button" class="qchip" data-qtarget="tPts" data-qval="2">+2</button>
+              <button type="button" class="qchip" data-qtarget="tPts" data-qval="3">+3</button>
+              <button type="button" class="qchip" data-qtarget="tPts" data-qval="5">+5</button>
+              <button type="button" class="qchip" data-qtarget="tPts" data-qval="8">+8</button>
+              <button type="button" class="qchip" data-qtarget="tPts" data-qval="10">+10</button>
+            </div>
+          </div>
           <div class="field"><label>任务类型</label>
             <select id="tType">
               <option value="normal">普通习惯打卡</option>
@@ -249,6 +306,11 @@
             <div class="field" style="margin-bottom:0"><label>计时秒数（10~600秒）</label><input type="number" id="tDuration" value="60" min="10" max="600"></div>
             <div class="field" style="margin-bottom:0"><label>达标个数（1~500个）</label><input type="number" id="tTarget" value="60" min="1" max="500"></div>
           </div>
+          <div class="quick-chips" style="margin-top:8px">
+            <button type="button" class="qchip" data-qrope="t" data-qdur="30" data-qcnt="40">30秒 / 40个</button>
+            <button type="button" class="qchip" data-qrope="t" data-qdur="60" data-qcnt="80">60秒 / 80个</button>
+            <button type="button" class="qchip" data-qrope="t" data-qdur="60" data-qcnt="120">60秒 / 120个</button>
+          </div>
         </div>
         <div id="tTimerPhotoRow">
           <div class="row2">
@@ -259,7 +321,17 @@
                 <option value="countup">⏱️ 正计时专注</option>
               </select>
             </div>
-            <div class="field" id="tFocusMinBox" style="display:none"><label>倒计时分钟（1~120分）</label><input type="number" id="tFocusMin" value="15" min="1" max="120"></div>
+            <div class="field" id="tFocusMinBox" style="display:none">
+              <label>倒计时分钟（1~120分）</label>
+              <input type="number" id="tFocusMin" value="15" min="1" max="120">
+              <div class="quick-chips">
+                <button type="button" class="qchip" data-qtarget="tFocusMin" data-qval="5">5分</button>
+                <button type="button" class="qchip" data-qtarget="tFocusMin" data-qval="10">10分</button>
+                <button type="button" class="qchip" data-qtarget="tFocusMin" data-qval="15">15分</button>
+                <button type="button" class="qchip" data-qtarget="tFocusMin" data-qval="20">20分</button>
+                <button type="button" class="qchip" data-qtarget="tFocusMin" data-qval="30">30分</button>
+              </div>
+            </div>
           </div>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);margin-bottom:10px;cursor:pointer">
             <input type="checkbox" id="tRequirePhoto"> 📷 完成打卡时需拍照留念
@@ -392,7 +464,15 @@
       <div class="panel">
         <div class="panel-head"><h2>添加一位孩子档案</h2></div>
         <div class="row3">
-          <div class="field"><label>孩子昵称</label><input type="text" id="newKidName" maxlength="10" placeholder="例如：二宝"></div>
+          <div class="field">
+            <label>孩子昵称</label>
+            <input type="text" id="newKidName" maxlength="10" placeholder="例如：二宝">
+            <div class="quick-chips">
+              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="大宝">大宝</button>
+              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="二宝">二宝</button>
+              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="小宝">小宝</button>
+            </div>
+          </div>
           <div class="field"><label>孩子登录账号（至少3位）</label><input type="text" id="newKidUser" maxlength="32" placeholder="如 erbao01"></div>
           <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="newKidPass" placeholder="供孩子登录儿童端"></div>
         </div>
@@ -435,10 +515,23 @@
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>添加共同管理家长（如爸爸/妈妈）</h2></div>
+        <div class="panel-head"><h2>添加共同管理家长（免输称呼可选）</h2></div>
         <div class="row3">
           <div class="field"><label>家长账号</label><input type="text" id="coUser" placeholder="英文/数字"></div>
-          <div class="field"><label>称呼</label><input type="text" id="coName" placeholder="如：爸爸"></div>
+          <div class="field">
+            <label>称呼</label>
+            <select id="coNameSel">
+              <option value="爸爸" selected>爸爸</option>
+              <option value="妈妈">妈妈</option>
+              <option value="爷爷">爷爷</option>
+              <option value="奶奶">奶奶</option>
+              <option value="外公">外公</option>
+              <option value="外婆">外婆</option>
+              <option value="家长">家长</option>
+              <option value="__custom__">✏️ 其他自定义...</option>
+            </select>
+            <input type="text" id="coName" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+          </div>
           <div class="field"><label>密码</label><input type="password" id="coPass" placeholder="至少4位"></div>
         </div>
         <button id="btnAddParent" style="width:100%">+ 添加家长账号</button>
@@ -501,11 +594,21 @@
             </select>
           </div>
         </div>
-        <div class="field"><label>信件标题</label><input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友"></div>
+        <div class="field">
+          <label>信件标题（可点选或自填）</label>
+          <input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友">
+          <div class="quick-chips">
+            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🌟 今天表现真棒！">🌟 今天表现真棒！</button>
+            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💌 给你的一封表扬信">💌 给你的一封表扬信</button>
+            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💪 加油鼓励小纸条">💪 加油鼓励小纸条</button>
+            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🎈 周末开心小约定">🎈 周末开心小约定</button>
+          </div>
+        </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
           <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
           <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
           <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
+          <button type="button" class="sm mail-tpl" data-tpl="早点休息养足精神，明天又是活力满满的一天，晚安宝贝！">🌙 晚安寄语</button>
         </div>
         <div class="field"><label>正文内容</label><textarea id="mailContent" rows="4" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
         <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
@@ -544,6 +647,13 @@
         <input type="file" id="newIconFile" accept="image/*" style="display:none">
         <button type="button" class="primary sm" id="btnUploadTaskIcon">➕ 上传图片到私有库</button>
       </div>
+      <div class="quick-chips">
+        <button type="button" class="qchip" data-qtarget="newIconLabel" data-qval="阅读">阅读</button>
+        <button type="button" class="qchip" data-qtarget="newIconLabel" data-qval="跳绳">跳绳</button>
+        <button type="button" class="qchip" data-qtarget="newIconLabel" data-qval="练琴">练琴</button>
+        <button type="button" class="qchip" data-qtarget="newIconLabel" data-qval="画画">画画</button>
+        <button type="button" class="qchip" data-qtarget="newIconLabel" data-qval="英语">英语</button>
+      </div>
       <div class="msg" id="iconUploadMsg"></div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap">
@@ -573,7 +683,16 @@
       <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="40"></div>
     </div>
     <div class="row2">
-      <div class="field"><label>成长值</label><input type="number" id="etPts" min="1" max="50"></div>
+      <div class="field">
+        <label>成长值</label>
+        <input type="number" id="etPts" min="1" max="50">
+        <div class="quick-chips">
+          <button type="button" class="qchip" data-qtarget="etPts" data-qval="2">+2</button>
+          <button type="button" class="qchip" data-qtarget="etPts" data-qval="3">+3</button>
+          <button type="button" class="qchip" data-qtarget="etPts" data-qval="5">+5</button>
+          <button type="button" class="qchip" data-qtarget="etPts" data-qval="10">+10</button>
+        </div>
+      </div>
       <div class="field"><label>任务类型</label>
         <select id="etType"><option value="normal">普通习惯打卡</option><option value="rope_jump">🪢 定时跳绳挑战</option></select>
       </div>
@@ -601,6 +720,11 @@
         <div class="field" style="margin-bottom:0"><label>计时秒数</label><input type="number" id="etDuration" min="10" max="600"></div>
         <div class="field" style="margin-bottom:0"><label>达标个数</label><input type="number" id="etTarget" min="1" max="500"></div>
       </div>
+      <div class="quick-chips" style="margin-top:6px">
+        <button type="button" class="qchip" data-qrope="et" data-qdur="30" data-qcnt="40">30秒/40个</button>
+        <button type="button" class="qchip" data-qrope="et" data-qdur="60" data-qcnt="80">60秒/80个</button>
+        <button type="button" class="qchip" data-qrope="et" data-qdur="60" data-qcnt="120">60秒/120个</button>
+      </div>
     </div>
     <div id="etTimerPhotoRow">
       <div class="row2">
@@ -611,7 +735,17 @@
             <option value="countup">⏱️ 正计时</option>
           </select>
         </div>
-        <div class="field" id="etFocusMinBox" style="display:none"><label>倒计时分钟</label><input type="number" id="etFocusMin" value="15" min="1" max="120"></div>
+        <div class="field" id="etFocusMinBox" style="display:none">
+          <label>倒计时分钟</label>
+          <input type="number" id="etFocusMin" value="15" min="1" max="120">
+          <div class="quick-chips">
+            <button type="button" class="qchip" data-qtarget="etFocusMin" data-qval="5">5分</button>
+            <button type="button" class="qchip" data-qtarget="etFocusMin" data-qval="10">10分</button>
+            <button type="button" class="qchip" data-qtarget="etFocusMin" data-qval="15">15分</button>
+            <button type="button" class="qchip" data-qtarget="etFocusMin" data-qval="20">20分</button>
+            <button type="button" class="qchip" data-qtarget="etFocusMin" data-qval="30">30分</button>
+          </div>
+        </div>
       </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;cursor:pointer">
         <input type="checkbox" id="etRequirePhoto"> 📷 打卡需拍照留念
@@ -769,13 +903,49 @@
   $id("tabPLogin").addEventListener("click",function(){setAuthTab(false);});
   $id("tabPReg").addEventListener("click",function(){setAuthTab(true);});
   if(new URLSearchParams(location.search).get("register")==="1") setAuthTab(true);
+  function bindRolePicker(selId, inpId){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel||!inp) return;
+    sel.addEventListener("change",function(){
+      inp.style.display=(sel.value==="__custom__")?"block":"none";
+      if(sel.value==="__custom__") inp.focus();
+    });
+  }
+  function readRolePicker(selId, inpId){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel) return inp?inp.value.trim():"";
+    return (sel.value==="__custom__")?(inp?inp.value.trim():""):sel.value;
+  }
+  bindRolePicker("regDisplaySel","regDisplay");
+  bindRolePicker("coNameSel","coName");
+  document.addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest(".qchip"):null;
+    if(!b) return;
+    var rTarget=b.getAttribute("data-qrope");
+    if(rTarget){
+      var durEl=$id(rTarget+"Duration"), cntEl=$id(rTarget+"Target");
+      if(durEl) durEl.value=b.getAttribute("data-qdur")||"60";
+      if(cntEl) cntEl.value=b.getAttribute("data-qcnt")||"80";
+      return;
+    }
+    var tId=b.getAttribute("data-qtarget");
+    if(!tId||!$id(tId)) return;
+    $id(tId).value=b.getAttribute("data-qval")||"";
+    $id(tId).dispatchEvent(new Event("input",{bubbles:true}));
+    var qEm=b.getAttribute("data-qemoji");
+    if(qEm&&tId==="tLabel"){
+      $id("tIconUrl").value="";
+      setTaskIconPreview("t",qEm,"");
+    }
+  });
+
   $id("btnPReg").addEventListener("click",async function(){
     try{
       var r=await fetch("/api/auth/register-family",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
           familyName:$id("regFamily").value.trim(),
-          displayName:$id("regDisplay").value.trim(),
+          displayName:readRolePicker("regDisplaySel","regDisplay"),
           username:$id("regUser").value.trim(),
           password:$id("regPass").value,
           childName:$id("regChild").value.trim(),
@@ -1475,8 +1645,9 @@
   });
   $id("btnAddParent").addEventListener("click",async function(){
     try{
-      await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:$id("coName").value.trim(),password:$id("coPass").value})});
+      await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:readRolePicker("coNameSel","coName"),password:$id("coPass").value})});
       $id("coUser").value="";$id("coName").value="";$id("coPass").value="";
+      $id("coNameSel").value="爸爸";$id("coName").style.display="none";
       note("coMsg","共同管理家长添加成功！");
     }catch(e){note("coMsg",e.message,true);}
   });

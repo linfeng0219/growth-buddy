@@ -269,6 +269,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.btnRenamePet.setOnClickListener { showRenamePetDialog() }
+        populateQuickChips(
+            binding.snapMoodRow,
+            listOf("😄 今天超开心！", "💪 任务全部完成", "🌟 我又进步啦", "❤️ 最爱小伙伴")
+        ) { mood ->
+            sound.playPat()
+            binding.etSnapNote.setText(mood)
+        }
         binding.btnUndo.setOnClickListener { performUndo() }
         binding.btnMysteryEgg.setOnClickListener { performAdopt(speciesId = null, mystery = true) }
         binding.btnSnap.setOnClickListener { performTakePolaroid() }
@@ -1324,15 +1331,68 @@ class MainActivity : AppCompatActivity() {
         api.request("PATCH", "/api/child/mute", JSONObject().put("muted", nextMute)) { }
     }
 
+    private fun populateQuickChips(container: LinearLayout, items: List<String>, onPick: (String) -> Unit) {
+        container.removeAllViews()
+        items.forEach { txt ->
+            val tv = TextView(this).apply {
+                text = txt
+                textSize = 12f
+                setTextColor(0xFF2F6B4F.toInt())
+                setPadding(dp(10), dp(5), dp(10), dp(5))
+                background = GradientDrawable().apply {
+                    setColor(0xFFF3FAF6.toInt())
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), 0xFFC5DDD0.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { rightMargin = dp(6) }
+                setOnClickListener { onPick(txt) }
+            }
+            container.addView(tv)
+        }
+    }
+
     private fun showRenamePetDialog() {
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        val tip = TextView(this).apply {
+            text = "点选推荐名字（或手动修改）："
+            textSize = 12.5f
+            setTextColor(0xFF6E655A.toInt())
+            setPadding(0, 0, 0, dp(6))
+        }
+        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val row2 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(6), 0, dp(10))
+        }
         val input = EditText(this).apply {
             hint = "最多 10 个字"
             setText(state?.child?.petName ?: "")
-            setPadding(40, 28, 40, 28)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
         }
+        populateQuickChips(row1, listOf("团子", "糯米", "豆包", "可乐")) { name ->
+            sound.playPat()
+            input.setText(name)
+            input.setSelection(name.length)
+        }
+        populateQuickChips(row2, listOf("布丁", "皮皮", "雪球", "元宝")) { name ->
+            sound.playPat()
+            input.setText(name)
+            input.setSelection(name.length)
+        }
+        wrap.addView(tip)
+        wrap.addView(row1)
+        wrap.addView(row2)
+        wrap.addView(input)
+
         AlertDialog.Builder(this)
             .setTitle("给小伙伴起个名字")
-            .setView(input)
+            .setView(wrap)
             .setPositiveButton("保存") { _, _ ->
                 val name = input.text.toString().trim().take(10)
                 api.request("PATCH", "/api/child/pet-name", JSONObject().put("petName", name)) { res ->

@@ -324,24 +324,55 @@ class MailboxActivity : AppCompatActivity() {
         refreshStampUi()
 
         val etTitle = EditText(this).apply {
-            hint = "标题（可不填，例如：今天我想说）"
+            hint = "标题（可点下方快捷选项免输入）"
             setText(replyTitle)
             setSingleLine(true)
             textSize = 14.5f
         }
+        val titleChipScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        val titleChipRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("💌 给爸妈的信", "🌟 我想说谢谢", "🎈 我的小愿望").forEach { tPreset ->
+            titleChipRow.addView(Button(this).apply {
+                text = tPreset
+                textSize = 11.5f
+                minWidth = 0
+                setPadding(dp(8), dp(2), dp(8), dp(2))
+                setBackgroundColor(Color.parseColor("#FFF4D6"))
+                setTextColor(Color.parseColor("#9C5812"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(32)
+                ).apply { rightMargin = dp(6) }
+                setOnClickListener {
+                    etTitle.setText(tPreset)
+                    etTitle.setSelection(tPreset.length)
+                }
+            })
+        }
+        titleChipScroll.addView(titleChipRow)
+
         val etBody = EditText(this).apply {
-            hint = "写下你想对爸爸妈妈说的话吧~"
+            hint = "写下你想对爸爸妈妈说的话，或点下方快捷句~"
             minLines = 4
             gravity = Gravity.TOP or Gravity.START
             textSize = 14.5f
         }
 
-        // 快捷暖心句
-        val quickRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        // 快捷暖心句（横向滚动多条，免手打）
+        val quickScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
             setPadding(0, dp(4), 0, dp(6))
         }
-        listOf("今天我表现超棒！", "谢谢爸爸妈妈！").forEach { tpl ->
+        val quickRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf(
+            "今天我表现超棒！",
+            "谢谢爸爸妈妈，我爱你们！",
+            "我会按时完成作业的！",
+            "周末想和你们一起玩！"
+        ).forEach { tpl ->
             quickRow.addView(Button(this).apply {
                 text = tpl
                 textSize = 11.5f
@@ -360,6 +391,7 @@ class MailboxActivity : AppCompatActivity() {
                 }
             })
         }
+        quickScroll.addView(quickRow)
 
         wrap.addView(TextView(this).apply {
             text = "选一张贴纸邮票："
@@ -369,7 +401,8 @@ class MailboxActivity : AppCompatActivity() {
         })
         wrap.addView(stampRow)
         wrap.addView(etTitle)
-        wrap.addView(quickRow)
+        wrap.addView(titleChipScroll)
+        wrap.addView(quickScroll)
         wrap.addView(etBody)
 
         AlertDialog.Builder(this)
