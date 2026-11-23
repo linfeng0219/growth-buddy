@@ -532,8 +532,7 @@ func TestHardDifficultyAddsEnglishAndHigherMath(t *testing.T) {
 }
 
 func TestChangelogLatestDate(t *testing.T) {
-	ts, _, cleanup := setupTestApp(t)
-	defer cleanup()
+	ts, _, _ := newTestServer(t)
 
 	st, res := doJSON(t, ts, "GET", "/api/changelog", "", nil)
 	if st != 200 {
@@ -578,8 +577,7 @@ func TestCuratedBankIntegrity(t *testing.T) {
 }
 
 func TestAdventureWinDailyCap(t *testing.T) {
-	ts, store, cleanup := setupTestApp(t)
-	defer cleanup()
+	ts, _, _ := newTestServer(t)
 
 	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
 		"familyName": "测试家", "displayName": "妈妈", "username": "momadv", "password": "pass1234",
@@ -595,7 +593,6 @@ func TestAdventureWinDailyCap(t *testing.T) {
 		t.Fatalf("child login failed: %d %+v", st, login)
 	}
 	tok, _ := login["token"].(string)
-	_ = store
 
 	for i := 1; i <= 10; i++ {
 		st, res := doJSON(t, ts, "POST", "/api/child/adventure-win", tok, map[string]any{"date": "2026-11-23"})
