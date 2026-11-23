@@ -84,6 +84,8 @@ class ParentPortalActivity : AppCompatActivity() {
         ws.allowFileAccess = true
         ws.useWideViewPort = true
         ws.loadWithOverviewMode = true
+        // 令牌未确认就绪前先隐藏 WebView，杜绝闪现网页登录页
+        binding.webParentPortal.alpha = 0f
 
         binding.webParentPortal.addJavascriptInterface(object {
             @JavascriptInterface
@@ -116,8 +118,11 @@ class ParentPortalActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                binding.parentWebLoading.visibility = View.GONE
-                if (url == null || !url.contains("/parent.html")) return
+                if (url == null || !url.contains("/parent.html")) {
+                    binding.parentWebLoading.visibility = View.GONE
+                    binding.webParentPortal.alpha = 1f
+                    return
+                }
 
                 val quotedTok = JSONObject.quote(parentToken)
                 val js = """
@@ -129,14 +134,22 @@ class ParentPortalActivity : AppCompatActivity() {
                           if(!window.__gbReloadedOnce){
                             window.__gbReloadedOnce = true;
                             location.reload();
-                            return;
+                            return 'reloading';
                           }
                         }
-                      }catch(e){}
+                        var av = document.getElementById('authView');
+                        if(av) av.style.display = 'none';
+                        return 'ready';
+                      }catch(e){ return 'ready'; }
                     })();
                 """.trimIndent()
-                view?.evaluateJavascript(js, null)
-                tokenInjected = true
+                view?.evaluateJavascript(js) { res ->
+                    if (res?.contains("reloading") != true) {
+                        binding.parentWebLoading.visibility = View.GONE
+                        binding.webParentPortal.animate().alpha(1f).setDuration(120).start()
+                        tokenInjected = true
+                    }
+                }
             }
         }
 
@@ -186,7 +199,8 @@ class ParentPortalActivity : AppCompatActivity() {
             }
         }
 
-        val targetUrl = ServerPrefs.getServerUrl(this).trimEnd('/') + "/parent.html"
+        val targetUrl = ServerPrefs.getServerUrl(this).trimEnd('/') +
+            "/parent.html#gb_app_token=" + Uri.encode(parentToken)
         binding.parentWebLoading.visibility = View.VISIBLE
         binding.webParentPortal.loadUrl(targetUrl)
     }

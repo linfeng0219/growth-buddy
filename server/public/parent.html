@@ -739,6 +739,10 @@
   }
 
   function showAuth(){
+    if(window.AndroidBridge&&window.AndroidBridge.onWebLogout){
+      window.AndroidBridge.onWebLogout();
+      return;
+    }
     $id("authView").style.display="block";
     $id("mainView").style.display="none";
   }
@@ -1949,6 +1953,13 @@
     }catch(e){note("mailMsg",e.message,true);}
   });
 
+  try{
+    var hm=location.hash.match(/gb_app_token=([^&]+)/);
+    if(hm&&hm[1]){
+      localStorage.setItem("gb_parent_token",decodeURIComponent(hm[1]));
+      if(history&&history.replaceState) history.replaceState(null,"",location.pathname+location.search);
+    }
+  }catch(e){}
   if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); } else showAuth();
 })();
 </script>
