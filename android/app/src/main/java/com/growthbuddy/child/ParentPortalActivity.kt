@@ -59,15 +59,11 @@ class ParentPortalActivity : AppCompatActivity() {
             return
         }
 
-        val pName = intent.getStringExtra(EXTRA_PARENT_NAME).orEmpty().trim()
-        if (pName.isNotEmpty()) {
-            binding.tvParentHeaderName.text = "👨‍👩‍👧 $pName · 家长管理台"
-        }
-
-        binding.btnParentRefresh.setOnClickListener {
+        binding.btnParentRetry.setOnClickListener {
+            binding.parentErrorBar.visibility = View.GONE
             binding.webParentPortal.reload()
         }
-        binding.btnParentSwitchAccount.setOnClickListener {
+        binding.btnParentSwitchFallback.setOnClickListener {
             confirmSwitchAccount()
         }
 
@@ -106,6 +102,18 @@ class ParentPortalActivity : AppCompatActivity() {
                 return false
             }
 
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: android.webkit.WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame == true) {
+                    binding.parentWebLoading.visibility = View.GONE
+                    binding.parentErrorBar.visibility = View.VISIBLE
+                }
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 binding.parentWebLoading.visibility = View.GONE
@@ -124,8 +132,6 @@ class ParentPortalActivity : AppCompatActivity() {
                             return;
                           }
                         }
-                        var dl = document.getElementById('apkDownloadLink');
-                        if(dl) dl.style.display = 'none';
                       }catch(e){}
                     })();
                 """.trimIndent()

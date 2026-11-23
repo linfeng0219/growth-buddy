@@ -6,11 +6,6 @@
 <title>成长小伙伴 · 家长管理台</title>
 <link rel="stylesheet" href="/shared/styles.css">
 <style>
-  .fam-banner{
-    background:linear-gradient(135deg,#e7efe9 0%,#f5f0e4 100%);
-    border:1px solid #cadcd0;border-radius:18px;padding:14px 16px;
-    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;
-  }
   .fam-code{font-family:Consolas,monospace;font-size:20px;font-weight:700;letter-spacing:.14em;color:var(--accent);background:#fff;padding:3px 12px;border-radius:10px;border:1px solid #c5ddd0}
   .kid-overview-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media(max-width:640px){.kid-overview-grid{grid-template-columns:1fr}}
@@ -123,7 +118,7 @@
     </div>
   </div>
 
-  <!-- 家长端主界面 -->
+  <!-- 家长端主界面（与孩子端头部布局一致） -->
   <div id="mainView" style="display:none">
     <header>
       <div class="top-bar">
@@ -132,23 +127,19 @@
           <span id="parentGreeting">家长管理台</span>
           <span style="font-size:11px;color:var(--muted)">✎</span>
         </button>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button type="button" class="pill" id="parentVerBadge" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9">版本加载中...</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="pill ghost" id="btnParentRefreshPage" title="刷新数据">🔄 刷新</button>
           <button class="pill ghost" id="btnLogout">退出登录</button>
         </div>
       </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:2px">成长小伙伴 · 家长管理台</div>
       <h1 id="famTitle">成长小伙伴 · 家长端</h1>
-    </header>
-
-    <div class="fam-banner">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink)">👨‍👩‍👧 家长可在「任务中心 → 当日任务」帮孩子打卡或取消打卡，主宠成熟后富余成长值每 25 点可直接兑换宠物蛋</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">
-          <span>孩子在自己的安卓 App 中使用您在「家庭与档案」里分配的账号与密码登录</span>
-        </div>
+      <div class="header-meta">
+        <span class="pill" id="parentKidsPill">— 位孩子</span>
+        <span class="pill amber" id="parentTasksPill">— 项启用任务</span>
+        <button type="button" class="pill" id="parentVerBadge" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9;cursor:pointer">版本加载中...</button>
       </div>
-      <a id="apkDownloadLink" href="/api/app/latest.apk" class="pill" style="display:none;text-decoration:none;background:#2f6b4f;color:#fff;border-color:#2f6b4f">📥 下载儿童端 App</a>
-    </div>
+    </header>
 
     <nav class="tabs">
       <button data-tab="overview" class="on">孩子总览</button>
@@ -796,14 +787,7 @@
     }catch(e){note("pLoginMsg",e.message,true);}
   });
 
-  fetch("/api/app/version?platform=android").then(function(r){return r.json();}).then(function(d){
-    if(d&&d.hasRelease&&d.release){
-      var a=$id("apkDownloadLink");
-      a.style.display="";
-      a.textContent="📥 下载儿童端 App（v"+d.release.version_name+"）";
-      a.href=d.release.download_url||"/api/app/latest.apk";
-    }
-  }).catch(function(){});
+  $id("btnParentRefreshPage").addEventListener("click",function(){loadOverview();});
 
   $id("btnLogout").addEventListener("click",function(){
     localStorage.removeItem("gb_parent_token");
@@ -836,8 +820,11 @@
   function renderAll(){
     if(!data)return;
     $id("parentAvatarSlot").innerHTML=GBArt.avatarHtml(data.parent.avatar_idx,data.parent.avatar_url,28);
-    $id("parentGreeting").textContent=data.parent.display_name+" · 家长管理台";
+    $id("parentGreeting").textContent=data.parent.display_name+" · 家长";
     $id("famTitle").textContent=data.family.name;
+    var enabledCnt=(data.tasks||[]).filter(function(t){return t.enabled;}).length;
+    $id("parentKidsPill").textContent="👶 "+(data.children||[]).length+" 位孩子";
+    $id("parentTasksPill").textContent="📋 "+enabledCnt+" 项任务";
 
     renderOverview();
     renderTasksTab();
