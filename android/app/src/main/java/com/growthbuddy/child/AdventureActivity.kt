@@ -602,21 +602,21 @@ class AdventureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(pad, pad, pad, (16 * dp).toInt())
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F5FCFD"))
+                setColor(Color.parseColor("#FAF5FF"))
                 cornerRadius = 20 * dp
-                setStroke((2 * dp).toInt(), Color.parseColor("#22A6B3"))
+                setStroke((2 * dp).toInt(), Color.parseColor("#7B2CBF"))
             }
         }
         card.addView(TextView(this).apply {
-            text = "🫧"
+            text = "👾"
             textSize = 44f
             gravity = Gravity.CENTER
         })
         card.addView(TextView(this).apply {
-            text = "小伙伴被泡泡粘住啦~"
+            text = "小伙伴被拖延粘液困住啦~"
             textSize = 20f
             setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.parseColor("#144954"))
+            setTextColor(Color.parseColor("#4C1D95"))
             gravity = Gravity.CENTER
             setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
         })

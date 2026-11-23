@@ -1309,7 +1309,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performUndo() {
+        binding.btnUndo.isEnabled = false
         api.request("POST", "/api/child/undo", JSONObject().put("date", todayStr())) { res ->
+            binding.btnUndo.isEnabled = true
             if (res.ok && res.json != null) {
                 res.json.optJSONObject("state")?.let {
                     val ns = GrowthMeta.parseChildState(it)

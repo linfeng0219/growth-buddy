@@ -1281,10 +1281,10 @@ class BattleStageView @JvmOverloads constructor(
             drawSlimeBombProjectile(canvas, w, h, (elapsed - 250f) / 260f)
         }
 
-        // 3. 右侧史莱姆风「拖延怪」
+        // 3. 右侧史莱姆风「拖延怪」（约 1.33x Boss 体型，底部对齐草地中心线）
+        val r = min(w, h) * 0.34f
         val foeCx = w * 0.77f
-        val foeCy = h * 0.59f
-        val r = min(w, h) * 0.255f
+        val foeCy = h * 0.84f - r * 0.84f
         drawSlimeMonster(canvas, foeCx, foeCy, r, idleSec, if (isPetAtk) elapsed else -1f, if (isEnemyAtk) elapsed else -1f)
 
         // 4. 命中爆发冲击波（打在右侧史莱姆 vs 打在左侧宠物）
@@ -1304,9 +1304,10 @@ class BattleStageView @JvmOverloads constructor(
 
         // 6. 战斗飘字与胜利星芒 (540..1480ms)
         if (isPetAtk && elapsed in 540f..1480f) {
-            drawFloatingCombatText(canvas, foeCx, foeCy - r * 1.15f, elapsed, forEnemyAttack = false)
+            drawFloatingCombatText(canvas, foeCx, (foeCy - r * 1.05f).coerceAtLeast(h * 0.16f), elapsed, forEnemyAttack = false)
         } else if (isEnemyAtk && elapsed in 520f..1360f) {
-            drawFloatingCombatText(canvas, fighterCx, fighterCy - r * 1.05f, elapsed, forEnemyAttack = true)
+            val petR = min(w, h) * 0.255f
+            drawFloatingCombatText(canvas, fighterCx, (fighterCy - petR * 1.05f).coerceAtLeast(h * 0.16f), elapsed, forEnemyAttack = true)
         }
 
         canvas.restore()

@@ -37,7 +37,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="史莱姆 3/3"
-            android:textColor="#1D949E"
+            android:textColor="#6D28D9"
             android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -89,8 +89,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:text="🫧 拖延史莱姆 3/3"
-                android:textColor="#146572"
+                android:text="👾 拖延史莱姆 3/3"
+                android:textColor="#4C1D95"
                 android:textSize="11.5sp"
                 android:textStyle="bold" />
 
@@ -102,7 +102,7 @@
                 android:layout_marginTop="3dp"
                 android:max="3"
                 android:progress="3"
-                android:progressTint="#22A6B3" />
+                android:progressTint="#7B2CBF" />
         </LinearLayout>
     </LinearLayout>
 
@@ -179,7 +179,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="⚡ 8秒内答对触发闪电暴击 · 史莱姆缓慢蓄力中"
-            android:textColor="#146572"
+            android:textColor="#4C1D95"
             android:textSize="11.5sp" />
 
         <ProgressBar
@@ -190,7 +190,7 @@
             android:layout_marginStart="8dp"
             android:max="100"
             android:progress="0"
-            android:progressTint="#22A6B3" />
+            android:progressTint="#7B2CBF" />
     </LinearLayout>
 
     <TextView
