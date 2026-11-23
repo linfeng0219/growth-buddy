@@ -542,8 +542,20 @@
           </div>
           <div class="field"><label>密码</label><input type="password" id="coPass" placeholder="至少4位"></div>
         </div>
+        <div class="field">
+          <label>选择头像</label>
+          <div id="newParentAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
         <button id="btnAddParent" style="width:100%">+ 添加家长账号</button>
         <div class="msg" id="coMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>现有家长档案管理</h2>
+          <span class="pill" id="parentManageCount">0 位家长</span>
+        </div>
+        <div id="parentManageList"></div>
       </div>
 
       <div class="card">
@@ -806,6 +818,35 @@
   </div>
 </div>
 
+<!-- 家长档案编辑弹窗 -->
+<div class="modal-backdrop" id="parentAuthModal">
+  <div class="modal-card" style="text-align:left;max-width:400px">
+    <h3 id="paTitle" style="font-family:var(--serif);margin-bottom:6px">编辑家长档案</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">可调整家长称呼、登录账号或重置登录密码；密码留空表示不修改。</p>
+    <div class="field">
+      <label>家长称呼（可直接选择）</label>
+      <select id="paNameSel">
+        <option value="妈妈">妈妈</option>
+        <option value="爸爸">爸爸</option>
+        <option value="爷爷">爷爷</option>
+        <option value="奶奶">奶奶</option>
+        <option value="外公">外公</option>
+        <option value="外婆">外婆</option>
+        <option value="家长">家长</option>
+        <option value="__custom__">✏️ 其他自定义...</option>
+      </select>
+      <input type="text" id="paName" maxlength="16" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+    </div>
+    <div class="field"><label>家长登录账号（至少3位）</label><input type="text" id="paUser" maxlength="32" placeholder="例如：baba01"></div>
+    <div class="field"><label>重置登录密码（至少4位；不修改请留空）</label><input type="password" id="paPass" placeholder="留空表示不修改密码"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="primary" id="btnSaveParentAuth" style="flex:1">保存修改</button>
+      <button class="ghost" id="btnCancelParentAuth">取消</button>
+    </div>
+    <div class="msg" id="paMsg"></div>
+  </div>
+</div>
+
 <!-- 头像设置与上传弹窗 -->
 <div class="modal-backdrop" id="avatarModal">
   <div class="modal-card" style="max-width:420px">
@@ -839,7 +880,7 @@
 (function(){
   GBArt.enableEyeTracking();
   var $id=function(id){return document.getElementById(id);};
-  var data=null, previewKidId=null, newKidAv=0, previewSilo=false, editingTaskId=null;
+  var data=null, previewKidId=null, newKidAv=0, newParentAv=7, previewSilo=false, editingTaskId=null;
 
   function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   function token(){return localStorage.getItem("gb_parent_token")||"";}
@@ -927,6 +968,14 @@
       if(sel.value==="__custom__") inp.focus();
     });
   }
+  function setRolePicker(selId, inpId, val, defRole){
+    var sel=$id(selId), inp=$id(inpId);
+    if(!sel) return;
+    var v=(val||"").trim()||(defRole||"妈妈");
+    var hasPreset=Array.from(sel.options).some(function(o){return o.value===v&&o.value!=="__custom__";});
+    if(hasPreset){sel.value=v;if(inp){inp.value="";inp.style.display="none";}}
+    else{sel.value="__custom__";if(inp){inp.value=v;inp.style.display="block";}}
+  }
   function readRolePicker(selId, inpId){
     var sel=$id(selId), inp=$id(inpId);
     if(!sel) return inp?inp.value.trim():"";
@@ -934,6 +983,7 @@
   }
   bindRolePicker("regDisplaySel","regDisplay");
   bindRolePicker("coNameSel","coName");
+  bindRolePicker("paNameSel","paName");
   document.addEventListener("click",function(e){
     var b=e.target&&e.target.closest?e.target.closest(".qchip"):null;
     if(!b) return;
@@ -1568,12 +1618,49 @@
     }catch(e){note("kaMsg",e.message,true);}
   });
 
-  var avatarCtx=null; // { kind: 'parent' } or { kind: 'child', child: c }
+  function buildNewParentAvatars(){
+    var box=$id("newParentAvatars");if(!box)return;
+    box.innerHTML="";
+    GBArt.AVATARS.forEach(function(a,i){
+      var b=document.createElement("button");b.type="button";b.className="avpick"+(i===newParentAv?" on":"");b.innerHTML=GBArt.avatarSVG(i,{w:30});
+      b.addEventListener("click",function(){newParentAv=i;buildNewParentAvatars();});box.appendChild(b);
+    });
+  }
+  var editingParentAuthId=null;
+  function openParentAuthModal(p){
+    editingParentAuthId=p.id;
+    $id("paTitle").textContent="编辑「"+(p.display_name||p.username)+"」的家长档案";
+    setRolePicker("paNameSel","paName",p.display_name,"妈妈");
+    $id("paUser").value=p.username||"";
+    $id("paPass").value="";
+    $id("paMsg").textContent="";
+    $id("parentAuthModal").classList.add("show");
+  }
+  $id("btnCancelParentAuth").addEventListener("click",function(){$id("parentAuthModal").classList.remove("show");editingParentAuthId=null;});
+  $id("btnSaveParentAuth").addEventListener("click",async function(){
+    if(!editingParentAuthId)return;
+    try{
+      var payload={
+        displayName:readRolePicker("paNameSel","paName"),
+        username:$id("paUser").value.trim()
+      };
+      var pw=$id("paPass").value;
+      if(pw!=="") payload.password=pw;
+      await api("/api/parent/parents/"+editingParentAuthId,{method:"PATCH",body:JSON.stringify(payload)});
+      $id("parentAuthModal").classList.remove("show");
+      editingParentAuthId=null;
+      showToast("家长档案已更新！");
+      await loadOverview();
+    }catch(e){note("paMsg",e.message,true);}
+  });
+
+  var avatarCtx=null; // { kind: 'parent', parent?: p } or { kind: 'child', child: c }
   function openAvatarModal(ctx){
     avatarCtx=ctx;
     var isPar=(ctx.kind==="parent");
-    var obj=isPar?data.parent:ctx.child;
-    $id("avModalTitle").textContent=isPar?"设置我的家长头像":("设置 "+obj.name+" 的头像");
+    var obj=isPar?(ctx.parent||data.parent):ctx.child;
+    var parName=(obj.display_name||obj.username||"我");
+    $id("avModalTitle").textContent=isPar?((obj.id===data.parent.id)?"设置我的家长头像":("设置 "+parName+" 的头像")):("设置 "+obj.name+" 的头像");
     $id("avModalPreview").innerHTML=GBArt.avatarHtml(obj.avatar_idx,obj.avatar_url,72);
     $id("avModalMsg").textContent="";
     var grid=$id("avModalGrid");grid.innerHTML="";
@@ -1595,7 +1682,15 @@
   async function saveTargetAvatar(payload){
     if(!avatarCtx)return;
     if(avatarCtx.kind==="parent"){
-      await api("/api/parent/avatar",{method:"POST",body:JSON.stringify(payload)});
+      var targetPar=avatarCtx.parent||data.parent;
+      if(!targetPar||targetPar.id===data.parent.id){
+        await api("/api/parent/avatar",{method:"POST",body:JSON.stringify(payload)});
+      }else{
+        var pBody={};
+        if(payload.avatarIdx!==undefined) pBody.avatar_idx=payload.avatarIdx;
+        if(payload.avatarData!==undefined) pBody.avatar_data=payload.avatarData;
+        await api("/api/parent/parents/"+targetPar.id,{method:"PATCH",body:JSON.stringify(pBody)});
+      }
     }else{
       var body={};
       if(payload.avatarIdx!==undefined) body.avatar_idx=payload.avatarIdx;
@@ -1626,6 +1721,7 @@
 
   function renderFamilyTab(){
     buildNewKidAvatars();
+    buildNewParentAvatars();
     var cm=$id("childManageList");cm.innerHTML="";
     data.children.forEach(function(c){
       var row=document.createElement("div");row.className="task-item";
@@ -1641,6 +1737,33 @@
         catch(e){showToast(e.message,true);}
       });
       cm.appendChild(row);
+    });
+
+    var parentsList=(data.parents&&data.parents.length)?data.parents:(data.parent?[data.parent]:[]);
+    $id("parentManageCount").textContent=parentsList.length+" 位家长";
+    var pm=$id("parentManageList");pm.innerHTML="";
+    parentsList.forEach(function(p){
+      var isSelf=(data.parent&&p.id===data.parent.id);
+      var row=document.createElement("div");row.className="task-item";
+      var selfTag=isSelf?'<span class="tag-all">当前登录</span>':"";
+      var dtTxt="";
+      if(p.created_at){
+        var dt=new Date(p.created_at);
+        dtTxt=" · 加入于 "+dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+      }
+      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(p.avatar_idx,p.avatar_url,28)+'<strong>'+GBArt.esc(p.display_name||p.username)+'</strong>'+selfTag+'<span style="font-size:12px;color:var(--muted)">账号 @'+GBArt.esc(p.username)+dtTxt+'</span></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-p-avatar">设头像</button><button class="sm set-p-auth">称呼/改密</button>'+(isSelf?"":'<button class="sm danger del-par">移除</button>')+'</div>';
+      row.querySelector(".set-p-avatar").addEventListener("click",function(){openAvatarModal({kind:"parent",parent:p});});
+      row.querySelector(".set-p-auth").addEventListener("click",function(){openParentAuthModal(p);});
+      var dp=row.querySelector(".del-par");
+      if(dp){
+        dp.addEventListener("click",async function(){
+          if(!this._arm){this._arm=true;this.textContent="确认移除？";var self=this;setTimeout(function(){self._arm=false;self.textContent="移除";},3500);return;}
+          try{await api("/api/parent/parents/"+p.id,{method:"DELETE"});showToast("已移除家长账号："+(p.display_name||p.username));await loadOverview();}
+          catch(e){showToast(e.message,true);}
+        });
+      }
+      pm.appendChild(row);
     });
   }
 
@@ -1663,10 +1786,11 @@
   });
   $id("btnAddParent").addEventListener("click",async function(){
     try{
-      await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:readRolePicker("coNameSel","coName"),password:$id("coPass").value})});
+      await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:readRolePicker("coNameSel","coName"),password:$id("coPass").value,avatar_idx:newParentAv})});
       $id("coUser").value="";$id("coName").value="";$id("coPass").value="";
       $id("coNameSel").value="爸爸";$id("coName").style.display="none";
       note("coMsg","共同管理家长添加成功！");
+      await loadOverview();
     }catch(e){note("coMsg",e.message,true);}
   });
 

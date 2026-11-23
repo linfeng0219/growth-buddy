@@ -951,13 +951,68 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		created, err := a.store.AddParent(fid, mapStr(body, "username"), mapStr(body, "displayName"), mapStr(body, "password"))
+		created, err := a.store.AddParent(fid, mapStr(body, "username"), mapStr(body, "displayName"), mapStr(body, "password"), mapInt(body, "avatar_idx", 0))
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
 		writeJSON(w, 201, created)
 		return
+	}
+
+	if strings.HasPrefix(p, "/api/parent/parents/") {
+		pid := strings.TrimPrefix(p, "/api/parent/parents/")
+		if pid != "" && !strings.Contains(pid, "/") {
+			if m == http.MethodPatch {
+				body, err := readJSONMap(r, 2*1024*1024)
+				if err != nil {
+					writeJSON(w, 400, map[string]string{"error": err.Error()})
+					return
+				}
+				avIdx := mapOptInt(body, "avatar_idx")
+				if avIdx == nil {
+					avIdx = mapOptInt(body, "avatarIdx")
+				}
+				avData := mapOptStr(body, "avatar_data")
+				if avData == nil {
+					avData = mapOptStr(body, "avatarData")
+				}
+				disp := mapOptStr(body, "displayName")
+				if disp == nil {
+					disp = mapOptStr(body, "display_name")
+				}
+				updated, err := a.store.UpdateParent(fid, pid, UpdateParentInput{
+					Username:    mapOptStr(body, "username"),
+					DisplayName: disp,
+					Password:    mapOptStr(body, "password"),
+					AvatarIdx:   avIdx,
+					AvatarData:  avData,
+				})
+				if errors.Is(err, ErrNotFound) {
+					writeJSON(w, 404, map[string]string{"error": "家长档案不存在"})
+					return
+				}
+				if err != nil {
+					writeJSON(w, 400, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, 200, map[string]any{"ok": true, "parent": updated})
+				return
+			}
+			if m == http.MethodDelete {
+				err := a.store.DeleteParent(fid, auth.ParentID, pid)
+				if errors.Is(err, ErrNotFound) {
+					writeJSON(w, 404, map[string]string{"error": "家长档案不存在"})
+					return
+				}
+				if err != nil {
+					writeJSON(w, 400, map[string]string{"error": err.Error()})
+					return
+				}
+				writeJSON(w, 200, map[string]any{"ok": true})
+				return
+			}
+		}
 	}
 
 	if m == http.MethodPost && p == "/api/parent/tasks/batch" {

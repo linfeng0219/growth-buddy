@@ -2052,7 +2052,15 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 	return out, err
 }
 
-func (s *Store) AddParent(familyID, username, displayName, password string) (*ParentDTO, error) {
+type UpdateParentInput struct {
+	Username    *string
+	DisplayName *string
+	Password    *string
+	AvatarIdx   *int
+	AvatarData  *string
+}
+
+func (s *Store) AddParent(familyID, username, displayName, password string, avatarIdx int) (*ParentDTO, error) {
 	cleanUser := strings.ToLower(strings.TrimSpace(username))
 	if len([]rune(cleanUser)) < 3 {
 		return nil, errors.New("账号至少 3 个字符")
@@ -2064,6 +2072,8 @@ func (s *Store) AddParent(familyID, username, displayName, password string) (*Pa
 	if disp == "" {
 		disp = cleanUser
 	}
+	disp = truncateRunes(disp, 16)
+	avIdx := clampAvatarIdx(avatarIdx)
 	var out *ParentDTO
 	err := s.db.WithTx(func(tx *Tx) error {
 		var dup string
@@ -2074,16 +2084,128 @@ func (s *Store) AddParent(familyID, username, displayName, password string) (*Pa
 			return errors.New("该家长账号已被注册")
 		}
 		id := GenID("par_")
+		ts := nowMs()
 		if _, err := tx.Exec(
-			"INSERT INTO parents (id, family_id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-			id, familyID, cleanUser, disp, HashPassword(password), nowMs(),
+			"INSERT INTO parents (id, family_id, username, display_name, password_hash, avatar_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			id, familyID, cleanUser, disp, HashPassword(password), avIdx, ts,
 		); err != nil {
 			return err
 		}
-		out = &ParentDTO{ID: id, Username: cleanUser, DisplayName: disp}
+		out = &ParentDTO{ID: id, Username: cleanUser, DisplayName: disp, AvatarIdx: avIdx, CreatedAt: ts}
 		return nil
 	})
 	return out, err
+}
+
+func (s *Store) UpdateParent(familyID, parentID string, in UpdateParentInput) (*ParentDTO, error) {
+	var cleanData string
+	var setData bool
+	if in.AvatarData != nil {
+		var err error
+		cleanData, err = sanitizeAvatarData(*in.AvatarData)
+		if err != nil {
+			return nil, err
+		}
+		setData = true
+	}
+	var out *ParentDTO
+	err := s.db.WithTx(func(tx *Tx) error {
+		var curUser, curDisp, curHash, curData string
+		var curIdx int
+		var updatedAt, createdAt int64
+		if err := tx.QueryRow(
+			"SELECT username, display_name, password_hash, avatar_idx, avatar_data, avatar_updated_at, created_at FROM parents WHERE id = ? AND family_id = ?",
+			func(r SQLiteRow) error {
+				curUser = r.String(0)
+				curDisp = r.String(1)
+				curHash = r.String(2)
+				curIdx = clampAvatarIdx(r.Int(3))
+				curData = r.String(4)
+				updatedAt = r.Int64(5)
+				createdAt = r.Int64(6)
+				return nil
+			}, parentID, familyID,
+		); err != nil {
+			return ErrNotFound
+		}
+		if in.Username != nil {
+			u := strings.ToLower(strings.TrimSpace(*in.Username))
+			if len([]rune(u)) < 3 {
+				return errors.New("家长账号至少 3 个字符")
+			}
+			var dup string
+			if e := tx.QueryRow("SELECT id FROM parents WHERE username = ? AND id != ?", func(r SQLiteRow) error {
+				dup = r.String(0)
+				return nil
+			}, u, parentID); e == nil && dup != "" {
+				return errors.New("该家长账号已被占用")
+			}
+			curUser = u
+		}
+		if in.DisplayName != nil {
+			if d := truncateRunes(strings.TrimSpace(*in.DisplayName), 16); d != "" {
+				curDisp = d
+			}
+		}
+		if in.Password != nil && *in.Password != "" {
+			if len(*in.Password) < 4 {
+				return errors.New("密码至少 4 位")
+			}
+			curHash = HashPassword(*in.Password)
+		}
+		if in.AvatarIdx != nil {
+			curIdx = clampAvatarIdx(*in.AvatarIdx)
+			if !setData || cleanData == "" {
+				curData = ""
+				updatedAt = nowMs()
+			}
+		}
+		if setData {
+			curData = cleanData
+			updatedAt = nowMs()
+		}
+		if _, err := tx.Exec(
+			"UPDATE parents SET username = ?, display_name = ?, password_hash = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ? WHERE id = ? AND family_id = ?",
+			curUser, curDisp, curHash, curIdx, curData, updatedAt, parentID, familyID,
+		); err != nil {
+			return err
+		}
+		out = &ParentDTO{
+			ID:          parentID,
+			Username:    curUser,
+			DisplayName: curDisp,
+			AvatarIdx:   curIdx,
+			AvatarURL:   avatarURL("parent", parentID, curData != "", updatedAt),
+			CreatedAt:   createdAt,
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (s *Store) DeleteParent(familyID, operatorParentID, targetParentID string) error {
+	if operatorParentID == targetParentID {
+		return errors.New("不能移除当前正在登录的家长账号")
+	}
+	return s.db.WithTx(func(tx *Tx) error {
+		var exists int
+		if err := tx.QueryRow("SELECT 1 FROM parents WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			exists = r.Int(0)
+			return nil
+		}, targetParentID, familyID); err != nil || exists == 0 {
+			return ErrNotFound
+		}
+		var cnt int
+		_ = tx.QueryRow("SELECT COUNT(*) FROM parents WHERE family_id = ?", func(r SQLiteRow) error {
+			cnt = r.Int(0)
+			return nil
+		}, familyID)
+		if cnt <= 1 {
+			return errors.New("每个家庭至少保留 1 位家长")
+		}
+		_, err := tx.Exec("DELETE FROM parents WHERE id = ? AND family_id = ?", targetParentID, familyID)
+		return err
+	})
 }
 
 func (s *Store) GetChildQuizProfile(familyID, childID string) (int, string) {

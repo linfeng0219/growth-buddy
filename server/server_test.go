@@ -684,3 +684,68 @@ func TestAdventureWinDailyCap(t *testing.T) {
 		t.Fatalf("expected next day reset: %d %+v", st, nextDay)
 	}
 }
+
+func TestParentCoManagement(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "家长协作之家", "displayName": "妈妈", "username": "coop_mom", "password": "pass1234",
+		"childName": "大宝", "childUsername": "coop_kid", "childPassword": "pass1234",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d %+v", st, reg)
+	}
+	momTok := reg["token"].(string)
+	momID := reg["parent"].(map[string]any)["id"].(string)
+
+	// Add co-parent
+	st, coCreated := doJSON(t, ts, "POST", "/api/parent/parents", momTok, map[string]any{
+		"username": "coop_dad", "displayName": "爸爸", "password": "dad1234", "avatar_idx": 8,
+	})
+	if st != 201 {
+		t.Fatalf("add co-parent failed: %d %+v", st, coCreated)
+	}
+	dadID := coCreated["id"].(string)
+
+	// Overview returns both parents
+	st, ov := doJSON(t, ts, "GET", "/api/parent/overview", momTok, nil)
+	if st != 200 {
+		t.Fatalf("overview failed: %d", st)
+	}
+	parentsList, _ := ov["parents"].([]any)
+	if len(parentsList) != 2 {
+		t.Fatalf("expected 2 parents in overview, got %d (%+v)", len(parentsList), parentsList)
+	}
+
+	// Update co-parent displayName, avatar_idx and password
+	st, upd := doJSON(t, ts, "PATCH", "/api/parent/parents/"+dadID, momTok, map[string]any{
+		"displayName": "超人爸爸", "avatar_idx": 7, "password": "newdad123",
+	})
+	if st != 200 || upd["parent"].(map[string]any)["display_name"] != "超人爸爸" {
+		t.Fatalf("update co-parent failed: %d %+v", st, upd)
+	}
+
+	// Updated password works via unified login
+	st, dadLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
+		"username": "coop_dad", "password": "newdad123",
+	})
+	if st != 200 || dadLogin["role"] != "parent" {
+		t.Fatalf("updated co-parent login failed: %d %+v", st, dadLogin)
+	}
+
+	// Cannot delete currently logged-in parent itself
+	st, _ = doJSON(t, ts, "DELETE", "/api/parent/parents/"+momID, momTok, nil)
+	if st != 400 {
+		t.Fatalf("expected 400 when deleting self, got %d", st)
+	}
+
+	// Can delete other co-parent in family
+	st, _ = doJSON(t, ts, "DELETE", "/api/parent/parents/"+dadID, momTok, nil)
+	if st != 200 {
+		t.Fatalf("expected 200 deleting co-parent, got %d", st)
+	}
+	st, ovAfter := doJSON(t, ts, "GET", "/api/parent/overview", momTok, nil)
+	if st != 200 || len(ovAfter["parents"].([]any)) != 1 {
+		t.Fatalf("expected 1 parent remaining after delete: %d %+v", st, ovAfter)
+	}
+}
