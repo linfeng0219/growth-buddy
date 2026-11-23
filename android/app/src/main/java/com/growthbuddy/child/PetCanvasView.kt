@@ -935,17 +935,29 @@ class BattleStageView @JvmOverloads constructor(
         val kind: Int // 0=圆形光粒, 1=水滴飞沫, 2=四角星芒
     )
 
+    private companion object {
+        const val MODE_NONE = 0
+        const val MODE_PET_ATTACK = 1
+        const val MODE_ENEMY_ATTACK = 2
+    }
+
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val monsterPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var species: SpeciesItem? = null
     private var stage: Int = 0
     private var asleep: Boolean = false
 
+    private var petHp: Int = 3
+    private var petMaxHp: Int = 3
     private var monsterHp: Int = 3
     private var monsterMaxHp: Int = 3
     private var finishingBlow: Boolean = false
+    private var lightningCrit: Boolean = false
+    private var enemyKnockout: Boolean = false
+    private var enemyAttackLabel: String = "懒洋洋泡泡!"
 
     private var busy = false
+    private var animMode = MODE_NONE
     private var animStartMs = 0L
     private val idleBaseMs = SystemClock.uptimeMillis()
     private var hitFired = false
@@ -954,7 +966,8 @@ class BattleStageView @JvmOverloads constructor(
     private var particles: List<BurstParticle> = emptyList()
     private var attached = false
 
-    private val battleDurationMs = 1480L
+    private val petBattleDurationMs = 1480L
+    private val enemyBattleDurationMs = 1360L
     private val hitTriggerMs = 500L
 
     private val idleTicker = object : Runnable {
@@ -969,12 +982,14 @@ class BattleStageView @JvmOverloads constructor(
         override fun run() {
             if (!busy) return
             val elapsed = SystemClock.uptimeMillis() - animStartMs
+            val dur = if (animMode == MODE_ENEMY_ATTACK) enemyBattleDurationMs else petBattleDurationMs
             if (elapsed >= hitTriggerMs && !hitFired) {
                 hitFired = true
                 onHitCallback?.invoke()
             }
-            if (elapsed >= battleDurationMs) {
+            if (elapsed >= dur) {
                 busy = false
+                animMode = MODE_NONE
                 invalidate()
                 onWinCallback?.invoke()
                 if (attached) {
@@ -995,21 +1010,56 @@ class BattleStageView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setPetHp(hp: Int, maxHp: Int = 3) {
+        this.petMaxHp = maxHp.coerceAtLeast(1)
+        this.petHp = hp.coerceIn(0, this.petMaxHp)
+        invalidate()
+    }
+
     fun setMonsterHp(hp: Int, maxHp: Int = 3) {
         this.monsterMaxHp = maxHp.coerceAtLeast(1)
         this.monsterHp = hp.coerceIn(0, this.monsterMaxHp)
         invalidate()
     }
 
-    fun triggerAttack(isFinishingBlow: Boolean = false, onHit: () -> Unit, onWin: () -> Unit) {
+    fun triggerAttack(
+        isFinishingBlow: Boolean = false,
+        isLightningCrit: Boolean = false,
+        onHit: () -> Unit,
+        onWin: () -> Unit
+    ) {
         if (busy) return
         busy = true
+        animMode = MODE_PET_ATTACK
         hitFired = false
         finishingBlow = isFinishingBlow
+        lightningCrit = isLightningCrit
         animStartMs = SystemClock.uptimeMillis()
         onHitCallback = onHit
         onWinCallback = onWin
-        particles = buildBattleParticles(isFinishingBlow)
+        particles = buildBattleParticles(isFinishingBlow || isLightningCrit, forEnemyAttack = false)
+        removeCallbacks(idleTicker)
+        postOnAnimation(animator)
+    }
+
+    fun triggerEnemyAttack(
+        isKnockout: Boolean = false,
+        attackLabel: String = "懒洋洋泡泡!",
+        onHit: () -> Unit,
+        onDone: () -> Unit
+    ) {
+        if (busy) return
+        busy = true
+        animMode = MODE_ENEMY_ATTACK
+        hitFired = false
+        enemyKnockout = isKnockout
+        enemyAttackLabel = attackLabel
+        finishingBlow = false
+        lightningCrit = false
+        animStartMs = SystemClock.uptimeMillis()
+        onHitCallback = onHit
+        onWinCallback = onDone
+        particles = buildBattleParticles(isKnockout, forEnemyAttack = true)
         removeCallbacks(idleTicker)
         postOnAnimation(animator)
     }
@@ -1031,8 +1081,31 @@ class BattleStageView @JvmOverloads constructor(
         busy = false
     }
 
-    private fun buildBattleParticles(isKo: Boolean): List<BurstParticle> {
+    private fun buildBattleParticles(intense: Boolean, forEnemyAttack: Boolean): List<BurstParticle> {
         val list = ArrayList<BurstParticle>(28)
+        if (forEnemyAttack) {
+            val burstCount = if (intense) 18 else 14
+            val colors = intArrayOf(0xFF4BE3D0.toInt(), 0xFF7BE8FF.toInt(), 0xFFFF85A1.toInt(), 0xFFA5F3FC.toInt())
+            for (i in 0 until burstCount) {
+                val angle = (2.0 * PI * i / burstCount) + (i % 3) * 0.21
+                val speed = (if (intense) 140f else 105f) + (i % 4) * 28f
+                list.add(
+                    BurstParticle(
+                        bornMs = 500f,
+                        lifeMs = 640f,
+                        originRelX = 0.24f,
+                        originRelY = 0.56f,
+                        vx = (cos(angle) * speed).toFloat(),
+                        vy = (sin(angle) * speed - 45f).toFloat(),
+                        gravity = 190f,
+                        size = if (i % 3 == 0) 9.5f else 6.5f + (i % 3) * 2f,
+                        color = colors[i % colors.size],
+                        kind = if (i % 2 == 0) 1 else 0
+                    )
+                )
+            }
+            return list
+        }
         // 冲刺起跳尘埃粒子
         for (i in 0 until 5) {
             val angle = Math.toRadians(145.0 + i * 16.0)
@@ -1053,11 +1126,11 @@ class BattleStageView @JvmOverloads constructor(
             )
         }
         // 命中瞬间星芒 + 史莱姆凝胶飞沫
-        val burstCount = if (isKo) 20 else 14
+        val burstCount = if (intense) 20 else 14
         val colors = intArrayOf(0xFFF6C445.toInt(), 0xFF4BE3D0.toInt(), 0xFFFF8577.toInt(), 0xFF7BE8FF.toInt(), 0xFFFFE57F.toInt())
         for (i in 0 until burstCount) {
             val angle = (2.0 * PI * i / burstCount) + (i % 3) * 0.17
-            val speed = (if (isKo) 150f else 115f) + (i % 4) * 32f
+            val speed = (if (intense) 155f else 115f) + (i % 4) * 32f
             val kind = when {
                 i % 3 == 0 -> 2
                 i % 3 == 1 -> 1
@@ -1066,7 +1139,7 @@ class BattleStageView @JvmOverloads constructor(
             list.add(
                 BurstParticle(
                     bornMs = 500f,
-                    lifeMs = if (isKo) 760f else 600f,
+                    lifeMs = if (intense) 760f else 600f,
                     originRelX = 0.74f,
                     originRelY = 0.56f,
                     vx = (cos(angle) * speed).toFloat(),
@@ -1088,13 +1161,15 @@ class BattleStageView @JvmOverloads constructor(
         val nowMs = SystemClock.uptimeMillis()
         val idleSec = (nowMs - idleBaseMs) / 1000f
         val elapsed = if (busy) (nowMs - animStartMs).toFloat() else -1f
+        val isEnemyAtk = busy && animMode == MODE_ENEMY_ATTACK
+        val isPetAtk = busy && animMode == MODE_PET_ATTACK
 
         // 命中瞬间轻微震屏 (500..760ms)
         var shakeX = 0f
         var shakeY = 0f
         if (elapsed in 500f..760f) {
             val st = (elapsed - 500f) / 260f
-            val amp = (1f - st) * (if (finishingBlow) 11f else 7.5f)
+            val amp = (1f - st) * (if (finishingBlow || lightningCrit || enemyKnockout) 10.5f else 7.5f)
             shakeX = sin(st * PI * 7.0).toFloat() * amp
             shakeY = cos(st * PI * 5.0).toFloat() * (amp * 0.65f)
         }
@@ -1102,7 +1177,7 @@ class BattleStageView @JvmOverloads constructor(
         canvas.save()
         canvas.translate(shakeX, shakeY)
 
-        drawArenaBackdrop(canvas, w, h, idleSec, elapsed)
+        drawArenaBackdrop(canvas, w, h, idleSec, if (isPetAtk) elapsed else -1f)
 
         // 1. 己方宠物运动轨迹与形变
         val basePetX = w * 0.23f
@@ -1113,14 +1188,13 @@ class BattleStageView @JvmOverloads constructor(
         var petSx = 1f
         var petSy = 1f
         var petRot = 0f
+        var petHitWhiteAlpha = 0
 
-        if (elapsed < 0f) {
-            // 待机元气呼吸
-            fighterDy = -kotlin.math.abs(sin(idleSec * 2.8f)) * (h * 0.025f)
-        } else {
+        if (!busy) {
+            fighterDy = if (petHp <= 0) 0f else -kotlin.math.abs(sin(idleSec * 2.8f)) * (h * 0.025f)
+        } else if (isPetAtk) {
             when {
                 elapsed < 260f -> {
-                    // 蓄力压低蹲起
                     val t = elapsed / 260f
                     val s = sin(t * PI * 0.5).toFloat()
                     petSx = 1f + 0.14f * s
@@ -1129,7 +1203,6 @@ class BattleStageView @JvmOverloads constructor(
                     petRot = -6f * s
                 }
                 elapsed < 530f -> {
-                    // 高速跃起冲向史莱姆
                     val t = (elapsed - 260f) / 270f
                     val ease = 1f - (1f - t) * (1f - t)
                     fighterDx = w * 0.34f * ease
@@ -1139,7 +1212,6 @@ class BattleStageView @JvmOverloads constructor(
                     petRot = 12f * (1f - t * 0.5f)
                 }
                 elapsed < 980f -> {
-                    // 命中后优雅后空翻/弹回落地
                     val t = (elapsed - 530f) / 450f
                     fighterDx = w * 0.34f * (1f - t)
                     fighterDy = -sin(t * PI).toFloat() * (h * 0.14f)
@@ -1151,15 +1223,24 @@ class BattleStageView @JvmOverloads constructor(
                     }
                 }
             }
+        } else if (isEnemyAtk && elapsed in 500f..1040f) {
+            val ht = (elapsed - 500f) / 540f
+            val damp = (1f - ht) * (1f - ht)
+            val osc = sin(ht * PI * 4.0).toFloat() * damp
+            fighterDx = -w * 0.05f * (1f - ht)
+            petSx = 1f - 0.14f * osc
+            petSy = 1f + 0.14f * osc
+            petRot = -15f * (1f - ht) + 9f * osc
+            petHitWhiteAlpha = ((1f - ht * 2.4f).coerceAtLeast(0f) * 140).toInt()
         }
 
-        // 蓄力金色光环 (40..320ms)
-        if (elapsed in 40f..320f) {
+        // 蓄力金色光环 (仅我方攻击时 40..320ms)
+        if (isPetAtk && elapsed in 40f..320f) {
             drawChargeAura(canvas, basePetX + fighterDx, basePetY + fighterDy, min(w, h) * 0.24f, (elapsed - 40f) / 280f)
         }
 
         // 冲刺速度线 & 残影拖尾 (260..540ms)
-        if (elapsed in 260f..540f) {
+        if (isPetAtk && elapsed in 260f..540f) {
             val st = (elapsed - 260f) / 280f
             drawSpeedLinesAndAfterimages(canvas, w, h, basePetX, basePetY, fighterDx, fighterDy, petScale, st)
         }
@@ -1179,30 +1260,53 @@ class BattleStageView @JvmOverloads constructor(
         }
         canvas.restore()
 
-        // 2. 飞驰元气光弹 (310..520ms)
-        if (elapsed in 310f..520f) {
+        // 宠物被懒洋洋泡泡短暂裹住（petHp == 0 或受击高光环）
+        if ((petHp <= 0 && !busy) || (isEnemyAtk && enemyKnockout && elapsed >= 520f)) {
+            drawTrappedBubbleOverlay(canvas, fighterCx, fighterCy, min(w, h) * 0.30f, idleSec)
+        } else if (petHitWhiteAlpha > 0) {
+            paint.reset()
+            paint.isAntiAlias = true
+            paint.style = Paint.Style.FILL
+            paint.color = (petHitWhiteAlpha shl 24) or 0x00A5F3FC
+            canvas.drawCircle(fighterCx, fighterCy, min(w, h) * 0.25f, paint)
+        }
+
+        // 2. 飞驰能量弹（我方发射元气光弹 vs 史莱姆发射果冻泡泡弹）
+        if (isPetAtk && elapsed in 310f..520f) {
             drawEnergyProjectile(canvas, w, h, (elapsed - 310f) / 210f)
+            if (lightningCrit) {
+                drawLightningArc(canvas, w * 0.28f, h * 0.45f, w * 0.74f, h * 0.52f, (elapsed - 310f) / 210f)
+            }
+        } else if (isEnemyAtk && elapsed in 250f..510f) {
+            drawSlimeBombProjectile(canvas, w, h, (elapsed - 250f) / 260f)
         }
 
         // 3. 右侧史莱姆风「拖延怪」
         val foeCx = w * 0.77f
         val foeCy = h * 0.59f
         val r = min(w, h) * 0.255f
-        drawSlimeMonster(canvas, foeCx, foeCy, r, idleSec, elapsed)
+        drawSlimeMonster(canvas, foeCx, foeCy, r, idleSec, if (isPetAtk) elapsed else -1f, if (isEnemyAtk) elapsed else -1f)
 
-        // 4. 命中爆发冲击波 & 星芒斩击 (490..920ms)
-        if (elapsed in 490f..920f) {
-            drawImpactBurst(canvas, foeCx - r * 0.15f, foeCy - r * 0.12f, r, (elapsed - 490f) / 430f)
+        // 4. 命中爆发冲击波（打在右侧史莱姆 vs 打在左侧宠物）
+        if (isPetAtk && elapsed in 490f..920f) {
+            drawImpactBurst(canvas, foeCx - r * 0.15f, foeCy - r * 0.12f, r, (elapsed - 490f) / 430f, forEnemyHit = false)
+            if (lightningCrit) {
+                drawLightningArc(canvas, foeCx - r * 0.8f, h * 0.12f, foeCx, foeCy - r * 0.2f, ((elapsed - 490f) / 260f).coerceIn(0f, 1f))
+            }
+        } else if (isEnemyAtk && elapsed in 480f..900f) {
+            drawImpactBurst(canvas, fighterCx + r * 0.10f, fighterCy - r * 0.08f, r * 0.9f, (elapsed - 480f) / 420f, forEnemyHit = true)
         }
 
-        // 5. 物理飞溅粒子 (260..1350ms)
-        if (elapsed >= 260f) {
+        // 5. 物理飞溅粒子 (250..1350ms)
+        if (elapsed >= 250f) {
             drawParticles(canvas, w, h, elapsed)
         }
 
         // 6. 战斗飘字与胜利星芒 (540..1480ms)
-        if (elapsed in 540f..1480f) {
-            drawFloatingCombatText(canvas, foeCx, foeCy - r * 1.15f, elapsed)
+        if (isPetAtk && elapsed in 540f..1480f) {
+            drawFloatingCombatText(canvas, foeCx, foeCy - r * 1.15f, elapsed, forEnemyAttack = false)
+        } else if (isEnemyAtk && elapsed in 520f..1360f) {
+            drawFloatingCombatText(canvas, fighterCx, fighterCy - r * 1.05f, elapsed, forEnemyAttack = true)
         }
 
         canvas.restore()
@@ -1332,15 +1436,16 @@ class BattleStageView @JvmOverloads constructor(
         foeCy: Float,
         r: Float,
         idleSec: Float,
-        elapsed: Float
+        petAtkElapsed: Float,
+        enemyAtkElapsed: Float
     ) {
         val baseY = foeCy + r * 0.84f
         val hpRatio = monsterHp.toFloat() / monsterMaxHp.toFloat()
-        val isDefeated = (monsterHp <= 0 && !busy) || (finishingBlow && elapsed >= 620f)
+        val isDefeated = (monsterHp <= 0 && !busy) || (finishingBlow && petAtkElapsed >= 620f)
 
-        // 计算史莱姆 Q 弹缩放、旋转、受击位移与颤抖
-        var sx = 1f
-        var sy = 1f
+        // 计算史莱姆 Q 弹缩放、旋转、受击或主动吐泡攻击形变
+        var sx: Float
+        var sy: Float
         var dx = 0f
         var dy = 0f
         var rot = 0f
@@ -1349,26 +1454,40 @@ class BattleStageView @JvmOverloads constructor(
 
         when {
             isDefeated -> {
-                // 被彻底击败：软趴趴摊成水洼
-                val settle = if (elapsed in 620f..1100f) {
-                    val dt = (elapsed - 620f) / 480f
+                val settle = if (petAtkElapsed in 620f..1100f) {
+                    val dt = (petAtkElapsed - 620f) / 480f
                     1f + 0.14f * sin(dt * PI * 3.0).toFloat() * (1f - dt)
                 } else 1f
                 sx = 1.46f * settle
                 sy = 0.42f / settle
                 dy = r * 0.04f
             }
-            elapsed in 120f..499f -> {
-                // 看到主角蓄力冲刺：紧张发抖、微微后仰
-                val lt = (elapsed - 120f) / 380f
+            enemyAtkElapsed in 0f..250f -> {
+                // 史莱姆自己压扁蓄力准备喷射果冻弹
+                val at = enemyAtkElapsed / 250f
+                val s = sin(at * PI * 0.5).toFloat()
+                sx = 1f + 0.28f * s
+                sy = 1f - 0.26f * s
+                rot = 8f * s
+            }
+            enemyAtkElapsed in 250f..680f -> {
+                // 猛然弹射吐泡再弹性回落
+                val jt = (enemyAtkElapsed - 250f) / 430f
+                dx = -r * 0.42f * sin(jt * PI).toFloat()
+                dy = -r * 0.36f * sin(jt * PI).toFloat()
+                sx = 0.86f + 0.18f * jt
+                sy = 1.18f - 0.18f * jt
+                rot = -14f * sin(jt * PI).toFloat()
+            }
+            petAtkElapsed in 120f..499f -> {
+                val lt = (petAtkElapsed - 120f) / 380f
                 dx = sin(lt * PI * 10.0).toFloat() * 2.5f
                 sx = 0.96f
                 sy = 1.04f
             }
-            elapsed in 500f..1160f -> {
-                // 命中后：先猛烈压扁回弹，再阻尼果冻晃动
+            petAtkElapsed in 500f..1160f -> {
                 isHitReact = true
-                val ht = (elapsed - 500f) / 660f
+                val ht = (petAtkElapsed - 500f) / 660f
                 if (ht < 0.22f) {
                     val p = ht / 0.22f
                     sx = 1f + 0.44f * sin(p * PI * 0.5).toFloat()
@@ -1388,13 +1507,11 @@ class BattleStageView @JvmOverloads constructor(
                 }
             }
             else -> {
-                // Q 弹史莱姆待机：水滴形上下呼吸弹跳
                 val phase = idleSec * 3.6f
                 val bounce = sin(phase)
                 sx = 1f - 0.07f * bounce
                 sy = 1f + 0.08f * bounce
                 if (monsterHp == 1 && monsterMaxHp > 1) {
-                    // 残血微微发抖
                     dx = sin(idleSec * 28f) * 2.2f
                 }
             }
@@ -1604,22 +1721,96 @@ class BattleStageView @JvmOverloads constructor(
         }
     }
 
-    private fun drawImpactBurst(canvas: Canvas, cx: Float, cy: Float, r: Float, t: Float) {
+    private fun drawSlimeBombProjectile(canvas: Canvas, w: Float, h: Float, t: Float) {
+        val sx = w * 0.70f
+        val sy = h * 0.52f
+        val ex = w * 0.25f
+        val ey = h * 0.56f
+        val cx = w * 0.47f
+        val cy = h * 0.24f
+        val u = 1f - t
+        val px = u * u * sx + 2 * u * t * cx + t * t * ex
+        val py = u * u * sy + 2 * u * t * cy + t * t * ey
+
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        for (tail in 1..4) {
+            val tt = (t - tail * 0.06f).coerceAtLeast(0f)
+            val tu = 1f - tt
+            val tx = tu * tu * sx + 2 * tu * tt * cx + tt * tt * ex
+            val ty = tu * tu * sy + 2 * tu * tt * cy + tt * tt * ey
+            paint.color = ((180 - tail * 36) shl 24) or 0x004BE3D0
+            canvas.drawCircle(tx, ty, (10f - tail * 1.6f), paint)
+        }
+        paint.color = 0xAA7BE8FF.toInt()
+        canvas.drawCircle(px, py, 16f, paint)
+        paint.color = 0xFF22A6B3.toInt()
+        canvas.drawCircle(px, py, 11f, paint)
+        paint.color = 0xCCFFFFFF.toInt()
+        canvas.drawCircle(px - 3.5f, py - 3.5f, 3.5f, paint)
+    }
+
+    private fun drawLightningArc(canvas: Canvas, sx: Float, sy: Float, ex: Float, ey: Float, t: Float) {
+        val alpha = ((sin(t * PI).toFloat()) * 255).toInt().coerceIn(0, 255)
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        val path = Path().apply {
+            moveTo(sx, sy)
+            val mid1x = sx + (ex - sx) * 0.33f
+            val mid1y = sy + (ey - sy) * 0.33f - 18f
+            val mid2x = sx + (ex - sx) * 0.66f
+            val mid2y = sy + (ey - sy) * 0.66f + 16f
+            lineTo(mid1x, mid1y)
+            lineTo(mid2x, mid2y)
+            lineTo(ex, ey)
+        }
+        paint.strokeWidth = 9f
+        paint.color = ((alpha * 0.45f).toInt() shl 24) or 0x00FFE082
+        canvas.drawPath(path, paint)
+        paint.strokeWidth = 4f
+        paint.color = (alpha shl 24) or 0x00FFFFFF
+        canvas.drawPath(path, paint)
+    }
+
+    private fun drawTrappedBubbleOverlay(canvas: Canvas, cx: Float, cy: Float, radius: Float, idleSec: Float) {
+        val pulse = 1f + 0.04f * sin(idleSec * 3.4f)
+        val r = radius * pulse
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        paint.color = 0x444BE3D0.toInt()
+        canvas.drawCircle(cx, cy, r, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = 0xAA22A6B3.toInt()
+        canvas.drawCircle(cx, cy, r, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = 0xAAFFFFFF.toInt()
+        canvas.drawCircle(cx - r * 0.42f, cy - r * 0.42f, r * 0.14f, paint)
+    }
+
+    private fun drawImpactBurst(canvas: Canvas, cx: Float, cy: Float, r: Float, t: Float, forEnemyHit: Boolean = false) {
         paint.reset()
         paint.isAntiAlias = true
         val fade = (1f - t).coerceIn(0f, 1f)
+        val mainRingColor = if (forEnemyHit) 0x004BE3D0 else 0x00FFD54F
+        val subRingColor = if (forEnemyHit) 0x00FF85A1 else 0x004BE3D0
 
         // 双层扩散冲击圆环
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 6f * fade + 1.5f
-        paint.color = ((fade * 220).toInt().coerceIn(0, 220) shl 24) or 0x00FFD54F
+        paint.color = ((fade * 220).toInt().coerceIn(0, 220) shl 24) or mainRingColor
         canvas.drawCircle(cx, cy, r * (0.35f + 1.25f * t), paint)
 
         if (t > 0.15f) {
             val t2 = ((t - 0.15f) / 0.85f).coerceIn(0f, 1f)
             val f2 = 1f - t2
             paint.strokeWidth = 4.5f * f2 + 1f
-            paint.color = ((f2 * 190).toInt().coerceIn(0, 190) shl 24) or 0x004BE3D0
+            paint.color = ((f2 * 190).toInt().coerceIn(0, 190) shl 24) or subRingColor
             canvas.drawCircle(cx, cy, r * (0.25f + 1.35f * t2), paint)
         }
 
@@ -1669,15 +1860,28 @@ class BattleStageView @JvmOverloads constructor(
         }
     }
 
-    private fun drawFloatingCombatText(canvas: Canvas, cx: Float, baseY: Float, elapsed: Float) {
-        val t = ((elapsed - 540f) / 940f).coerceIn(0f, 1f)
+    private fun drawFloatingCombatText(
+        canvas: Canvas,
+        cx: Float,
+        baseY: Float,
+        elapsed: Float,
+        forEnemyAttack: Boolean
+    ) {
+        val start = if (forEnemyAttack) 520f else 540f
+        val dur = if (forEnemyAttack) 840f else 940f
+        val t = ((elapsed - start) / dur).coerceIn(0f, 1f)
         val alpha = ((if (t < 0.25f) t / 0.25f else 1f - (t - 0.25f) / 0.75f) * 255).toInt().coerceIn(0, 255)
         val popScale = if (t < 0.22f) {
             0.7f + 0.55f * sin((t / 0.22f) * PI * 0.5).toFloat()
         } else {
             1.25f - 0.22f * ((t - 0.22f) / 0.78f).coerceIn(0f, 1f)
         }
-        val label = if (finishingBlow) "KO! 暴击!" else "元气暴击!"
+        val label = when {
+            forEnemyAttack -> enemyAttackLabel
+            finishingBlow -> "KO! 暴击!"
+            lightningCrit -> "⚡ 闪电暴击!"
+            else -> "元气暴击!"
+        }
         val yPos = baseY - t * 34f
 
         canvas.save()
@@ -1687,19 +1891,24 @@ class BattleStageView @JvmOverloads constructor(
         paint.reset()
         paint.isAntiAlias = true
         paint.textAlign = Paint.Align.CENTER
-        paint.textSize = 34f
+        paint.textSize = 32f
         paint.isFakeBoldText = true
 
         // 描边
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 6.5f
         paint.strokeJoin = Paint.Join.ROUND
-        paint.color = (alpha shl 24) or 0x003D2516
+        paint.color = (alpha shl 24) or (if (forEnemyAttack) 0x00114852 else 0x003D2516)
         canvas.drawText(label, 0f, 0f, paint)
 
         // 亮色填充
         paint.style = Paint.Style.FILL
-        paint.color = (alpha shl 24) or (if (finishingBlow) 0x00FFD54F else 0x00FF7043)
+        val fillRgb = when {
+            forEnemyAttack -> 0x004BE3D0
+            finishingBlow || lightningCrit -> 0x00FFD54F
+            else -> 0x00FF7043
+        }
+        paint.color = (alpha shl 24) or fillRgb
         canvas.drawText(label, 0f, 0f, paint)
 
         canvas.restore()
@@ -1711,11 +1920,15 @@ class BattleStageView @JvmOverloads constructor(
             paint.isAntiAlias = true
             paint.style = Paint.Style.FILL
             paint.textAlign = Paint.Align.CENTER
-            paint.textSize = 28f
-            paint.color = (sAlpha shl 24) or 0x00F6A821
-            canvas.drawText("⭐", cx + 48f, baseY - st * 42f, paint)
-            if (finishingBlow) {
-                canvas.drawText("✨", cx - 50f, baseY + 10f - st * 48f, paint)
+            paint.textSize = 26f
+            paint.color = (sAlpha shl 24) or (if (forEnemyAttack) 0x00E11D48 else 0x00F6A821)
+            if (forEnemyAttack) {
+                canvas.drawText("-1 💖", cx + 44f, baseY - st * 38f, paint)
+            } else {
+                canvas.drawText("⭐", cx + 48f, baseY - st * 42f, paint)
+                if (finishingBlow || lightningCrit) {
+                    canvas.drawText("⚡", cx - 50f, baseY + 10f - st * 48f, paint)
+                }
             }
         }
     }

@@ -5,6 +5,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -47,11 +50,27 @@ class AdventureActivity : AppCompatActivity() {
     private var qIndex = 0
     private var monsterHp = 3
     private val maxHp = 3
+    private var petHp = 3
+    private val maxPetHp = 3
     private var busy = false
     private var childAge: Int = 7
     private var currentDiff: String = "normal"
     private var roundsCleared: Int = 0
     private var wrongCountInRound: Int = 0
+    private var fastCritCountInRound: Int = 0
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var questionShownAtMs: Long = 0L
+    private var pausedAtMs: Long = 0L
+    private var isResumed: Boolean = false
+
+    private val chargeTicker = object : Runnable {
+        override fun run() {
+            if (!isResumed) return
+            updateSlimeChargeBar()
+            mainHandler.postDelayed(this, 100L)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,6 +86,7 @@ class AdventureActivity : AppCompatActivity() {
         val speciesItem = intent.getSerializableExtra(EXTRA_SPECIES_ITEM) as? SpeciesItem
         binding.advBattleStage.setPet(speciesItem, petStage, petAsleep)
         binding.advBattleStage.setMonsterHp(monsterHp, maxHp)
+        binding.advBattleStage.setPetHp(petHp, maxPetHp)
 
         binding.btnAdvExit.setOnClickListener { finish() }
         binding.btnOpt0.setOnClickListener { submitAnswer(0) }
@@ -79,9 +99,28 @@ class AdventureActivity : AppCompatActivity() {
         binding.btnDiffHard.setOnClickListener { switchDifficulty("hard") }
 
         updateDifficultyChips()
+        updateHpUi()
         loadFallbackQuestions()
         showCurrentQuestion()
         fetchOnlineQuestions()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isResumed = true
+        if (pausedAtMs > 0L && questionShownAtMs > 0L) {
+            questionShownAtMs += (SystemClock.uptimeMillis() - pausedAtMs)
+            pausedAtMs = 0L
+        }
+        mainHandler.removeCallbacks(chargeTicker)
+        mainHandler.post(chargeTicker)
+    }
+
+    override fun onPause() {
+        isResumed = false
+        pausedAtMs = SystemClock.uptimeMillis()
+        mainHandler.removeCallbacks(chargeTicker)
+        super.onPause()
     }
 
     private fun normalizeDiff(raw: String?): String = when (raw?.trim()?.lowercase()) {
@@ -101,6 +140,7 @@ class AdventureActivity : AppCompatActivity() {
         currentDiff = newDiff
         sound.playPat()
         updateDifficultyChips()
+        resetChargeClock()
         binding.tvAdvStatus.text = "正在加载 ${childAge}岁 · ${diffLabel(currentDiff)} 难度在线题库..."
         fetchOnlineQuestions()
     }
@@ -221,6 +261,54 @@ class AdventureActivity : AppCompatActivity() {
         }
     }
 
+    private fun fastCritThresholdMs(): Long = if (childAge <= 5) 10_000L else 8_000L
+
+    private fun slimeChargeIntervalMs(): Long = when (currentDiff) {
+        "easy" -> 0L // 简单模式不设超时压迫，仅在答错时史莱姆反击
+        "hard" -> if (childAge <= 5) 28_000L else 22_000L
+        else -> if (childAge <= 5) 35_000L else 28_000L
+    }
+
+    private fun resetChargeClock() {
+        questionShownAtMs = SystemClock.uptimeMillis()
+        binding.pbSlimeCharge.progress = 0
+    }
+
+    private fun updateHpUi() {
+        val hearts = "💖".repeat(petHp) + "🤍".repeat((maxPetHp - petHp).coerceAtLeast(0))
+        binding.tvPetHp.text = "$hearts 小伙伴元气 $petHp/$maxPetHp"
+        binding.pbPetHp.progress = petHp
+        binding.tvAdvHp.text = "史莱姆 $monsterHp/$maxHp"
+        binding.tvSlimeHpBarLabel.text = "🫧 拖延史莱姆 $monsterHp/$maxHp"
+        binding.pbMonsterHp.progress = monsterHp
+    }
+
+    private fun updateSlimeChargeBar() {
+        if (busy || monsterHp <= 0 || petHp <= 0 || questions.isEmpty()) return
+        val interval = slimeChargeIntervalMs()
+        val fastSec = (fastCritThresholdMs() / 1000L).toInt()
+        if (interval <= 0L) {
+            binding.pbSlimeCharge.progress = 0
+            binding.tvSlimeCharge.text = "🌱 简单模式不限时 · ${fastSec}秒内答对可触发 ⚡ 闪电暴击"
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        if (questionShownAtMs <= 0L) questionShownAtMs = now
+        val elapsed = (now - questionShownAtMs).coerceAtLeast(0L)
+        val pct = ((elapsed * 100L) / interval).toInt().coerceIn(0, 100)
+        binding.pbSlimeCharge.progress = pct
+        val remainSec = (((interval - elapsed) + 999L) / 1000L).coerceAtLeast(0L)
+        if (elapsed <= fastCritThresholdMs()) {
+            val fastRemain = (((fastCritThresholdMs() - elapsed) + 999L) / 1000L).coerceAtLeast(1L)
+            binding.tvSlimeCharge.text = "⚡ ${fastRemain}s 内答对触发闪电暴击 · 史莱姆蓄力 ${remainSec}s"
+        } else {
+            binding.tvSlimeCharge.text = "🫧 史莱姆泡泡蓄力中（${remainSec}s 后吐泡泡攻击）"
+        }
+        if (elapsed >= interval) {
+            triggerSlimeCounterAttack(attackLabel = "懒洋洋泡泡!", advanceQuestion = false, reasonText = "🫧 史莱姆泡泡蓄满啦！回答加快节奏就能打断它哦~")
+        }
+    }
+
     private fun showCurrentQuestion() {
         if (questions.isEmpty()) return
         val q = questions[qIndex % questions.size]
@@ -238,17 +326,27 @@ class AdventureActivity : AppCompatActivity() {
             }
         }
         binding.btnAdvNextRound.visibility = View.GONE
+        resetChargeClock()
     }
 
     private fun submitAnswer(choiceIdx: Int) {
-        if (busy || monsterHp <= 0 || questions.isEmpty()) return
+        if (busy || monsterHp <= 0 || petHp <= 0 || questions.isEmpty()) return
         val q = questions[qIndex % questions.size]
+        val answerCostMs = (SystemClock.uptimeMillis() - questionShownAtMs).coerceAtLeast(0L)
         if (choiceIdx == q.answerIdx) {
             busy = true
             val isFatal = (monsterHp - 1) <= 0
-            binding.tvAdvStatus.text = "⚡ 答对了！小伙伴蓄力发动元气暴击！"
+            val isFastCrit = answerCostMs <= fastCritThresholdMs()
+            if (isFastCrit) fastCritCountInRound += 1
+            binding.pbSlimeCharge.progress = 0
+            binding.tvAdvStatus.text = if (isFastCrit) {
+                "⚡ 反应神速！小伙伴发动「闪电暴击」！"
+            } else {
+                "⚡ 答对了！小伙伴蓄力发动元气暴击！"
+            }
             binding.advBattleStage.triggerAttack(
                 isFinishingBlow = isFatal,
+                isLightningCrit = isFastCrit,
                 onHit = {
                     sound.playFeed()
                     val previewHp = (monsterHp - 1).coerceAtLeast(0)
@@ -257,14 +355,13 @@ class AdventureActivity : AppCompatActivity() {
                 onWin = {
                     monsterHp = (monsterHp - 1).coerceAtLeast(0)
                     binding.advBattleStage.setMonsterHp(monsterHp, maxHp)
-                    binding.pbMonsterHp.progress = monsterHp
-                    binding.tvAdvHp.text = "怪兽体力 $monsterHp/$maxHp"
+                    updateHpUi()
                     busy = false
                     if (monsterHp == 0) {
                         roundsCleared += 1
                         sound.playVictoryFanfare()
                         sound.speak("太棒了，拖延怪被击败啦！")
-                        binding.tvAdvStatus.text = "🎉 太棒了！拖延怪被彻底击败啦！"
+                        binding.tvAdvStatus.text = "🎉 太棒了！拖延史莱姆被彻底击败啦！"
                         binding.btnOpt0.visibility = View.GONE
                         binding.btnOpt1.visibility = View.GONE
                         binding.btnOpt2.visibility = View.GONE
@@ -274,15 +371,57 @@ class AdventureActivity : AppCompatActivity() {
                         sound.playPat()
                         qIndex++
                         showCurrentQuestion()
-                        binding.tvAdvStatus.text = "命中！再答对 $monsterHp 题就能击败拖延怪！"
+                        binding.tvAdvStatus.text = if (isFastCrit) {
+                            "⚡ 闪电暴击命中！再答对 $monsterHp 题就能击败史莱姆！"
+                        } else {
+                            "命中！再答对 $monsterHp 题就能击败史莱姆！"
+                        }
                     }
                 }
             )
         } else {
             wrongCountInRound += 1
-            sound.playError()
-            binding.tvAdvStatus.text = "差一点点，再仔细想想哦~"
+            triggerSlimeCounterAttack(
+                attackLabel = "反击泡泡!",
+                advanceQuestion = false,
+                reasonText = "🫧 答错啦，史莱姆吐出了反击泡泡！别灰心，再仔细想想~"
+            )
         }
+    }
+
+    private fun triggerSlimeCounterAttack(attackLabel: String, advanceQuestion: Boolean, reasonText: String) {
+        if (busy || monsterHp <= 0 || petHp <= 0) return
+        busy = true
+        binding.pbSlimeCharge.progress = 0
+        val isKnockout = (petHp - 1) <= 0
+        binding.tvAdvStatus.text = "⚠️ 史莱姆蓄力吐出泡泡反击过来啦！"
+        binding.advBattleStage.triggerEnemyAttack(
+            isKnockout = isKnockout,
+            attackLabel = attackLabel,
+            onHit = {
+                sound.playError()
+                val nextPetHp = (petHp - 1).coerceAtLeast(0)
+                binding.advBattleStage.setPetHp(nextPetHp, maxPetHp)
+            },
+            onDone = {
+                petHp = (petHp - 1).coerceAtLeast(0)
+                binding.advBattleStage.setPetHp(petHp, maxPetHp)
+                updateHpUi()
+                busy = false
+                if (petHp <= 0) {
+                    binding.tvAdvStatus.text = "🫧 小伙伴被懒洋洋泡泡包住啦，休息一下满血再战！"
+                    showDefeatDialog()
+                } else {
+                    if (advanceQuestion) {
+                        qIndex++
+                        showCurrentQuestion()
+                    } else {
+                        resetChargeClock()
+                    }
+                    binding.tvAdvStatus.text = reasonText
+                }
+            }
+        )
     }
 
     /**
@@ -316,9 +455,13 @@ class AdventureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
         }
-        val accuracyHint = if (wrongCountInRound == 0) "全对通关，反应超神！" else "坚持思考，成功逆袭击败怪兽！"
+        val accuracyHint = when {
+            wrongCountInRound == 0 && fastCritCountInRound >= 2 -> "全对 + ${fastCritCountInRound}次闪电暴击，极速反应超神！"
+            wrongCountInRound == 0 -> "全对通关，稳扎稳打真厉害！"
+            else -> "坚持思考，成功逆袭击败史莱姆！"
+        }
         val detailTv = TextView(this).apply {
-            text = "第 $roundsCleared 关拖延怪已被彻底打跑啦！\n$accuracyHint\n（适用题库：${childAge}岁 · ${diffLabel(currentDiff)}难度）"
+            text = "第 $roundsCleared 关拖延史莱姆已被彻底打跑啦！\n$accuracyHint\n（适用题库：${childAge}岁 · ${diffLabel(currentDiff)}难度）"
             textSize = 14.5f
             setTextColor(Color.parseColor("#2F6B4F"))
             gravity = Gravity.CENTER
@@ -342,16 +485,70 @@ class AdventureActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * 宠物元气心耗尽时的温和鼓励弹窗，支持立即满血复活再战。
+     */
+    private fun showDefeatDialog() {
+        if (isFinishing || isDestroyed) return
+        val dp = resources.displayMetrics.density
+        val pad = (22 * dp).toInt()
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(pad, pad, pad, (16 * dp).toInt())
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F5FCFD"))
+                cornerRadius = 20 * dp
+                setStroke((2 * dp).toInt(), Color.parseColor("#22A6B3"))
+            }
+        }
+        card.addView(TextView(this).apply {
+            text = "🫧"
+            textSize = 44f
+            gravity = Gravity.CENTER
+        })
+        card.addView(TextView(this).apply {
+            text = "小伙伴被泡泡粘住啦~"
+            textSize = 20f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#144954"))
+            gravity = Gravity.CENTER
+            setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
+        })
+        card.addView(TextView(this).apply {
+            text = "深呼吸放松 1 秒钟，给小伙伴充满 3 颗元气心，咱们立刻继续打跑史莱姆！"
+            textSize = 14f
+            setTextColor(Color.parseColor("#2F6B4F"))
+            gravity = Gravity.CENTER
+            setLineSpacing(6f, 1.15f)
+            setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
+        })
+
+        AlertDialog.Builder(this)
+            .setView(card)
+            .setCancelable(false)
+            .setPositiveButton("💖 元气满血再战") { _, _ ->
+                sound.playPat()
+                resetRound()
+            }
+            .setNegativeButton("🏠 返回主页") { _, _ ->
+                finish()
+            }
+            .show()
+    }
+
     private fun resetRound() {
         monsterHp = maxHp
+        petHp = maxPetHp
         wrongCountInRound = 0
+        fastCritCountInRound = 0
         binding.advBattleStage.setMonsterHp(maxHp, maxHp)
-        binding.pbMonsterHp.progress = maxHp
-        binding.tvAdvHp.text = "怪兽体力 $maxHp/$maxHp"
+        binding.advBattleStage.setPetHp(maxPetHp, maxPetHp)
+        updateHpUi()
         qIndex++
         questions.shuffle()
         showCurrentQuestion()
-        binding.tvAdvStatus.text = "新的拖延怪出现啦！答题充能击败它！"
+        binding.tvAdvStatus.text = "新的史莱姆拖延怪跳出来啦！答题充能击败它！"
         // 如当前题库快答完，后台再刷一批最新在线题
         if (qIndex >= questions.size - 2) {
             fetchOnlineQuestions()
@@ -359,6 +556,7 @@ class AdventureActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(chargeTicker)
         sound.release()
         io.shutdownNow()
         super.onDestroy()

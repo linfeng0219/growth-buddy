@@ -36,22 +36,75 @@
             android:id="@+id/tvAdvHp"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="怪兽体力 3/3"
-            android:textColor="#D9534F"
-            android:textSize="13.5sp"
+            android:text="史莱姆 3/3"
+            android:textColor="#1D949E"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 怪兽血条 -->
-    <ProgressBar
-        android:id="@+id/pbMonsterHp"
-        style="?android:attr/progressBarStyleHorizontal"
+    <!-- 双方生命值对比栏：左侧小伙伴元气心，右侧史莱姆体力 -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="10dp"
-        android:layout_marginTop="10dp"
-        android:max="3"
-        android:progress="3"
-        android:progressTint="#D9534F" />
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvPetHp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="💖💖💖 小伙伴元气 3/3"
+                android:textColor="#2F6B4F"
+                android:textSize="11.5sp"
+                android:textStyle="bold" />
+
+            <ProgressBar
+                android:id="@+id/pbPetHp"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="8dp"
+                android:layout_marginTop="3dp"
+                android:max="3"
+                android:progress="3"
+                android:progressTint="#E05A7A" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvSlimeHpBarLabel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:text="🫧 拖延史莱姆 3/3"
+                android:textColor="#146572"
+                android:textSize="11.5sp"
+                android:textStyle="bold" />
+
+            <ProgressBar
+                android:id="@+id/pbMonsterHp"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="8dp"
+                android:layout_marginTop="3dp"
+                android:max="3"
+                android:progress="3"
+                android:progressTint="#22A6B3" />
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- 在线题库年龄与难度选择栏 -->
     <LinearLayout
@@ -112,13 +165,41 @@
         android:layout_marginTop="8dp"
         android:background="#FFFDF9" />
 
+    <!-- 史莱姆泡泡蓄力 / 答题速度条 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvSlimeCharge"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="⚡ 8秒内答对触发闪电暴击 · 史莱姆缓慢蓄力中"
+            android:textColor="#146572"
+            android:textSize="11.5sp" />
+
+        <ProgressBar
+            android:id="@+id/pbSlimeCharge"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="112dp"
+            android:layout_height="7dp"
+            android:layout_marginStart="8dp"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="#22A6B3" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvAdvStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="6dp"
         android:gravity="center"
-        android:text="答对题目给小伙伴充能，击败拖延怪！"
+        android:text="答对题目给小伙伴充能，击败史莱姆拖延怪！"
         android:textColor="#2F6B4F"
         android:textSize="13.5sp"
         android:textStyle="bold" />
