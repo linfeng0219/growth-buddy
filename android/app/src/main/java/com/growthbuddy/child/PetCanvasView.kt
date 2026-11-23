@@ -1085,7 +1085,7 @@ class BattleStageView @JvmOverloads constructor(
         val list = ArrayList<BurstParticle>(28)
         if (forEnemyAttack) {
             val burstCount = if (intense) 18 else 14
-            val colors = intArrayOf(0xFF4BE3D0.toInt(), 0xFF7BE8FF.toInt(), 0xFFFF85A1.toInt(), 0xFFA5F3FC.toInt())
+            val colors = intArrayOf(0xFF9D4EDD.toInt(), 0xFFC77DFF.toInt(), 0xFFFF4D6D.toInt(), 0xFF7B2CBF.toInt())
             for (i in 0 until burstCount) {
                 val angle = (2.0 * PI * i / burstCount) + (i % 3) * 0.21
                 val speed = (if (intense) 140f else 105f) + (i % 4) * 28f
@@ -1125,9 +1125,9 @@ class BattleStageView @JvmOverloads constructor(
                 )
             )
         }
-        // 命中瞬间星芒 + 史莱姆凝胶飞沫
+        // 命中瞬间星芒 + 暗紫史莱姆黏液飞沫
         val burstCount = if (intense) 20 else 14
-        val colors = intArrayOf(0xFFF6C445.toInt(), 0xFF4BE3D0.toInt(), 0xFFFF8577.toInt(), 0xFF7BE8FF.toInt(), 0xFFFFE57F.toInt())
+        val colors = intArrayOf(0xFFF6C445.toInt(), 0xFF9D4EDD.toInt(), 0xFFFF5A5F.toInt(), 0xFFC77DFF.toInt(), 0xFFFFE57F.toInt())
         for (i in 0 until burstCount) {
             val angle = (2.0 * PI * i / burstCount) + (i % 3) * 0.17
             val speed = (if (intense) 155f else 115f) + (i % 4) * 32f
@@ -1321,8 +1321,8 @@ class BattleStageView @JvmOverloads constructor(
         paint.color = 0xFFDDE5D0.toInt()
         canvas.drawOval(w * 0.11f, h * 0.77f, w * 0.35f, h * 0.87f, paint)
 
-        // 史莱姆脚下黏液微光水洼阴影
-        paint.color = 0xFFD5E9E8.toInt()
+        // 史莱姆脚下暗紫黏液阴影水洼
+        paint.color = 0xFFE3D7EC.toInt()
         canvas.drawOval(w * 0.63f, h * 0.77f, w * 0.91f, h * 0.88f, paint)
 
         // 舞台背景漂浮微光点
@@ -1517,12 +1517,12 @@ class BattleStageView @JvmOverloads constructor(
             }
         }
 
-        // 地面半透明小水滴（史莱姆身旁晃动的小分身凝胶滴）
+        // 地面半透明暗紫黏液小水滴（史莱姆反派旁冒泡的分身毒液滴）
         monsterPaint.reset()
         monsterPaint.isAntiAlias = true
         monsterPaint.style = Paint.Style.FILL
         val dropBob = sin(idleSec * 3.2f) * 3.5f
-        monsterPaint.color = 0xAA4BE3D0.toInt()
+        monsterPaint.color = 0xBB8B3DFF.toInt()
         canvas.drawCircle(foeCx - r * 1.12f + dx * 0.3f, baseY - r * 0.14f - dropBob, r * 0.13f, monsterPaint)
         canvas.drawCircle(foeCx + r * 1.06f + dx * 0.3f, baseY - r * 0.10f + dropBob * 0.7f, r * 0.10f, monsterPaint)
 
@@ -1531,14 +1531,36 @@ class BattleStageView @JvmOverloads constructor(
         canvas.rotate(rot, 0f, -r * 0.35f)
         canvas.scale(sx, sy, 0f, 0f)
 
-        // 1. 史莱姆经典水滴尖顶轮廓（底部坐标 y=0）
+        // 0. 恶魔小弯角（背后长出，彰显反派气场）
+        val leftHorn = Path().apply {
+            moveTo(-r * 0.56f, -r * 1.12f)
+            quadTo(-r * 0.88f, -r * 1.56f, -r * 0.64f, -r * 1.78f)
+            quadTo(-r * 0.52f, -r * 1.44f, -r * 0.34f, -r * 1.24f)
+            close()
+        }
+        val rightHorn = Path().apply {
+            moveTo(r * 0.56f, -r * 1.12f)
+            quadTo(r * 0.88f, -r * 1.56f, r * 0.64f, -r * 1.78f)
+            quadTo(r * 0.52f, -r * 1.44f, r * 0.34f, -r * 1.24f)
+            close()
+        }
+        monsterPaint.color = 0xFF3E146B.toInt()
+        canvas.drawPath(leftHorn, monsterPaint)
+        canvas.drawPath(rightHorn, monsterPaint)
+        monsterPaint.style = Paint.Style.STROKE
+        monsterPaint.strokeWidth = 2.4f
+        monsterPaint.color = 0xFF1D0438.toInt()
+        canvas.drawPath(leftHorn, monsterPaint)
+        canvas.drawPath(rightHorn, monsterPaint)
+
+        // 1. 史莱姆水滴尖顶轮廓（底部坐标 y=0）
+        monsterPaint.style = Paint.Style.FILL
         val tipSway = sin(idleSec * 4.2f) * r * 0.06f
         val bodyPath = Path().apply {
-            moveTo(tipSway, -r * 1.82f)
-            // 右侧上弧 -> 饱满右颊 -> 贴地右底
+            moveTo(tipSway, -r * 1.78f)
             cubicTo(
-                r * 0.18f, -r * 1.46f,
-                r * 1.06f, -r * 1.12f,
+                r * 0.22f, -r * 1.42f,
+                r * 1.08f, -r * 1.10f,
                 r * 1.05f, -r * 0.42f
             )
             cubicTo(
@@ -1546,43 +1568,43 @@ class BattleStageView @JvmOverloads constructor(
                 r * 0.68f, 0f,
                 0f, 0f
             )
-            // 左侧贴地 -> 饱满左颊 -> 回到顶部水滴尖
             cubicTo(
                 -r * 0.68f, 0f,
                 -r * 1.05f, -r * 0.02f,
                 -r * 1.05f, -r * 0.42f
             )
             cubicTo(
-                -r * 1.06f, -r * 1.12f,
-                -r * 0.18f, -r * 1.46f,
-                tipSway, -r * 1.82f
+                -r * 1.08f, -r * 1.10f,
+                -r * 0.22f, -r * 1.42f,
+                tipSway, -r * 1.78f
             )
             close()
         }
 
-        // 果冻渐变填充（残血略偏蓝紫，平时亮薄荷青）
-        val topCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFFE8E6FF.toInt() else 0xFFD9FFF9.toInt()
-        val midCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFF7FA8F8.toInt() else 0xFF54DEC9.toInt()
-        val deepCol = if (hpRatio <= 0.4f && monsterMaxHp > 1) 0xFF3E61B8.toInt() else 0xFF1D949E.toInt()
+        // 反派毒液暗紫渐变（残血转为狂暴猩红暗紫）
+        val enraged = hpRatio <= 0.4f && monsterMaxHp > 1
+        val topCol = if (enraged) 0xFFFFB5C5.toInt() else 0xFFE3C4FF.toInt()
+        val midCol = if (enraged) 0xFFC8235D.toInt() else 0xFF7B2CBF.toInt()
+        val deepCol = if (enraged) 0xFF47061C.toInt() else 0xFF310A5D.toInt()
 
         monsterPaint.shader = RadialGradient(
             -r * 0.25f, -r * 1.05f, r * 1.65f,
             intArrayOf(topCol, midCol, deepCol),
-            floatArrayOf(0f, 0.56f, 1f),
+            floatArrayOf(0f, 0.54f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawPath(bodyPath, monsterPaint)
         monsterPaint.shader = null
 
-        // 体内半透明上升气泡
-        monsterPaint.color = 0x55FFFFFF
+        // 体内暗紫毒液气泡
+        monsterPaint.color = 0x4DFF85FF
         val bShift = (idleSec * 18f) % (r * 0.5f)
         canvas.drawCircle(r * 0.48f, -r * 0.34f - bShift * 0.5f, r * 0.09f, monsterPaint)
         canvas.drawCircle(-r * 0.52f, -r * 0.58f + bShift * 0.3f, r * 0.06f, monsterPaint)
         canvas.drawCircle(r * 0.15f, -r * 1.18f, r * 0.055f, monsterPaint)
 
         // 果冻左上角弯月高光
-        monsterPaint.color = 0xA8FFFFFF.toInt()
+        monsterPaint.color = 0x88FFFFFF.toInt()
         val shine = Path().apply {
             moveTo(-r * 0.58f, -r * 0.88f)
             quadTo(-r * 0.42f, -r * 1.24f, -r * 0.16f, -r * 1.32f)
@@ -1590,12 +1612,12 @@ class BattleStageView @JvmOverloads constructor(
             close()
         }
         canvas.drawPath(shine, monsterPaint)
-        canvas.drawCircle(-r * 0.62f, -r * 0.68f, r * 0.065f, monsterPaint)
+        canvas.drawCircle(-r * 0.62f, -r * 0.68f, r * 0.06f, monsterPaint)
 
-        // 外圈果冻描边
+        // 外圈冷峻深紫黑描边
         monsterPaint.style = Paint.Style.STROKE
-        monsterPaint.strokeWidth = 3.2f
-        monsterPaint.color = 0xFF146572.toInt()
+        monsterPaint.strokeWidth = 3.4f
+        monsterPaint.color = 0xFF1D0438.toInt()
         canvas.drawPath(bodyPath, monsterPaint)
 
         // 命中瞬间闪白遮罩
@@ -1605,19 +1627,43 @@ class BattleStageView @JvmOverloads constructor(
             canvas.drawPath(bodyPath, monsterPaint)
         }
 
-        // 2. 史莱姆表情（相对于身体锚点）
-        val faceY = -r * 0.64f
-        monsterPaint.style = Paint.Style.FILL
-        monsterPaint.color = 0x66FF85A1
-        canvas.drawOval(-r * 0.68f, faceY + r * 0.06f, -r * 0.42f, faceY + r * 0.20f, monsterPaint)
-        canvas.drawOval(r * 0.42f, faceY + r * 0.06f, r * 0.68f, faceY + r * 0.20f, monsterPaint)
+        // 头顶小魔王皇冠（击败后歪掉掉在一旁）
+        if (!isDefeated) {
+            canvas.save()
+            canvas.translate(tipSway * 0.8f, -r * 1.68f)
+            canvas.rotate(if (isHitReact) 22f else 9f)
+            val crown = Path().apply {
+                moveTo(-r * 0.24f, 0f)
+                lineTo(-r * 0.28f, -r * 0.26f)
+                lineTo(-r * 0.10f, -r * 0.12f)
+                lineTo(0f, -r * 0.30f)
+                lineTo(r * 0.10f, -r * 0.12f)
+                lineTo(r * 0.28f, -r * 0.26f)
+                lineTo(r * 0.24f, 0f)
+                close()
+            }
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFFF2B705.toInt()
+            canvas.drawPath(crown, monsterPaint)
+            monsterPaint.style = Paint.Style.STROKE
+            monsterPaint.strokeWidth = 2.2f
+            monsterPaint.color = 0xFF5A3700.toInt()
+            canvas.drawPath(crown, monsterPaint)
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFFE11D48.toInt()
+            canvas.drawCircle(0f, -r * 0.09f, r * 0.045f, monsterPaint)
+            canvas.restore()
+        }
+
+        // 2. 反派邪魅表情（无粉嫩腮红，改为倒八字凶眉 + 琥珀金眼 + 锯齿獠牙坏笑）
+        val faceY = -r * 0.62f
 
         if (isDefeated) {
             // 晕倒 × × 眼
             monsterPaint.style = Paint.Style.STROKE
             monsterPaint.strokeWidth = 4f
             monsterPaint.strokeCap = Paint.Cap.ROUND
-            monsterPaint.color = 0xFF0E3942.toInt()
+            monsterPaint.color = 0xFF1D0438.toInt()
             for (side in intArrayOf(-1, 1)) {
                 val ex = side * r * 0.32f
                 val ey = faceY - r * 0.08f
@@ -1625,58 +1671,63 @@ class BattleStageView @JvmOverloads constructor(
                 canvas.drawLine(ex - d, ey - d, ex + d, ey + d, monsterPaint)
                 canvas.drawLine(ex + d, ey - d, ex - d, ey + d, monsterPaint)
             }
-            // 波浪晕嘴
             val mouth = Path().apply {
-                moveTo(-r * 0.20f, faceY + r * 0.18f)
+                moveTo(-r * 0.22f, faceY + r * 0.18f)
                 quadTo(-r * 0.08f, faceY + r * 0.08f, 0f, faceY + r * 0.18f)
-                quadTo(r * 0.08f, faceY + r * 0.28f, r * 0.20f, faceY + r * 0.18f)
+                quadTo(r * 0.08f, faceY + r * 0.28f, r * 0.22f, faceY + r * 0.18f)
             }
             canvas.drawPath(mouth, monsterPaint)
         } else if (isHitReact) {
-            // > < 委屈挤眼 + O 形惊讶嘴
+            // > < 痛得挤眼 + 咬牙怒吼嘴
             monsterPaint.style = Paint.Style.STROKE
-            monsterPaint.strokeWidth = 4.2f
+            monsterPaint.strokeWidth = 4.4f
             monsterPaint.strokeCap = Paint.Cap.ROUND
-            monsterPaint.color = 0xFF0E3942.toInt()
+            monsterPaint.color = 0xFF1D0438.toInt()
             val ey = faceY - r * 0.06f
-            // 左 >
-            canvas.drawLine(-r * 0.44f, ey - r * 0.11f, -r * 0.24f, ey, monsterPaint)
-            canvas.drawLine(-r * 0.44f, ey + r * 0.11f, -r * 0.24f, ey, monsterPaint)
-            // 右 <
-            canvas.drawLine(r * 0.44f, ey - r * 0.11f, r * 0.24f, ey, monsterPaint)
-            canvas.drawLine(r * 0.44f, ey + r * 0.11f, r * 0.24f, ey, monsterPaint)
-            // 惊讶 O 嘴
+            canvas.drawLine(-r * 0.44f, ey - r * 0.11f, -r * 0.22f, ey, monsterPaint)
+            canvas.drawLine(-r * 0.44f, ey + r * 0.11f, -r * 0.22f, ey, monsterPaint)
+            canvas.drawLine(r * 0.44f, ey - r * 0.11f, r * 0.22f, ey, monsterPaint)
+            canvas.drawLine(r * 0.44f, ey + r * 0.11f, r * 0.22f, ey, monsterPaint)
+            // 怒张锯齿嘴
             monsterPaint.style = Paint.Style.FILL
-            monsterPaint.color = 0xFF144954.toInt()
-            canvas.drawOval(-r * 0.12f, faceY + r * 0.06f, r * 0.12f, faceY + r * 0.28f, monsterPaint)
+            monsterPaint.color = 0xFF240642.toInt()
+            canvas.drawOval(-r * 0.24f, faceY + r * 0.06f, r * 0.24f, faceY + r * 0.30f, monsterPaint)
+            monsterPaint.color = Color.WHITE
+            canvas.drawRect(-r * 0.14f, faceY + r * 0.08f, -r * 0.06f, faceY + r * 0.17f, monsterPaint)
+            canvas.drawRect(r * 0.06f, faceY + r * 0.08f, r * 0.14f, faceY + r * 0.17f, monsterPaint)
         } else {
-            // 水汪汪黑亮大眼（每 ~3 秒眨眼一次）
-            val blinkPhase = idleSec % 3.2f
-            val blinking = blinkPhase > 3.04f
             val ey = faceY - r * 0.08f
-            if (blinking) {
-                monsterPaint.style = Paint.Style.STROKE
-                monsterPaint.strokeWidth = 4f
-                monsterPaint.strokeCap = Paint.Cap.ROUND
-                monsterPaint.color = 0xFF0E3942.toInt()
-                canvas.drawLine(-r * 0.44f, ey, -r * 0.20f, ey, monsterPaint)
-                canvas.drawLine(r * 0.20f, ey, r * 0.44f, ey, monsterPaint)
-            } else {
-                monsterPaint.style = Paint.Style.FILL
-                monsterPaint.color = 0xFF0E3942.toInt()
-                canvas.drawOval(-r * 0.42f, ey - r * 0.18f, -r * 0.20f, ey + r * 0.12f, monsterPaint)
-                canvas.drawOval(r * 0.20f, ey - r * 0.18f, r * 0.42f, ey + r * 0.12f, monsterPaint)
-                monsterPaint.color = Color.WHITE
-                canvas.drawCircle(-r * 0.34f, ey - r * 0.07f, r * 0.065f, monsterPaint)
-                canvas.drawCircle(r * 0.28f, ey - r * 0.07f, r * 0.065f, monsterPaint)
-                canvas.drawCircle(-r * 0.26f, ey + r * 0.04f, r * 0.03f, monsterPaint)
-                canvas.drawCircle(r * 0.36f, ey + r * 0.04f, r * 0.03f, monsterPaint)
-            }
+            // 反派斜立眼眶 + 发光琥珀金恶魔眼 + 竖瞳
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFF1A0430.toInt()
+            canvas.drawOval(-r * 0.46f, ey - r * 0.17f, -r * 0.16f, ey + r * 0.13f, monsterPaint)
+            canvas.drawOval(r * 0.16f, ey - r * 0.17f, r * 0.46f, ey + r * 0.13f, monsterPaint)
 
-            // 受伤贴纸：HP < MaxHP 时右颊多贴一块可爱创可贴
+            // 邪恶金橙虹膜
+            monsterPaint.color = if (enraged) 0xFFFF5252.toInt() else 0xFFFFCA28.toInt()
+            canvas.drawCircle(-r * 0.30f, ey - r * 0.01f, r * 0.105f, monsterPaint)
+            canvas.drawCircle(r * 0.30f, ey - r * 0.01f, r * 0.105f, monsterPaint)
+
+            // 凶巴巴竖瞳 + 寒芒高光
+            monsterPaint.color = 0xFF1A0430.toInt()
+            canvas.drawOval(-r * 0.325f, ey - r * 0.09f, -r * 0.275f, ey + r * 0.07f, monsterPaint)
+            canvas.drawOval(r * 0.275f, ey - r * 0.09f, r * 0.325f, ey + r * 0.07f, monsterPaint)
+            monsterPaint.color = Color.WHITE
+            canvas.drawCircle(-r * 0.35f, ey - r * 0.07f, r * 0.035f, monsterPaint)
+            canvas.drawCircle(r * 0.25f, ey - r * 0.07f, r * 0.035f, monsterPaint)
+
+            // 粗浓倒八字反派坏眉毛
+            monsterPaint.style = Paint.Style.STROKE
+            monsterPaint.strokeWidth = 5.2f
+            monsterPaint.strokeCap = Paint.Cap.ROUND
+            monsterPaint.color = 0xFF1A0430.toInt()
+            canvas.drawLine(-r * 0.56f, ey - r * 0.26f, -r * 0.12f, ey - r * 0.12f, monsterPaint)
+            canvas.drawLine(r * 0.56f, ey - r * 0.26f, r * 0.12f, ey - r * 0.12f, monsterPaint)
+
+            // 受伤贴纸：HP < MaxHP 时右颊贴创可贴
             if (monsterHp < monsterMaxHp) {
                 canvas.save()
-                canvas.translate(r * 0.48f, -r * 1.02f)
+                canvas.translate(r * 0.52f, -r * 1.00f)
                 canvas.rotate(-22f)
                 monsterPaint.style = Paint.Style.FILL
                 monsterPaint.color = 0xFFFFE4B5.toInt()
@@ -1686,24 +1737,57 @@ class BattleStageView @JvmOverloads constructor(
                 canvas.restore()
             }
 
-            // 搞怪小嘴：满血俏皮 w 嘴，受伤委屈波浪嘴
-            monsterPaint.style = Paint.Style.STROKE
-            monsterPaint.strokeWidth = 3.6f
-            monsterPaint.strokeCap = Paint.Cap.ROUND
-            monsterPaint.color = 0xFF0E3942.toInt()
-            val mouth = Path()
-            if (monsterHp < monsterMaxHp) {
-                mouth.moveTo(-r * 0.22f, faceY + r * 0.22f)
-                mouth.quadTo(0f, faceY + r * 0.08f, r * 0.22f, faceY + r * 0.22f)
-            } else {
-                mouth.moveTo(-r * 0.24f, faceY + r * 0.12f)
-                mouth.quadTo(-r * 0.12f, faceY + r * 0.26f, 0f, faceY + r * 0.14f)
-                mouth.quadTo(r * 0.12f, faceY + r * 0.26f, r * 0.24f, faceY + r * 0.12f)
+            // 邪恶坏笑大嘴 + 尖锐獠牙
+            val villainMouth = Path().apply {
+                moveTo(-r * 0.38f, faceY + r * 0.16f)
+                quadTo(0f, faceY + r * 0.36f, r * 0.38f, faceY + r * 0.16f)
+                quadTo(0f, faceY + r * 0.22f, -r * 0.38f, faceY + r * 0.16f)
+                close()
             }
-            canvas.drawPath(mouth, monsterPaint)
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFF1E0536.toInt()
+            canvas.drawPath(villainMouth, monsterPaint)
+
+            // 左右尖尖小獠牙
+            monsterPaint.color = Color.WHITE
+            val fangL = Path().apply {
+                moveTo(-r * 0.26f, faceY + r * 0.19f)
+                lineTo(-r * 0.20f, faceY + r * 0.33f)
+                lineTo(-r * 0.13f, faceY + r * 0.21f)
+                close()
+            }
+            val fangR = Path().apply {
+                moveTo(r * 0.13f, faceY + r * 0.21f)
+                lineTo(r * 0.20f, faceY + r * 0.33f)
+                lineTo(r * 0.26f, faceY + r * 0.19f)
+                close()
+            }
+            canvas.drawPath(fangL, monsterPaint)
+            canvas.drawPath(fangR, monsterPaint)
         }
 
         canvas.restore()
+
+        // 被击败后掉落在一旁的迷你皇冠 + 头顶晕眩金星
+        if (isDefeated) {
+            canvas.save()
+            canvas.translate(foeCx + r * 0.92f, baseY - r * 0.14f)
+            canvas.rotate(38f)
+            monsterPaint.style = Paint.Style.FILL
+            monsterPaint.color = 0xFFF2B705.toInt()
+            val dropCrown = Path().apply {
+                moveTo(-r * 0.20f, 0f)
+                lineTo(-r * 0.22f, -r * 0.20f)
+                lineTo(-r * 0.08f, -r * 0.10f)
+                lineTo(0f, -r * 0.24f)
+                lineTo(r * 0.08f, -r * 0.10f)
+                lineTo(r * 0.22f, -r * 0.20f)
+                lineTo(r * 0.20f, 0f)
+                close()
+            }
+            canvas.drawPath(dropCrown, monsterPaint)
+            canvas.restore()
+        }
 
         // 战败或残血头顶绕圈晕眩金星
         if (isDefeated || (monsterHp == 1 && monsterMaxHp > 1 && !busy)) {
@@ -1740,14 +1824,14 @@ class BattleStageView @JvmOverloads constructor(
             val tu = 1f - tt
             val tx = tu * tu * sx + 2 * tu * tt * cx + tt * tt * ex
             val ty = tu * tu * sy + 2 * tu * tt * cy + tt * tt * ey
-            paint.color = ((180 - tail * 36) shl 24) or 0x004BE3D0
+            paint.color = ((180 - tail * 36) shl 24) or 0x009D4EDD
             canvas.drawCircle(tx, ty, (10f - tail * 1.6f), paint)
         }
-        paint.color = 0xAA7BE8FF.toInt()
+        paint.color = 0xAAC77DFF.toInt()
         canvas.drawCircle(px, py, 16f, paint)
-        paint.color = 0xFF22A6B3.toInt()
+        paint.color = 0xFF6A1B9A.toInt()
         canvas.drawCircle(px, py, 11f, paint)
-        paint.color = 0xCCFFFFFF.toInt()
+        paint.color = 0xCCFFE082.toInt()
         canvas.drawCircle(px - 3.5f, py - 3.5f, 3.5f, paint)
     }
 
@@ -1782,11 +1866,11 @@ class BattleStageView @JvmOverloads constructor(
         paint.reset()
         paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
-        paint.color = 0x444BE3D0.toInt()
+        paint.color = 0x448B3DFF.toInt()
         canvas.drawCircle(cx, cy, r, paint)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 3f
-        paint.color = 0xAA22A6B3.toInt()
+        paint.color = 0xAA6A1B9A.toInt()
         canvas.drawCircle(cx, cy, r, paint)
         paint.style = Paint.Style.FILL
         paint.color = 0xAAFFFFFF.toInt()
@@ -1797,8 +1881,8 @@ class BattleStageView @JvmOverloads constructor(
         paint.reset()
         paint.isAntiAlias = true
         val fade = (1f - t).coerceIn(0f, 1f)
-        val mainRingColor = if (forEnemyHit) 0x004BE3D0 else 0x00FFD54F
-        val subRingColor = if (forEnemyHit) 0x00FF85A1 else 0x004BE3D0
+        val mainRingColor = if (forEnemyHit) 0x009D4EDD else 0x00FFD54F
+        val subRingColor = if (forEnemyHit) 0x00FF4D6D else 0x00C77DFF
 
         // 双层扩散冲击圆环
         paint.style = Paint.Style.STROKE
@@ -1898,13 +1982,13 @@ class BattleStageView @JvmOverloads constructor(
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 6.5f
         paint.strokeJoin = Paint.Join.ROUND
-        paint.color = (alpha shl 24) or (if (forEnemyAttack) 0x00114852 else 0x003D2516)
+        paint.color = (alpha shl 24) or (if (forEnemyAttack) 0x00240642 else 0x003D2516)
         canvas.drawText(label, 0f, 0f, paint)
 
         // 亮色填充
         paint.style = Paint.Style.FILL
         val fillRgb = when {
-            forEnemyAttack -> 0x004BE3D0
+            forEnemyAttack -> 0x00D896FF
             finishingBlow || lightningCrit -> 0x00FFD54F
             else -> 0x00FF7043
         }
