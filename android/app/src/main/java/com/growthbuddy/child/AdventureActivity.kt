@@ -122,17 +122,23 @@ class AdventureActivity : AppCompatActivity() {
 
     private fun loadFallbackQuestions() {
         val pool = when {
-            childAge <= 6 -> listOf(
-                QuizItem("生活", "红绿灯亮起红灯时，我们应该怎么做？", listOf("停下来等一等", "快速跑过去", "闭着眼睛走"), 0, currentDiff),
-                QuizItem("数学", "3 + 4 等于多少？", listOf("6", "7", "8"), 1, currentDiff),
-                QuizItem("科学", "香蕉成熟后是什么颜色的？", listOf("黄色", "蓝色", "黑色"), 0, currentDiff),
-                QuizItem("英语", "英文单词 “Apple” 是什么水果？", listOf("苹果", "西瓜", "葡萄"), 0, currentDiff)
+            childAge <= 5 -> listOf(
+                QuizItem("生活", "过马路看到红灯亮起时，我们要怎么做？", listOf("停下来等绿灯", "赶紧跑过去", "闭上眼睛走"), 0, currentDiff),
+                QuizItem("数学", "2 加 3 等于几？", listOf("4", "5", "6"), 1, currentDiff),
+                QuizItem("认知", "熟了的大香蕉是什么颜色的？", listOf("黄色", "蓝色", "紫色"), 0, currentDiff),
+                QuizItem("儿歌", "“白毛浮绿水，红掌拨清波”写的是哪种动物？", listOf("大白鹅", "小花猫", "长颈鹿"), 0, currentDiff)
             )
-            childAge <= 8 -> listOf(
+            childAge <= 7 -> listOf(
                 QuizItem("语文", "“床前明月光”的下一句是什么？", listOf("疑是地上霜", "低头思故乡", "春眠不觉晓"), 0, currentDiff),
                 QuizItem("数学", "8 + 5 等于多少？", listOf("12", "13", "14"), 1, currentDiff),
                 QuizItem("科学", "太阳每天从哪个方向升起？", listOf("东边", "西边", "北边"), 0, currentDiff),
                 QuizItem("趣味", "什么东西越洗越脏？", listOf("水", "肥皂", "毛巾"), 0, currentDiff)
+            )
+            childAge == 8 -> listOf(
+                QuizItem("数学", "6 × 7 等于多少？", listOf("36", "42", "48"), 1, currentDiff),
+                QuizItem("语文", "“白日依山尽”的下一句是？", listOf("黄河入海流", "欲穷千里目", "更上一层楼"), 0, currentDiff),
+                QuizItem("科学", "1 米等于多少厘米？", listOf("10 厘米", "100 厘米", "1000 厘米"), 1, currentDiff),
+                QuizItem("趣味", "把 18 个苹果平均分在 3 个盘子里，每盘几个？", listOf("6 个", "5 个", "9 个"), 0, currentDiff)
             )
             childAge <= 10 -> listOf(
                 QuizItem("语文", "“飞流直下三千尺”描写的是哪座名山？", listOf("庐山", "泰山", "黄山"), 0, currentDiff),

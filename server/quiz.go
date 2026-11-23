@@ -16,8 +16,8 @@ import (
 // QuizQuestion 表示在线分级题库中的一道战斗题目。
 type QuizQuestion struct {
 	ID         string   `json:"id"`
-	Category   string   `json:"category"`   // 语文 / 数学 / 科学百科 / 英语 / 趣味思维
-	AgeGroup   string   `json:"age_group"`  // 3-6 / 7-8 / 9-10 / 11-14
+	Category   string   `json:"category"`   // 语文 / 数学速算 / 科学百科 / 英语 / 趣味思维
+	AgeGroup   string   `json:"age_group"`  // 3-5 / 6-7 / 8 / 9-10 / 11-14
 	MinAge     int      `json:"min_age"`    // 适用最小年龄
 	MaxAge     int      `json:"max_age"`    // 适用最大年龄
 	Difficulty string   `json:"difficulty"` // easy / normal / hard
@@ -53,16 +53,23 @@ func NormalizeDifficulty(d string) string {
 	}
 }
 
-// AgeGroupForAge 返回年龄对应的分组编码和中文描述。
+// AgeGroupForAge 按江苏现行中小学课程进度返回年龄对应分组与描述：
+// - 3~5岁：幼儿园小/中班（认知习惯、10以内加减，无乘除与正式英语）
+// - 6~7岁：小学一年级（苏教版20~100以内加减、钟表元角分与统编一年级语文，无乘除法、无正式英语）
+// - 8岁：小学二年级（苏教版表内乘除法起步）
+// - 9~10岁：小学三~四年级（译林版三年级起点英语正式起步 + 多位数乘除竖式）
+// - 11~14岁：小学高年级 / 初中
 func AgeGroupForAge(age int) (string, string) {
 	a := NormalizeAge(age)
 	switch {
-	case a <= 6:
-		return "3-6", "3~6岁（幼儿启蒙）"
-	case a <= 8:
-		return "7-8", "7~8岁（小学低年级）"
+	case a <= 5:
+		return "3-5", "3~5岁（幼儿园小/中班）"
+	case a <= 7:
+		return "6-7", "6~7岁（小学一年级）"
+	case a == 8:
+		return "8", "8岁（小学二年级）"
 	case a <= 10:
-		return "9-10", "9~10岁（小学中年级）"
+		return "9-10", "9~10岁（小学三~四年级）"
 	default:
 		return "11-14", "11~14岁（小学高年级/初中）"
 	}
@@ -156,12 +163,10 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// 1. 汇集后台在线精选库 + 可选远程同步库
 	allBank := make([]QuizQuestion, 0, len(onlineCuratedBank)+16)
 	allBank = append(allBank, onlineCuratedBank...)
 	allBank = append(allBank, loadRemoteQuestionsIfConfigured()...)
 
-	// 2. 分层匹配：优先精确匹配同年龄段+同难度，其次同年龄段相近难度
 	var exact []QuizQuestion
 	var sameAgeNearbyDiff []QuizQuestion
 	for _, q := range allBank {
@@ -182,12 +187,10 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 	shuffleQuizSlice(rng, exact)
 	shuffleQuizSlice(rng, sameAgeNearbyDiff)
 
-	// 3. 实时生成 7 道动态数学/思维题，防止背答案和重复
 	dynCount := 7
 	dynamicQs := generateDynamicMathQuestions(rng, ageGroup, diff, dynCount)
 
 	selected := make([]QuizQuestion, 0, limit)
-	// 先放精确匹配的静态在线题（最多占约 2/3）
 	staticQuota := limit - len(dynamicQs)
 	for _, q := range exact {
 		if len(selected) >= staticQuota {
@@ -277,45 +280,48 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 		kind := i % 3
 
 		switch ageGroup {
-		case "3-6":
+		case "3-5":
+			// 幼儿园小班/中班：纯 5~10 以内数数与极简单加减
 			switch diff {
 			case "easy":
-				a := rng.Intn(4) + 1
-				b := rng.Intn(4) + 1
-				if kind == 1 && a >= b {
-					text = fmt.Sprintf("小兔子有 %d 根胡萝卜，吃掉 %d 根，还剩几根？", a+1, b)
-					opts, ansIdx = makeIntOpts(a + 1 - b)
+				a := rng.Intn(3) + 1
+				b := rng.Intn(2) + 1
+				if kind == 1 {
+					text = fmt.Sprintf("小兔原本有 %d 根萝卜，又拿到 %d 根，一共有几根？", a, b)
+					opts, ansIdx = makeIntOpts(a + b)
 				} else {
-					text = fmt.Sprintf("%d + %d 等于多少？", a, b)
+					text = fmt.Sprintf("%d 加 %d 等于几？", a, b)
 					opts, ansIdx = makeIntOpts(a + b)
 				}
 			case "hard":
-				a := rng.Intn(9) + 6
-				b := rng.Intn(7) + 3
+				a := rng.Intn(4) + 5
+				b := rng.Intn(4) + 2
 				if kind == 1 {
-					text = fmt.Sprintf("树上原来有 %d 只小鸟，飞走了 %d 只，还剩几只？", a+5, b)
-					opts, ansIdx = makeIntOpts(a + 5 - b)
+					text = fmt.Sprintf("盘子里有 %d 颗草莓，吃掉了 %d 颗，还剩几颗？", a, b)
+					opts, ansIdx = makeIntOpts(a - b)
 				} else {
-					text = fmt.Sprintf("%d + %d 等于多少？", a, b)
-					opts, ansIdx = makeIntOpts(a + b)
+					text = fmt.Sprintf("%d + %d 等于多少？", a, 10-a)
+					opts, ansIdx = makeIntOpts(10)
 				}
 			default: // normal
-				a := rng.Intn(6) + 2
-				b := rng.Intn(5) + 1
+				a := rng.Intn(4) + 2
+				b := rng.Intn(3) + 1
 				if kind == 1 {
 					sum := a + b
-					text = fmt.Sprintf("%d - %d 等于多少？", sum, b)
+					text = fmt.Sprintf("手里有 %d 块积木，拿走 %d 块，还剩几块？", sum, b)
 					opts, ansIdx = makeIntOpts(a)
 				} else {
-					text = fmt.Sprintf("盘子里有 %d 个草莓，又放进 %d 个，一共几个？", a, b)
+					text = fmt.Sprintf("%d + %d 等于几？", a, b)
 					opts, ansIdx = makeIntOpts(a + b)
 				}
 			}
-		case "7-8":
+
+		case "6-7":
+			// 江苏小学一年级（苏教版）：20以内进退位加减、整十数与100以内不进位加减、钟面、排队与元角，不涉及乘除法
 			switch diff {
 			case "easy":
-				a := rng.Intn(10) + 5
-				b := rng.Intn(9) + 2
+				a := rng.Intn(8) + 4
+				b := rng.Intn(5) + 2
 				if kind == 1 {
 					text = fmt.Sprintf("%d - %d 等于多少？", a+5, b)
 					opts, ansIdx = makeIntOpts(a + 5 - b)
@@ -325,21 +331,74 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 				}
 			case "hard":
 				if kind == 0 {
-					a := rng.Intn(7) + 3
-					b := rng.Intn(7) + 3
-					c := rng.Intn(9) + 2
-					text = fmt.Sprintf("%d × %d + %d 等于多少？", a, b, c)
-					opts, ansIdx = makeIntOpts(a*b + c)
+					a := rng.Intn(6) + 12
+					b := rng.Intn(5) + 4
+					c := rng.Intn(6) + 2
+					text = fmt.Sprintf("%d - %d + %d 等于多少？", a, b, c)
+					opts, ansIdx = makeIntOpts(a - b + c)
 				} else if kind == 1 {
-					a := rng.Intn(35) + 25
-					b := rng.Intn(18) + 12
-					text = fmt.Sprintf("妈妈买了 %d 颗水果糖，分给同学 %d 颗，还剩多少颗？", a, b)
+					yuan := rng.Intn(3) + 1
+					jiao := rng.Intn(8) + 1
+					text = fmt.Sprintf("%d 元 %d 角一共是多少角？", yuan, jiao)
+					opts, ansIdx = makeIntOpts(yuan*10 + jiao)
+				} else {
+					front := rng.Intn(5) + 3
+					back := rng.Intn(5) + 3
+					text = fmt.Sprintf("小朋友排成一队，小明前面有 %d 人，后面有 %d 人，这队一共有几人？", front, back)
+					opts, ansIdx = makeIntOpts(front + back + 1)
+				}
+			default: // normal
+				if kind == 0 {
+					a := rng.Intn(5) + 6
+					b := rng.Intn(5) + 5
+					text = fmt.Sprintf("%d + %d 等于多少？", a, b)
+					opts, ansIdx = makeIntOpts(a + b)
+				} else if kind == 1 {
+					a := rng.Intn(6) + 13
+					b := rng.Intn(5) + 5
+					text = fmt.Sprintf("%d - %d 等于多少？", a, b)
 					opts, ansIdx = makeIntOpts(a - b)
 				} else {
 					hr := rng.Intn(9) + 2
 					opts = []string{fmt.Sprintf("%d 点", hr), fmt.Sprintf("%d 点半", hr), "12 点"}
 					text = fmt.Sprintf("钟面上分针指向 12，时针指向 %d，现在是几点？", hr)
 					ansIdx = 0
+				}
+			}
+
+		case "8":
+			// 江苏小学二年级（苏教版）：表内乘除法、乘加混合、厘米与米换算
+			switch diff {
+			case "easy":
+				a := rng.Intn(4) + 2
+				b := rng.Intn(5) + 2
+				if kind == 1 {
+					a1 := rng.Intn(30) + 25
+					b1 := rng.Intn(18) + 10
+					text = fmt.Sprintf("%d + %d 等于多少？", a1, b1)
+					opts, ansIdx = makeIntOpts(a1 + b1)
+				} else {
+					text = fmt.Sprintf("%d × %d 等于多少？", a, b)
+					opts, ansIdx = makeIntOpts(a * b)
+				}
+			case "hard":
+				if kind == 0 {
+					a := rng.Intn(7) + 3
+					b := rng.Intn(7) + 3
+					c := rng.Intn(9) + 2
+					text = fmt.Sprintf("%d × %d + %d 等于多少？", a, b, c)
+					opts, ansIdx = makeIntOpts(a*b + c)
+				} else if kind == 1 {
+					b := rng.Intn(6) + 3
+					q := rng.Intn(6) + 3
+					rem := rng.Intn(b-1) + 1
+					total := b*q + rem
+					text = fmt.Sprintf("把 %d 颗糖平均分给 %d 个小朋友，每人最多分几颗？", total, b)
+					opts, ansIdx = makeIntOpts(q)
+				} else {
+					m := rng.Intn(5) + 2
+					text = fmt.Sprintf("%d 米等于多少厘米？", m)
+					opts, ansIdx = makeIntOpts(m * 100)
 				}
 			default: // normal
 				if kind == 0 {
@@ -348,18 +407,20 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					text = fmt.Sprintf("%d × %d 等于多少？", a, b)
 					opts, ansIdx = makeIntOpts(a * b)
 				} else if kind == 1 {
-					a := rng.Intn(30) + 20
-					b := rng.Intn(18) + 8
-					text = fmt.Sprintf("%d + %d 等于多少？", a, b)
-					opts, ansIdx = makeIntOpts(a + b)
+					b := rng.Intn(7) + 2
+					q := rng.Intn(8) + 2
+					text = fmt.Sprintf("%d ÷ %d 等于多少？", b*q, b)
+					opts, ansIdx = makeIntOpts(q)
 				} else {
-					a := rng.Intn(25) + 35
-					b := rng.Intn(15) + 9
+					a := rng.Intn(35) + 35
+					b := rng.Intn(18) + 9
 					text = fmt.Sprintf("%d - %d 等于多少？", a, b)
 					opts, ansIdx = makeIntOpts(a - b)
 				}
 			}
+
 		case "9-10":
+			// 三~四年级：多位数乘除、周长面积、时间换算
 			switch diff {
 			case "easy":
 				a := rng.Intn(40) + 30
@@ -397,10 +458,11 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					opts, ansIdx = makeIntOpts(q)
 				} else {
 					m := rng.Intn(6) + 2
-					text = fmt.Sprintf("%d 米等于多少厘米？", m)
-					opts, ansIdx = makeIntOpts(m * 100)
+					text = fmt.Sprintf("%d 千米等于多少米？", m)
+					opts, ansIdx = makeIntOpts(m * 1000)
 				}
 			}
+
 		default: // 11-14
 			switch diff {
 			case "easy":
@@ -464,10 +526,12 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 
 func ageBoundsForGroup(g string) (int, int) {
 	switch g {
-	case "3-6":
-		return 3, 6
-	case "7-8":
-		return 7, 8
+	case "3-5":
+		return 3, 5
+	case "6-7":
+		return 6, 7
+	case "8":
+		return 8, 8
 	case "9-10":
 		return 9, 10
 	default:
@@ -484,64 +548,77 @@ func (s *Store) DeleteFamilyQuestion(familyID, qid string) error {
 	return errors.New("已升级为在线分级题库，系统自动维护题目")
 }
 
-// onlineCuratedBank 按「年龄段（3-6 / 7-8 / 9-10 / 11-14）× 难度（easy / normal / hard）」精选的在线中文题库。
+// onlineCuratedBank 按江苏教学进度划分学段（3-5岁小中班 / 6-7岁一年级 / 8岁二年级 / 9-10岁三四年级 / 11-14岁高年级）的精选在线中文题库。
 var onlineCuratedBank = []QuizQuestion{
-	// ==================== 3-6 岁 · 幼儿启蒙 ====================
-	{ID: "k_e_1", Category: "生活常识", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "红绿灯亮起红灯时，我们应该怎么做？", Options: []string{"停下来等一等", "快速跑过去", "闭上眼睛走"}, AnswerIdx: 0},
-	{ID: "k_e_2", Category: "科学百科", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "小猫喜欢吃哪种食物？", Options: []string{"小鱼", "青草", "石头"}, AnswerIdx: 0},
-	{ID: "k_e_3", Category: "生活常识", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "每天早晚都要认真做的事情是什么？", Options: []string{"刷牙洗脸", "吃很多糖果", "熬夜不睡觉"}, AnswerIdx: 0},
-	{ID: "k_e_4", Category: "科学百科", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "香蕉成熟后是什么颜色的？", Options: []string{"黄色", "蓝色", "黑色"}, AnswerIdx: 0},
-	{ID: "k_e_5", Category: "英语启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "英文单词 “Apple” 是什么水果？", Options: []string{"苹果", "西瓜", "葡萄"}, AnswerIdx: 0},
-	{ID: "k_e_6", Category: "英语启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "easy", Question: "见到小朋友想说“你好”，英文怎么说？", Options: []string{"Hello", "Bye-bye", "Thank you"}, AnswerIdx: 0},
-	{ID: "k_n_1", Category: "语文启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "“白毛浮绿水，红掌拨清波”写的是哪种动物？", Options: []string{"大白鹅", "小花猫", "长颈鹿"}, AnswerIdx: 0},
-	{ID: "k_n_2", Category: "科学百科", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "下面哪一种动物会飞？", Options: []string{"小燕子", "小乌龟", "小金鱼"}, AnswerIdx: 0},
-	{ID: "k_n_3", Category: "生活常识", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "别人帮助了我们，应该礼貌地说什么？", Options: []string{"谢谢", "不用管", "走开"}, AnswerIdx: 0},
-	{ID: "k_n_4", Category: "英语启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "“Dog” 在中文里是指哪种小动物？", Options: []string{"小狗", "小猫", "小鸟"}, AnswerIdx: 0},
-	{ID: "k_n_5", Category: "趣味思维", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "什么动物的脖子长长的，喜欢吃高树上的叶子？", Options: []string{"长颈鹿", "小刺猬", "小仓鼠"}, AnswerIdx: 0},
-	{ID: "k_n_6", Category: "科学百科", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "normal", Question: "一年中下雪最多的季节通常是？", Options: []string{"冬天", "夏天", "春天"}, AnswerIdx: 0},
-	{ID: "k_h_1", Category: "趣味思维", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "hard", Question: "哥哥今年 6 岁，弟弟今年 4 岁，谁大一些？", Options: []string{"哥哥", "弟弟", "一样大"}, AnswerIdx: 0},
-	{ID: "k_h_2", Category: "语文启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "hard", Question: "“春眠不觉晓”的下一句是什么？", Options: []string{"处处闻啼鸟", "床前明月光", "白日依山尽"}, AnswerIdx: 0},
-	{ID: "k_h_3", Category: "科学百科", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "hard", Question: "蝌蚪长大以后会变成什么？", Options: []string{"青蛙", "蝴蝶", "小鱼"}, AnswerIdx: 0},
-	{ID: "k_h_4", Category: "英语启蒙", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "hard", Question: "英文 “Red, Yellow, Blue” 都是指什么？", Options: []string{"颜色", "数字", "水果"}, AnswerIdx: 0},
-	{ID: "k_h_5", Category: "趣味思维", AgeGroup: "3-6", MinAge: 3, MaxAge: 6, Difficulty: "hard", Question: "三角形一共有几条边？", Options: []string{"3 条", "4 条", "5 条"}, AnswerIdx: 0},
+	// ==================== 3-5 岁 · 幼儿园小班 / 中班 ====================
+	{ID: "k_e_1", Category: "生活安全", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "过马路看到红灯亮起时，我们要怎么做？", Options: []string{"停下来等绿灯", "赶紧跑过去", "闭上眼睛走"}, AnswerIdx: 0},
+	{ID: "k_e_2", Category: "动物认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "小猫咪最喜欢吃什么食物呀？", Options: []string{"小鱼", "大石头", "木头"}, AnswerIdx: 0},
+	{ID: "k_e_3", Category: "生活习惯", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "每天早上起床和晚上睡前都要认真做什么？", Options: []string{"刷牙洗脸", "不洗手就吃东西", "把玩具扔一地"}, AnswerIdx: 0},
+	{ID: "k_e_4", Category: "颜色水果", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "熟了的大香蕉是什么颜色的？", Options: []string{"黄色", "蓝色", "紫色"}, AnswerIdx: 0},
+	{ID: "k_e_5", Category: "动物认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "哪种小动物有长长的耳朵，喜欢蹦蹦跳跳吃胡萝卜？", Options: []string{"小兔子", "小螃蟹", "小金鱼"}, AnswerIdx: 0},
+	{ID: "k_e_6", Category: "生活习惯", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "easy", Question: "吃饭之前我们必须先做什么再拿勺子筷子？", Options: []string{"把小手洗干净", "在地上打滚", "先吃十颗糖"}, AnswerIdx: 0},
+	{ID: "k_n_1", Category: "儿歌童谣", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "“白毛浮绿水，红掌拨清波”写的是哪种动物？", Options: []string{"大白鹅", "小花猫", "长颈鹿"}, AnswerIdx: 0},
+	{ID: "k_n_2", Category: "自然认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "下面哪一种小动物有翅膀会在天上飞？", Options: []string{"小燕子", "小乌龟", "小金鱼"}, AnswerIdx: 0},
+	{ID: "k_n_3", Category: "礼貌礼仪", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "别人帮助了我们或者送礼物时，应该礼貌地说什么？", Options: []string{"谢谢", "走开", "不理你"}, AnswerIdx: 0},
+	{ID: "k_n_4", Category: "生活认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "下雨天出门，我们需要带上什么来遮雨？", Options: []string{"雨伞", "太阳镜", "扇子"}, AnswerIdx: 0},
+	{ID: "k_n_5", Category: "动物认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "什么动物的脖子特别长，能够到高高的树叶？", Options: []string{"长颈鹿", "小刺猬", "小企鹅"}, AnswerIdx: 0},
+	{ID: "k_n_6", Category: "四季常识", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "normal", Question: "堆雪人、穿厚厚羽绒服通常是在哪个季节？", Options: []string{"冬天", "夏天", "秋天"}, AnswerIdx: 0},
+	{ID: "k_h_1", Category: "图形数数", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "一个三角形一共有几条边？", Options: []string{"3 条", "4 条", "5 条"}, AnswerIdx: 0},
+	{ID: "k_h_2", Category: "儿歌童谣", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "“春眠不觉晓”的下一句是什么？", Options: []string{"处处闻啼鸟", "床前明月光", "鹅鹅鹅"}, AnswerIdx: 0},
+	{ID: "k_h_3", Category: "自然认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "水里游的小蝌蚪长大后会变成什么？", Options: []string{"青蛙", "蝴蝶", "小鸟"}, AnswerIdx: 0},
+	{ID: "k_h_4", Category: "趣味思维", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "哥哥 5 岁，妹妹 3 岁，谁的年龄大一些？", Options: []string{"哥哥", "妹妹", "一样大"}, AnswerIdx: 0},
+	{ID: "k_h_5", Category: "生活安全", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "发现着火了需要拨打哪个急救报警电话？", Options: []string{"119", "120", "110"}, AnswerIdx: 0},
 
-	// ==================== 7-8 岁 · 小学低年级（1-2年级） ====================
-	{ID: "g1_e_1", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "“床前明月光”的下一句是什么？", Options: []string{"疑是地上霜", "低头思故乡", "春眠不觉晓"}, AnswerIdx: 0},
-	{ID: "g1_e_2", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "“大”字加一笔可以变成哪个字？", Options: []string{"天", "小", "人"}, AnswerIdx: 0},
-	{ID: "g1_e_3", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "下面哪个词语是反义词？", Options: []string{"高 — 矮", "大 — 巨大", "红 — 火红"}, AnswerIdx: 0},
-	{ID: "g1_e_4", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "“一（ ）苹果”括号里最恰当的量词是？", Options: []string{"个", "条", "辆"}, AnswerIdx: 0},
-	{ID: "g1_e_5", Category: "科学百科", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "太阳每天从哪个方向升起？", Options: []string{"东边", "西边", "北边"}, AnswerIdx: 0},
-	{ID: "g1_e_6", Category: "英语", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "easy", Question: "英文 “Good morning” 是什么意思？", Options: []string{"早上好", "晚安", "再见"}, AnswerIdx: 0},
-	{ID: "g1_n_1", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "《静夜思》这首古诗的作者是谁？", Options: []string{"李白", "杜甫", "白居易"}, AnswerIdx: 0},
-	{ID: "g1_n_2", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "“河、海、湖、江”这些汉字大多带有哪个偏旁，跟什么有关？", Options: []string{"三点水，与水有关", "木字旁，与树有关", "草字头，与草有关"}, AnswerIdx: 0},
-	{ID: "g1_n_3", Category: "科学百科", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "下列哪种动物用鳃在水中呼吸？", Options: []string{"金鱼", "小鸭", "家鸽"}, AnswerIdx: 0},
-	{ID: "g1_n_4", Category: "科学百科", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "一年有四个季节，春天的下一个季节是？", Options: []string{"夏天", "秋天", "冬天"}, AnswerIdx: 0},
-	{ID: "g1_n_5", Category: "英语", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "“Book” 是哪一种学习用品？", Options: []string{"书本", "铅笔", "橡皮"}, AnswerIdx: 0},
-	{ID: "g1_n_6", Category: "趣味思维", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "什么东西越洗越脏？", Options: []string{"水", "肥皂", "毛巾"}, AnswerIdx: 0},
-	{ID: "g1_n_7", Category: "趣味思维", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "normal", Question: "麻屋子，红帐子，里面住着白胖子（打一食物）", Options: []string{"花生", "核桃", "栗子"}, AnswerIdx: 0},
-	{ID: "g1_h_1", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "“谁知盘中餐”的下一句是什么？", Options: []string{"粒粒皆辛苦", "汗滴禾下土", "处处闻啼鸟"}, AnswerIdx: 0},
-	{ID: "g1_h_2", Category: "语文", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "把“惊”字左边的竖心旁换成“鱼”字旁，组成的新字念什么？", Options: []string{"鲸（鲸鱼）", "凉（凉快）", "景（风景）"}, AnswerIdx: 0},
-	{ID: "g1_h_3", Category: "科学百科", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "指南针的红色指针通常指着哪个方向？", Options: []string{"北方或南方（南北极）", "东方", "西方"}, AnswerIdx: 0},
-	{ID: "g1_h_4", Category: "英语", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "“How old are you?” 是用来询问对方的什么？", Options: []string{"年龄", "名字", "天气"}, AnswerIdx: 0},
-	{ID: "g1_h_5", Category: "趣味思维", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "一个星期有 7 天，两个星期零 3 天一共有几天？", Options: []string{"17 天", "14 天", "10 天"}, AnswerIdx: 0},
-	{ID: "g1_h_6", Category: "趣味思维", AgeGroup: "7-8", MinAge: 7, MaxAge: 8, Difficulty: "hard", Question: "小朋友排成一队做操，小明前面有 4 人，后面有 5 人，这一队一共几人？", Options: []string{"10 人", "9 人", "11 人"}, AnswerIdx: 0},
+	// ==================== 6-7 岁 · 江苏小学一年级（无乘除、无正式英语） ====================
+	{ID: "g1_e_1", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "“床前明月光”的下一句是什么？", Options: []string{"疑是地上霜", "低头思故乡", "春眠不觉晓"}, AnswerIdx: 0},
+	{ID: "g1_e_2", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "“大”字加一笔可以变成哪个字？", Options: []string{"天", "小", "人"}, AnswerIdx: 0},
+	{ID: "g1_e_3", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "下面哪一对词语是“反义词”？", Options: []string{"高 — 矮", "大 — 巨大", "红 — 火红"}, AnswerIdx: 0},
+	{ID: "g1_e_4", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "“一（ ）苹果”括号里最恰当的量词是？", Options: []string{"个", "条", "辆"}, AnswerIdx: 0},
+	{ID: "g1_e_5", Category: "科学百科", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "太阳每天早上从哪个方向升起？", Options: []string{"东边", "西边", "北边"}, AnswerIdx: 0},
+	{ID: "g1_e_6", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "“江南可采莲，莲叶何田田”描写的是哪个季节的景色？", Options: []string{"夏天", "冬天", "秋天"}, AnswerIdx: 0},
+	{ID: "g1_n_1", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "《静夜思》这首古诗的作者是谁？", Options: []string{"李白", "杜甫", "白居易"}, AnswerIdx: 0},
+	{ID: "g1_n_2", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "“河、海、湖、江”这些汉字左边都是三点水，大多和什么有关？", Options: []string{"水", "树林", "花草"}, AnswerIdx: 0},
+	{ID: "g1_n_3", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "“远看山有色，近听水无声”这首诗描写的谜底是什么？", Options: []string{"画", "风", "云"}, AnswerIdx: 0},
+	{ID: "g1_n_4", Category: "科学百科", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "下面哪种动物生活在水里，用鳃呼吸？", Options: []string{"金鱼", "小鸭", "小猫"}, AnswerIdx: 0},
+	{ID: "g1_n_5", Category: "科学百科", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "一年有春夏秋冬四个季节，春天的下一个季节是？", Options: []string{"夏天", "秋天", "冬天"}, AnswerIdx: 0},
+	{ID: "g1_n_6", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "什么东西越洗越脏？", Options: []string{"水", "肥皂", "毛巾"}, AnswerIdx: 0},
+	{ID: "g1_n_7", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "normal", Question: "麻屋子，红帐子，里面住着白胖子（打一种食物）", Options: []string{"花生", "核桃", "板栗"}, AnswerIdx: 0},
+	{ID: "g1_h_1", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "“谁知盘中餐”的下一句是什么？", Options: []string{"粒粒皆辛苦", "汗滴禾下土", "处处闻啼鸟"}, AnswerIdx: 0},
+	{ID: "g1_h_2", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "“桃、林、树、桥”这些字都有“木”字旁，一般都和什么有关？", Options: []string{"树木和木头", "火光", "石块"}, AnswerIdx: 0},
+	{ID: "g1_h_3", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "“小时不识月，呼作白玉盘”中“白玉盘”指的是什么？", Options: []string{"圆圆的月亮", "大西瓜", "白盘子"}, AnswerIdx: 0},
+	{ID: "g1_h_4", Category: "科学百科", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "绿色植物生长最离不开阳光、空气和什么？", Options: []string{"水", "糖果", "玻璃"}, AnswerIdx: 0},
+	{ID: "g1_h_5", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "树上有 8 只小鸟，猎人开枪打响了一声（没有打中任何小鸟），树上还剩几只鸟？", Options: []string{"0 只（都吓飞了）", "8 只", "7 只"}, AnswerIdx: 0},
+	{ID: "g1_h_6", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "一个星期有 7 天，一整个星期加上星期一和星期二一共有几天？", Options: []string{"9 天", "8 天", "10 天"}, AnswerIdx: 0},
 
-	// ==================== 9-10 岁 · 小学中年级（3-4年级） ====================
+	// ==================== 8 岁 · 江苏小学二年级（开始学表内乘除法） ====================
+	{ID: "g2_e_1", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "easy", Question: "“白日依山尽”的下一句是？", Options: []string{"黄河入海流", "欲穷千里目", "更上一层楼"}, AnswerIdx: 0},
+	{ID: "g2_e_2", Category: "数学", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "easy", Question: "“三七（   ）”这句乘法口诀的得数是？", Options: []string{"二十一", "二十四", "十八"}, AnswerIdx: 0},
+	{ID: "g2_e_3", Category: "科学百科", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "easy", Question: "下面哪一个长度单位比“厘米”更长？", Options: []string{"米", "毫米", "一样长"}, AnswerIdx: 0},
+	{ID: "g2_n_1", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "normal", Question: "“遥知不是雪，为有暗香来”描写的是哪种花？", Options: []string{"梅花", "荷花", "菊花"}, AnswerIdx: 0},
+	{ID: "g2_n_2", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "normal", Question: "用“部首查字法”查“树”字，应该先查哪个部首？", Options: []string{"木", "又", "寸"}, AnswerIdx: 0},
+	{ID: "g2_n_3", Category: "科学百科", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "normal", Question: "指南针的指针停下来后，一端总是指向北方，另一端指向哪个方向？", Options: []string{"南方", "东方", "西方"}, AnswerIdx: 0},
+	{ID: "g2_n_4", Category: "趣味思维", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "normal", Question: "把 18 个苹果平均分在 3 个盘子里，每个盘子放几个？", Options: []string{"6 个", "5 个", "9 个"}, AnswerIdx: 0},
+	{ID: "g2_h_1", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "“野火烧不尽，春风吹又生”是赞美什么植物顽强的生命力？", Options: []string{"小草", "松树", "荷花"}, AnswerIdx: 0},
+	{ID: "g2_h_2", Category: "科学百科", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "“坐井观天”故事里，小青蛙为什么觉得天只有井口那么大？", Options: []string{"井壁挡住了它的视线", "天空本来就这么小", "小青蛙近视了"}, AnswerIdx: 0},
+	{ID: "g2_h_3", Category: "趣味思维", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "时钟 3 点敲 3 下用了 4 秒，那么 5 点敲 5 下需要几秒？", Options: []string{"8 秒", "6 秒", "10 秒"}, AnswerIdx: 0},
+
+	// ==================== 9-10 岁 · 江苏小学三~四年级（译林英语起点 + 多位数乘除） ====================
 	{ID: "g3_e_1", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "“飞流直下三千尺”描写的是哪座名山？", Options: []string{"庐山", "泰山", "黄山"}, AnswerIdx: 0},
-	{ID: "g3_e_2", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "下面哪个成语表示读书非常勤奋？", Options: []string{"悬梁刺股", "守株待兔", "掩耳盗铃"}, AnswerIdx: 0},
+	{ID: "g3_e_2", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "下面哪个成语表示读书非常勤奋刻苦？", Options: []string{"悬梁刺股", "守株待兔", "掩耳盗铃"}, AnswerIdx: 0},
 	{ID: "g3_e_3", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "水在标准大气压下，多少摄氏度会开始结冰？", Options: []string{"0℃", "50℃", "100℃"}, AnswerIdx: 0},
-	{ID: "g3_e_4", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "英文单词 “Wednesday” 指的是星期几？", Options: []string{"星期三", "星期二", "星期四"}, AnswerIdx: 0},
+	{ID: "g3_e_4", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "英文打招呼 “Good morning!” 的意思是？", Options: []string{"早上好！", "晚安！", "再见！"}, AnswerIdx: 0},
+	{ID: "g3_e_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "译林版三年级英语中，单词 “library” 是指什么地方？", Options: []string{"图书馆", "动物园", "操场"}, AnswerIdx: 0},
 	{ID: "g3_n_1", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "“停车坐爱枫林晚”中的“坐”是什么意思？", Options: []string{"因为", "坐下", "座位"}, AnswerIdx: 0},
 	{ID: "g3_n_2", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "“但使龙城飞将在，不教胡马度阴山”的作者是唐代诗人谁？", Options: []string{"王昌龄", "王维", "孟浩然"}, AnswerIdx: 0},
 	{ID: "g3_n_3", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "地球自转一周大约需要多长时间？", Options: []string{"24 小时（一天）", "30 天（一月）", "365 天（一年）"}, AnswerIdx: 0},
-	{ID: "g3_n_4", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "植物进行光合作用制造养分时，吸收气体并释放出哪种气体？", Options: []string{"吸收二氧化碳，释放氧气", "吸收氧气，释放二氧化碳", "吸收氮气，释放氢气"}, AnswerIdx: 0},
-	{ID: "g3_n_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "句子 “Where is the library?” 的意思是？", Options: []string{"图书馆在哪里？", "今天星期几？", "你喜欢看书吗？"}, AnswerIdx: 0},
+	{ID: "g3_n_4", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "植物进行光合作用制造养分时，会吸收空气中的什么并释放氧气？", Options: []string{"吸收二氧化碳", "吸收氮气", "吸收氢气"}, AnswerIdx: 0},
+	{ID: "g3_n_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "英文单词 “Wednesday” 指的是星期几？", Options: []string{"星期三", "星期二", "星期四"}, AnswerIdx: 0},
 	{ID: "g3_n_6", Category: "趣味思维", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "normal", Question: "中国古代“四大发明”不包括下面哪一项？", Options: []string{"地动仪", "造纸术", "印刷术"}, AnswerIdx: 0},
 	{ID: "g3_h_1", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "“横看成岭侧成峰，远近高低各不同”蕴含了什么哲理？", Options: []string{"从不同角度观察事物会有不同认识", "庐山特别难爬", "冬天景色最美"}, AnswerIdx: 0},
 	{ID: "g3_h_2", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "我国第一部纪传体通史《史记》的作者是谁？", Options: []string{"司马迁", "司马光", "孔子"}, AnswerIdx: 0},
 	{ID: "g3_h_3", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "为什么冬天呼出的气在空中能看到“白雾”？", Options: []string{"水蒸气遇冷液化成小水滴", "空气结成了冰块", "水变成了氧气"}, AnswerIdx: 0},
 	{ID: "g3_h_4", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "声音在哪种介质中传播速度最快？", Options: []string{"钢铁等固体", "水等液体", "空气等气体"}, AnswerIdx: 0},
-	{ID: "g3_h_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "选出与 “elephant” 同属动物类的单词：", Options: []string{"kangaroo", "umbrella", "hospital"}, AnswerIdx: 0},
+	{ID: "g3_h_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "句子 “Where is my pencil case?” 是在询问什么？", Options: []string{"我的铅笔盒在哪里？", "今天星期几？", "现在几点钟？"}, AnswerIdx: 0},
 	{ID: "g3_h_6", Category: "趣味思维", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "一根木头锯成 4 段需要 6 分钟，照这样计算锯成 6 段需要几分钟？", Options: []string{"10 分钟", "9 分钟", "12 分钟"}, AnswerIdx: 0},
 
 	// ==================== 11-14 岁 · 小学高年级 / 初中 ====================
