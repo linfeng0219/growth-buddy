@@ -132,27 +132,38 @@ class NativeSoundEngine(context: Context) {
 
     private fun resolveBuiltInVoice(text: String): String? {
         val t = text.trim()
+        val numMatch = Regex("^(\\d+)$").matchEntire(t)
+        if (numMatch != null) {
+            val n = numMatch.groupValues[1].toIntOrNull()
+            if (n != null && (n in 1..3 || (n in 10..150 && n % 10 == 0))) {
+                return "num_${n}.mp3"
+            }
+        }
         return when {
-            t.contains("摸头好舒服") -> "pat_0.wav"
-            t.contains("元气满满") -> "pat_1.wav"
-            t.contains("一直陪着你") -> "pat_2.wav"
-            t.contains("喂我吃零食") -> "pat_3.wav"
-            t.contains("下一阶进化") -> "pat_4.wav"
-            t.contains("慢慢破壳") -> "lv_0.wav"
-            t.contains("世界好暖和") -> "lv_1.wav"
-            t.contains("长出小耳朵") -> "lv_2.wav"
-            t.contains("带一位出来陪我玩") -> "lv_3.wav"
-            t.contains("神秘蛋也解锁") -> "lv_4.wav"
-            t.contains("守护兽达成") -> "lv_5.wav"
-            t.contains("没见到你了") -> "sleep.wav"
-            t.contains("有点虚弱了") -> "weak.wav"
-            t.contains("我生病了") -> "sick.wav"
-            t.contains("开始专注") -> "focus_start.wav"
-            t.contains("专注挑战完成") || t.contains("分钟专注") -> "focus_win.wav"
-            t.contains("拖延怪被击败") -> "adv_win.wav"
-            t == "开始" -> "rope_start.wav"
-            t.contains("已达标") -> "rope_pass.wav"
-            t.contains("最后十秒") -> "rope_last10.wav"
+            t.contains("摸头好舒服") -> "pat_0.mp3"
+            t.contains("元气满满") -> "pat_1.mp3"
+            t.contains("一直陪着你") -> "pat_2.mp3"
+            t.contains("喂我吃零食") -> "pat_3.mp3"
+            t.contains("下一阶进化") -> "pat_4.mp3"
+            t.contains("慢慢破壳") -> "lv_0.mp3"
+            t.contains("世界好暖和") -> "lv_1.mp3"
+            t.contains("长出小耳朵") -> "lv_2.mp3"
+            t.contains("带一位出来陪我玩") -> "lv_3.mp3"
+            t.contains("神秘蛋也解锁") -> "lv_4.mp3"
+            t.contains("守护兽达成") -> "lv_5.mp3"
+            t.contains("没见到你了") -> "sleep.mp3"
+            t.contains("有点虚弱了") -> "weak.mp3"
+            t.contains("我生病了") -> "sick.mp3"
+            t.contains("开始专注") -> "focus_start.mp3"
+            t.contains("专注挑战完成") || t.contains("分钟专注") -> "focus_win.mp3"
+            t.contains("拖延怪被击败") -> "adv_win.mp3"
+            t.contains("进化成") -> "evolve.mp3"
+            t.contains("领养了新伙伴") -> "adopt.mp3"
+            t == "开始" -> "rope_start.mp3"
+            t.contains("已达标") -> "rope_pass.mp3"
+            t.contains("最后十秒") -> "rope_last10.mp3"
+            t.contains("挑战成功") -> "rope_win.mp3"
+            t.startsWith("时间到") -> "rope_timeout.mp3"
             else -> null
         }
     }
