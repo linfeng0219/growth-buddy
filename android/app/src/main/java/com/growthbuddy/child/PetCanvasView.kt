@@ -1531,17 +1531,17 @@ class BattleStageView @JvmOverloads constructor(
         canvas.rotate(rot, 0f, -r * 0.35f)
         canvas.scale(sx, sy, 0f, 0f)
 
-        // 0. 恶魔小弯角（背后长出，彰显反派气场）
+        // 0. 恶魔小弯角（从圆润软泥头顶两侧长出）
         val leftHorn = Path().apply {
-            moveTo(-r * 0.56f, -r * 1.12f)
-            quadTo(-r * 0.88f, -r * 1.56f, -r * 0.64f, -r * 1.78f)
-            quadTo(-r * 0.52f, -r * 1.44f, -r * 0.34f, -r * 1.24f)
+            moveTo(-r * 0.58f, -r * 0.94f)
+            quadTo(-r * 0.92f, -r * 1.32f, -r * 0.68f, -r * 1.50f)
+            quadTo(-r * 0.54f, -r * 1.22f, -r * 0.38f, -r * 1.08f)
             close()
         }
         val rightHorn = Path().apply {
-            moveTo(r * 0.56f, -r * 1.12f)
-            quadTo(r * 0.88f, -r * 1.56f, r * 0.64f, -r * 1.78f)
-            quadTo(r * 0.52f, -r * 1.44f, r * 0.34f, -r * 1.24f)
+            moveTo(r * 0.58f, -r * 0.94f)
+            quadTo(r * 0.92f, -r * 1.32f, r * 0.68f, -r * 1.50f)
+            quadTo(r * 0.54f, -r * 1.22f, r * 0.38f, -r * 1.08f)
             close()
         }
         monsterPaint.color = 0xFF3E146B.toInt()
@@ -1553,30 +1553,51 @@ class BattleStageView @JvmOverloads constructor(
         canvas.drawPath(leftHorn, monsterPaint)
         canvas.drawPath(rightHorn, monsterPaint)
 
-        // 1. 史莱姆水滴尖顶轮廓（底部坐标 y=0）
+        // 1. 扁胖融化粘液史莱姆轮廓（圆润穹顶 + 底部波浪摊开裙边，不再用尖水滴）
         monsterPaint.style = Paint.Style.FILL
-        val tipSway = sin(idleSec * 4.2f) * r * 0.06f
+        val domeSway = sin(idleSec * 3.8f) * r * 0.04f
         val bodyPath = Path().apply {
-            moveTo(tipSway, -r * 1.78f)
+            // 圆润宽厚顶部中心
+            moveTo(domeSway, -r * 1.28f)
+            // 右上圆顶 -> 右侧肥厚软泥颊
             cubicTo(
-                r * 0.22f, -r * 1.42f,
-                r * 1.08f, -r * 1.10f,
-                r * 1.05f, -r * 0.42f
+                r * 0.68f, -r * 1.28f,
+                r * 1.08f, -r * 0.92f,
+                r * 1.08f, -r * 0.40f
+            )
+            // 右下融化黏液摊开触角
+            cubicTo(
+                r * 1.28f, -r * 0.14f,
+                r * 1.26f, r * 0.04f,
+                r * 0.96f, 0f
+            )
+            // 底部波浪粘液起伏
+            cubicTo(
+                r * 0.68f, -r * 0.04f,
+                r * 0.52f, r * 0.06f,
+                r * 0.24f, r * 0.02f
             )
             cubicTo(
-                r * 1.05f, -r * 0.02f,
-                r * 0.68f, 0f,
-                0f, 0f
+                0f, -r * 0.02f,
+                -r * 0.16f, r * 0.06f,
+                -r * 0.42f, r * 0.02f
             )
             cubicTo(
-                -r * 0.68f, 0f,
-                -r * 1.05f, -r * 0.02f,
-                -r * 1.05f, -r * 0.42f
+                -r * 0.70f, -r * 0.03f,
+                -r * 0.80f, r * 0.05f,
+                -r * 1.00f, 0f
             )
+            // 左下融化黏液摊开触角 -> 左侧肥厚软泥颊
             cubicTo(
-                -r * 1.08f, -r * 1.10f,
-                -r * 0.22f, -r * 1.42f,
-                tipSway, -r * 1.78f
+                -r * 1.26f, r * 0.04f,
+                -r * 1.28f, -r * 0.14f,
+                -r * 1.08f, -r * 0.40f
+            )
+            // 回到圆润顶部中心
+            cubicTo(
+                -r * 1.08f, -r * 0.92f,
+                -r * 0.68f, -r * 1.28f,
+                domeSway, -r * 1.28f
             )
             close()
         }
@@ -1588,7 +1609,7 @@ class BattleStageView @JvmOverloads constructor(
         val deepCol = if (enraged) 0xFF47061C.toInt() else 0xFF310A5D.toInt()
 
         monsterPaint.shader = RadialGradient(
-            -r * 0.25f, -r * 1.05f, r * 1.65f,
+            -r * 0.25f, -r * 0.86f, r * 1.50f,
             intArrayOf(topCol, midCol, deepCol),
             floatArrayOf(0f, 0.54f, 1f),
             Shader.TileMode.CLAMP
@@ -1596,23 +1617,23 @@ class BattleStageView @JvmOverloads constructor(
         canvas.drawPath(bodyPath, monsterPaint)
         monsterPaint.shader = null
 
-        // 体内暗紫毒液气泡
+        // 体内暗紫毒液气泡 + 侧边挂滴高光
         monsterPaint.color = 0x4DFF85FF
-        val bShift = (idleSec * 18f) % (r * 0.5f)
-        canvas.drawCircle(r * 0.48f, -r * 0.34f - bShift * 0.5f, r * 0.09f, monsterPaint)
-        canvas.drawCircle(-r * 0.52f, -r * 0.58f + bShift * 0.3f, r * 0.06f, monsterPaint)
-        canvas.drawCircle(r * 0.15f, -r * 1.18f, r * 0.055f, monsterPaint)
+        val bShift = (idleSec * 18f) % (r * 0.42f)
+        canvas.drawCircle(r * 0.56f, -r * 0.30f - bShift * 0.5f, r * 0.085f, monsterPaint)
+        canvas.drawCircle(-r * 0.62f, -r * 0.46f + bShift * 0.3f, r * 0.06f, monsterPaint)
+        canvas.drawCircle(r * 0.26f, -r * 0.96f, r * 0.055f, monsterPaint)
 
-        // 果冻左上角弯月高光
+        // 果冻左上角圆润弯月高光
         monsterPaint.color = 0x88FFFFFF.toInt()
         val shine = Path().apply {
-            moveTo(-r * 0.58f, -r * 0.88f)
-            quadTo(-r * 0.42f, -r * 1.24f, -r * 0.16f, -r * 1.32f)
-            quadTo(-r * 0.34f, -r * 1.06f, -r * 0.42f, -r * 0.80f)
+            moveTo(-r * 0.72f, -r * 0.64f)
+            quadTo(-r * 0.56f, -r * 1.02f, -r * 0.24f, -r * 1.08f)
+            quadTo(-r * 0.46f, -r * 0.84f, -r * 0.56f, -r * 0.58f)
             close()
         }
         canvas.drawPath(shine, monsterPaint)
-        canvas.drawCircle(-r * 0.62f, -r * 0.68f, r * 0.06f, monsterPaint)
+        canvas.drawCircle(-r * 0.76f, -r * 0.44f, r * 0.055f, monsterPaint)
 
         // 外圈冷峻深紫黑描边
         monsterPaint.style = Paint.Style.STROKE
@@ -1627,10 +1648,10 @@ class BattleStageView @JvmOverloads constructor(
             canvas.drawPath(bodyPath, monsterPaint)
         }
 
-        // 头顶小魔王皇冠（击败后歪掉掉在一旁）
+        // 头顶小魔王皇冠（贴在圆顶上方，击败后歪掉掉在一旁）
         if (!isDefeated) {
             canvas.save()
-            canvas.translate(tipSway * 0.8f, -r * 1.68f)
+            canvas.translate(domeSway * 0.8f, -r * 1.24f)
             canvas.rotate(if (isHitReact) 22f else 9f)
             val crown = Path().apply {
                 moveTo(-r * 0.24f, 0f)
@@ -1655,8 +1676,8 @@ class BattleStageView @JvmOverloads constructor(
             canvas.restore()
         }
 
-        // 2. 反派邪魅表情（无粉嫩腮红，改为倒八字凶眉 + 琥珀金眼 + 锯齿獠牙坏笑）
-        val faceY = -r * 0.62f
+        // 2. 反派邪魅表情（居中落在宽厚圆顶面庞）
+        val faceY = -r * 0.52f
 
         if (isDefeated) {
             // 晕倒 × × 眼
@@ -1794,7 +1815,7 @@ class BattleStageView @JvmOverloads constructor(
             paint.reset()
             paint.isAntiAlias = true
             paint.style = Paint.Style.FILL
-            val orbitY = if (isDefeated) baseY - r * 1.05f else baseY - r * 1.98f
+            val orbitY = if (isDefeated) baseY - r * 0.88f else baseY - r * 1.56f
             for (s in 0 until 3) {
                 val a = idleSec * 4.2f + s * (2f * PI.toFloat() / 3f)
                 val sxPos = foeCx + cos(a) * (r * 0.65f)
