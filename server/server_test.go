@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -68,46 +67,120 @@ func doJSON(t *testing.T, ts *httptest.Server, method, path, token string, body 
 	return resp.StatusCode, out
 }
 
-func TestNodeAuthCrossCompatibility(t *testing.T) {
-	// Verify Go scrypt & HMAC-SHA256 token match Node.js auth.js byte-for-byte
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node not available for cross-compat check")
-	}
-	const legacyAuthPath = "/home/antigravity/growth-buddy-server/auth.js"
-	if _, err := os.Stat(legacyAuthPath); err != nil {
-		t.Skip("legacy node auth.js not present on this host")
-	}
-	cmd := exec.Command(nodeBin, "-e", `
-		process.env.SESSION_SECRET = "compat-secret-123";
-		const auth = require("/home/antigravity/growth-buddy-server/auth.js");
-		const h = auth.hashPassword("kidPass!2026");
-		const tok = auth.signToken({ role: "child", childId: "kid_abc", familyId: "fam_xyz" }, 3600);
-		console.log(JSON.stringify({ hash: h, token: tok }));
-	`)
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("node auth check failed: %v", err)
-	}
-	var parsed struct {
-		Hash  string `json:"hash"`
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(out, &parsed); err != nil {
-		t.Fatalf("parse node output failed: %v", err)
+func TestUnifiedLoginAndLegacyEndpointsRemoved(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// Health check reports unified protocolVersion
+	st, h := doJSON(t, ts, "GET", "/api/health", "", nil)
+	if st != 200 || int(h["protocolVersion"].(float64)) != ProtocolVersion {
+		t.Fatalf("unexpected protocolVersion in health: %d %+v", st, h)
 	}
 
-	if !VerifyPassword("kidPass!2026", parsed.Hash) {
-		t.Fatalf("Go VerifyPassword failed to verify Node scrypt hash: %s", parsed.Hash)
+	// Register family
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName":    "协议升级测试家",
+		"displayName":   "妈妈",
+		"username":      "proto_mom",
+		"password":      "pass1234",
+		"childName":     "小测",
+		"childUsername": "proto_kid",
+		"childPassword": "kid1234",
+	})
+	if st != 201 {
+		t.Fatalf("register-family failed: %d %+v", st, reg)
 	}
-	if VerifyPassword("wrongPass", parsed.Hash) {
-		t.Fatalf("Go VerifyPassword accepted wrong password")
+	parentTok := reg["token"].(string)
+
+	// Parent unified login
+	st, pLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
+		"username": "proto_mom",
+		"password": "pass1234",
+	})
+	if st != 200 || pLogin["role"] != "parent" || pLogin["token"] == "" {
+		t.Fatalf("unified parent login failed: %d %+v", st, pLogin)
 	}
 
-	setSessionSecret("compat-secret-123")
-	claims := VerifyToken(parsed.Token)
-	if claims == nil || claims.Role != "child" || claims.ChildID != "kid_abc" || claims.FamilyID != "fam_xyz" {
-		t.Fatalf("Go VerifyToken failed to verify Node HMAC token: %+v", claims)
+	// Child unified login
+	st, cLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
+		"username": "proto_kid",
+		"password": "kid1234",
+	})
+	if st != 200 || cLogin["role"] != "child" || cLogin["token"] == "" {
+		t.Fatalf("unified child login failed: %d %+v", st, cLogin)
+	}
+	childTok := cLogin["token"].(string)
+
+	// Legacy endpoints are completely removed (404)
+	for _, tc := range []struct {
+		method string
+		path   string
+		tok    string
+	}{
+		{"POST", "/api/auth/parent-login", ""},
+		{"POST", "/api/auth/child-login", ""},
+		{"GET", "/api/family/roster?code=123456", ""},
+		{"POST", "/api/parent/questions", parentTok},
+		{"POST", "/api/parent/import-backup", parentTok},
+	} {
+		code, _ := doJSON(t, ts, tc.method, tc.path, tc.tok, map[string]any{})
+		if code != 404 {
+			t.Fatalf("expected legacy endpoint %s %s removed (404), got %d", tc.method, tc.path, code)
+		}
+	}
+
+	// Parent token cannot call /api/child/* directly anymore
+	st, _ = doJSON(t, ts, "GET", "/api/child/state", parentTok, nil)
+	if st != 403 {
+		t.Fatalf("expected 403 for parent on /api/child/state, got %d", st)
+	}
+	_ = childTok
+}
+
+func TestOTAForceUpdateFloor(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	st, aLogin := doJSON(t, ts, "POST", "/api/auth/admin-login", "", map[string]any{
+		"username": "admin", "password": "admin1234",
+	})
+	if st != 200 {
+		t.Fatalf("admin login failed: %d", st)
+	}
+	adminTok := aLogin["token"].(string)
+
+	// Mandatory baseline v100
+	st, _ = doJSON(t, ts, "POST", "/api/admin/releases", adminTok, map[string]any{
+		"versionCode":  100,
+		"versionName":  "2026.11.23-1800",
+		"releaseNotes": "统一协议强制升级基准版",
+		"forceUpdate":  true,
+		"downloadUrl":  "https://example.com/v100.apk",
+	})
+	if st != 201 {
+		t.Fatalf("create rel v100 failed: %d", st)
+	}
+
+	// Subsequent optional patch v120
+	st, _ = doJSON(t, ts, "POST", "/api/admin/releases", adminTok, map[string]any{
+		"versionCode":  120,
+		"versionName":  "2026.11.23-1810",
+		"releaseNotes": "小修小补",
+		"forceUpdate":  false,
+		"downloadUrl":  "https://example.com/v120.apk",
+	})
+	if st != 201 {
+		t.Fatalf("create rel v120 failed: %d", st)
+	}
+
+	// Client v90 (< minForced=100) must still be forced to update to v120
+	st, v90 := doJSON(t, ts, "GET", "/api/app/version?platform=android&currentVersionCode=90", "", nil)
+	if st != 200 || v90["hasUpdate"] != true || v90["forceUpdate"] != true || int(v90["minSupportedVersionCode"].(float64)) != 100 {
+		t.Fatalf("expected v90 forced update: %d %+v", st, v90)
+	}
+
+	// Client v105 (>= minForced=100, < 120) gets optional update
+	st, v105 := doJSON(t, ts, "GET", "/api/app/version?platform=android&currentVersionCode=105", "", nil)
+	if st != 200 || v105["hasUpdate"] != true || v105["forceUpdate"] != false {
+		t.Fatalf("expected v105 optional update: %d %+v", st, v105)
 	}
 }
 
@@ -142,13 +215,13 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 	firstChildID := reg["firstChildId"].(string)
 	famID := reg["family"].(map[string]any)["id"].(string)
 
-	// Child direct login (no family code)
-	st, cLogin := doJSON(t, ts, "POST", "/api/auth/child-login", "", map[string]any{
+	// Child direct login via unified /api/auth/login
+	st, cLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
 		"username": "dabao01",
 		"password": "kid1234",
 	})
-	if st != 200 || cLogin["childId"] != firstChildID {
-		t.Fatalf("child-login failed: %d %+v", st, cLogin)
+	if st != 200 || cLogin["role"] != "child" || cLogin["childId"] != firstChildID {
+		t.Fatalf("child unified login failed: %d %+v", st, cLogin)
 	}
 	childTok := cLogin["token"].(string)
 
@@ -308,13 +381,13 @@ func TestAvatarUploadBuiltinAndPolaroidSnapshot(t *testing.T) {
 	parentID := reg["parent"].(map[string]any)["id"].(string)
 	childID := reg["firstChildId"].(string)
 
-	// Child logs in
-	st, cLogin := doJSON(t, ts, "POST", "/api/auth/child-login", "", map[string]any{
+	// Child logs in via unified /api/auth/login
+	st, cLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
 		"username": "erbao01",
 		"password": "kid1234",
 	})
-	if st != 200 {
-		t.Fatalf("child-login failed: %d", st)
+	if st != 200 || cLogin["role"] != "child" {
+		t.Fatalf("child unified login failed: %d", st)
 	}
 	childTok := cLogin["token"].(string)
 
@@ -586,11 +659,11 @@ func TestAdventureWinDailyCap(t *testing.T) {
 	if st != 201 {
 		t.Fatalf("register failed: %d %+v", st, reg)
 	}
-	st, login := doJSON(t, ts, "POST", "/api/auth/child-login", "", map[string]any{
+	st, login := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
 		"username": "kid_adv", "password": "pass1234",
 	})
-	if st != 200 {
-		t.Fatalf("child login failed: %d %+v", st, login)
+	if st != 200 || login["role"] != "child" {
+		t.Fatalf("child unified login failed: %d %+v", st, login)
 	}
 	tok, _ := login["token"].(string)
 

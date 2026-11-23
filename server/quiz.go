@@ -717,15 +717,6 @@ func ageBoundsForGroup(g string) (int, int) {
 	}
 }
 
-// AddFamilyQuestion / DeleteFamilyQuestion 保留兼容签名，提示已切换为云端在线题库。
-func (s *Store) AddFamilyQuestion(familyID string, q QuizQuestion) (QuizQuestion, error) {
-	return QuizQuestion{}, errors.New("已升级为在线分级题库，无需家长手动录入题目")
-}
-
-func (s *Store) DeleteFamilyQuestion(familyID, qid string) error {
-	return errors.New("已升级为在线分级题库，系统自动维护题目")
-}
-
 // onlineCuratedBank 按江苏教学进度划分学段（3-5岁小中班 / 6-7岁一年级 / 8岁二年级 / 9-10岁三四年级 / 11-14岁高年级）的精选在线中文题库。
 var onlineCuratedBank = []QuizQuestion{
 	// ==================== 3-5 岁 · 幼儿园小班 / 中班 ====================

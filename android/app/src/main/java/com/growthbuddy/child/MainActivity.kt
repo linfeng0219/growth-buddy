@@ -212,9 +212,9 @@ class MainActivity : AppCompatActivity() {
             loadChildState()
         } else {
             showLoginView()
-            // 仅在登录页静默检查远程升级（有新版则提示，不打扰儿童页与家长页日常使用）
-            updater.checkForUpdate(silent = true)
         }
+        // 统一启动静默升级检测：无论是否已登录，有新版或强制升级包立即提醒，无新版不打扰
+        updater.checkForUpdate(silent = true)
     }
 
     override fun onResume() {
@@ -574,44 +574,18 @@ class MainActivity : AppCompatActivity() {
             put("password", password)
         }
         api.request("POST", "/api/auth/login", payload, useAuth = false) { res ->
+            binding.btnDoLogin.isEnabled = true
+            binding.btnDoLogin.text = "登录进入 →"
             if (res.ok && res.json != null) {
-                binding.btnDoLogin.isEnabled = true
-                binding.btnDoLogin.text = "登录进入 →"
                 val role = res.json.optString("role", "")
                 if (role == "parent") {
                     onParentLoginSuccess(username, password, res.json)
                 } else {
                     onChildLoginSuccess(username, password, res.json)
                 }
-            } else if (res.status == 404) {
-                // 兼容尚未更新统一登录接口的旧服务端：依次尝试孩子端与家长端登录
-                fallbackSplitLogin(username, password, payload)
             } else {
-                binding.btnDoLogin.isEnabled = true
-                binding.btnDoLogin.text = "登录进入 →"
                 sound.playError()
                 binding.tvLoginMsg.text = res.error ?: "账号或密码不正确"
-            }
-        }
-    }
-
-    private fun fallbackSplitLogin(username: String, password: String, payload: JSONObject) {
-        api.request("POST", "/api/auth/child-login", payload, useAuth = false) { childRes ->
-            if (childRes.ok && childRes.json != null) {
-                binding.btnDoLogin.isEnabled = true
-                binding.btnDoLogin.text = "登录进入 →"
-                onChildLoginSuccess(username, password, childRes.json)
-            } else {
-                api.request("POST", "/api/auth/parent-login", payload, useAuth = false) { parentRes ->
-                    binding.btnDoLogin.isEnabled = true
-                    binding.btnDoLogin.text = "登录进入 →"
-                    if (parentRes.ok && parentRes.json != null) {
-                        onParentLoginSuccess(username, password, parentRes.json)
-                    } else {
-                        sound.playError()
-                        binding.tvLoginMsg.text = parentRes.error ?: childRes.error ?: "账号或密码不正确"
-                    }
-                }
             }
         }
     }

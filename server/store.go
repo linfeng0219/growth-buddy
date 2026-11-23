@@ -303,16 +303,6 @@ func (s *Store) initSchema() error {
 			created_at INTEGER NOT NULL
 		);
 
-		CREATE TABLE IF NOT EXISTS quiz_questions (
-			id TEXT PRIMARY KEY,
-			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
-			category TEXT NOT NULL,
-			question TEXT NOT NULL,
-			options_json TEXT NOT NULL,
-			answer_idx INTEGER NOT NULL,
-			created_at INTEGER NOT NULL
-		);
-
 		CREATE TABLE IF NOT EXISTS family_task_icons (
 			id TEXT PRIMARY KEY,
 			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
@@ -809,47 +799,6 @@ func (s *Store) VerifyParentLogin(username, password string) (*ParentDTO, *Famil
 	return &p, &fam, nil
 }
 
-type RosterChildDTO struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	AvatarIdx int    `json:"avatar_idx"`
-	AvatarURL string `json:"avatar_url"`
-	PetName   string `json:"pet_name"`
-	XP        int    `json:"xp"`
-	HasPin    bool   `json:"has_pin"`
-}
-
-func (s *Store) GetFamilyRoster(code string) (*FamilyDTO, []RosterChildDTO, error) {
-	clean := strings.ToUpper(strings.TrimSpace(code))
-	var fam FamilyDTO
-	kids := make([]RosterChildDTO, 0)
-	err := s.db.WithLock(func(tx *Tx) error {
-		if err := tx.QueryRow("SELECT id, name, family_code FROM families WHERE family_code = ?", func(r SQLiteRow) error {
-			fam = FamilyDTO{ID: r.String(0), Name: r.String(1), FamilyCode: r.String(2)}
-			return nil
-		}, clean); err != nil {
-			return ErrNotFound
-		}
-		return tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pin, pet_name, xp FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
-			cid := r.String(0)
-			kids = append(kids, RosterChildDTO{
-				ID:        cid,
-				Name:      r.String(1),
-				AvatarIdx: clampAvatarIdx(r.Int(2)),
-				AvatarURL: avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-				HasPin:    r.String(5) != "",
-				PetName:   r.String(6),
-				XP:        r.Int(7),
-			})
-			return nil
-		}, fam.ID)
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return &fam, kids, nil
-}
-
 func (s *Store) LoginChildByAccount(username, password string) (childID, familyID, familyCode string, err error) {
 	clean := strings.ToLower(strings.TrimSpace(username))
 	var hash string
@@ -884,34 +833,6 @@ func (s *Store) GetChildBasicProfile(childID string) (name string, avatarIdx int
 		}, childID)
 	})
 	return name, avatarIdx, avURL
-}
-
-func (s *Store) LoginChildByRoster(code, childID, pin string) (familyID string, status int, err error) {
-	cleanCode := strings.ToUpper(strings.TrimSpace(code))
-	cleanPin := strings.TrimSpace(pin)
-	var storedPin string
-	e := s.db.WithLock(func(tx *Tx) error {
-		if err := tx.QueryRow("SELECT id FROM families WHERE family_code = ?", func(r SQLiteRow) error {
-			familyID = r.String(0)
-			return nil
-		}, cleanCode); err != nil {
-			status = 404
-			return errors.New("家庭码无效")
-		}
-		if err := tx.QueryRow("SELECT pin FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			storedPin = r.String(0)
-			return nil
-		}, childID, familyID); err != nil {
-			status = 404
-			return errors.New("孩子档案不存在")
-		}
-		if storedPin != "" && storedPin != cleanPin {
-			status = 401
-			return errors.New("孩子密码（PIN）不对哦")
-		}
-		return nil
-	})
-	return familyID, status, e
 }
 
 /* ==================== Child & Task Operations ==================== */
@@ -2725,117 +2646,6 @@ func (s *Store) DeleteCustomSpecies(familyID, speciesID string) error {
 	})
 }
 
-func (s *Store) ImportLegacyBackup(familyID, childID, rawBackupCode string) (map[string]any, error) {
-	v := strings.TrimSpace(rawBackupCode)
-	if !strings.HasPrefix(v, "GB1|") && !strings.HasPrefix(v, "GB2|") {
-		return nil, errors.New("备份码格式不对，应以 GB1| 或 GB2| 开头")
-	}
-	decoded, err := base64.StdEncoding.DecodeString(v[4:])
-	if err != nil {
-		return nil, errors.New("备份码无法解析")
-	}
-	var parsed struct {
-		XP              *int             `json:"xp"`
-		Coupons         *int             `json:"coupons"`
-		CouponsUsed     int              `json:"couponsUsed"`
-		Name            string           `json:"name"`
-		ActiveCompanion string           `json:"activeCompanion"`
-		Species         []Species        `json:"species"`
-		Owned           map[string]any   `json:"owned"`
-		Log             []map[string]any `json:"log"`
-		Wall            []map[string]any `json:"wall"`
-	}
-	if err := json.Unmarshal(decoded, &parsed); err != nil || parsed.XP == nil {
-		return nil, errors.New("备份码内容无效")
-	}
-	xp := *parsed.XP
-	coupons := 0
-	if parsed.Coupons != nil {
-		coupons = *parsed.Coupons
-	} else {
-		coupons = xp/20 - parsed.CouponsUsed
-		if coupons < 0 {
-			coupons = 0
-		}
-	}
-
-	var out map[string]any
-	err = s.db.WithTx(func(tx *Tx) error {
-		var curPet string
-		if err := tx.QueryRow("SELECT pet_name FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			curPet = r.String(0)
-			return nil
-		}, childID, familyID); err != nil {
-			return errors.New("目标孩子档案不存在")
-		}
-		petName := truncateRunes(parsed.Name, 12)
-		if petName == "" {
-			petName = curPet
-		}
-		var activeComp *string
-		if parsed.ActiveCompanion != "" {
-			ac := parsed.ActiveCompanion
-			activeComp = &ac
-		}
-		if _, err := tx.Exec("UPDATE children SET xp = ?, coupons = ?, pet_name = ?, active_companion = ? WHERE id = ?",
-			xp, coupons, petName, activeComp, childID); err != nil {
-			return err
-		}
-		for _, sp := range parsed.Species {
-			if sp.ID == "" || sp.Name == "" {
-				continue
-			}
-			added := sp.AddedAt
-			if added == 0 {
-				added = nowMs()
-			}
-			_, _ = tx.Exec(
-				"INSERT OR IGNORE INTO custom_species (id, family_id, name, color, ear, acc, tail, mouth, base, hint, target_child_id, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
-				sp.ID, familyID, sp.Name, nonEmpty(sp.Color, "#7fa8c9"), nonEmpty(sp.Ear, "round"),
-				nonEmpty(sp.Acc, "none"), nonEmpty(sp.Tail, "puff"), nonEmpty(sp.Mouth, "smile"),
-				nonEmpty(sp.Base, "grass"), sp.Hint, added,
-			)
-		}
-		for spID, dt := range parsed.Owned {
-			if dt == nil || dt == false {
-				continue
-			}
-			dtStr, ok := dt.(string)
-			if !ok || dtStr == "" {
-				dtStr = time.Now().Format("2006-01-02")
-			}
-			_, _ = tx.Exec("INSERT OR IGNORE INTO child_owned_species (child_id, species_id, adopted_date) VALUES (?, ?, ?)", childID, spID, dtStr)
-		}
-		for _, e := range parsed.Log {
-			dt, _ := e["date"].(string)
-			if dt == "" {
-				continue
-			}
-			k := nonEmpty(asStr(e["k"]), "legacy")
-			lbl := nonEmpty(asStr(e["label"]), "历史打卡")
-			pts := asInt(e["pts"], 3)
-			ts := asInt64(e["ts"], nowMs())
-			_, _ = tx.Exec("INSERT OR IGNORE INTO checkin_logs (id, family_id, child_id, task_id, task_label, pts, checkin_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-				GenID("log_"), familyID, childID, k, lbl, pts, dt, ts)
-		}
-		for _, w := range parsed.Wall {
-			d, _ := w["d"].(string)
-			if d == "" {
-				continue
-			}
-			a := asInt(w["a"], 0)
-			pet := nonEmpty(asStr(w["pet"]), "main")
-			lv := asInt(w["lv"], LevelForXP(xp))
-			note := asStr(w["note"])
-			_, _ = tx.Exec("INSERT OR IGNORE INTO polaroids (id, family_id, child_id, avatar_idx, pet_ref, pet_lv, photo_date, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				GenID("pho_"), familyID, childID, a, pet, lv, d, note, nowMs())
-		}
-		out = map[string]any{"xp": xp, "coupons": coupons}
-		return nil
-	})
-	return out, err
-}
-
 /* ==================== Admin Operations ==================== */
 
 func (s *Store) GetAdminByID(adminID string) *AdminDTO {
@@ -3230,6 +3040,23 @@ func (s *Store) GetLatestRelease(platform string) (*AppReleaseDTO, error) {
 		return nil, err
 	}
 	return &rel, nil
+}
+
+func (s *Store) GetMinForcedVersionCode(platform string) int {
+	if platform == "" {
+		platform = "android"
+	}
+	var code int
+	_ = s.db.WithLock(func(tx *Tx) error {
+		return tx.QueryRow(
+			"SELECT COALESCE(MAX(version_code), 0) FROM app_releases WHERE platform = ? AND force_update = 1",
+			func(r SQLiteRow) error {
+				code = r.Int(0)
+				return nil
+			}, platform,
+		)
+	})
+	return code
 }
 
 func (s *Store) GetReleaseByID(id string) (*AppReleaseDTO, error) {

@@ -898,12 +898,13 @@
 
   $id("btnPLogin").addEventListener("click",async function(){
     try{
-      var r=await fetch("/api/auth/parent-login",{
+      var r=await fetch("/api/auth/login",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username:$id("pLoginUser").value.trim(),password:$id("pLoginPass").value})
       });
       var d=await r.json();
       if(!r.ok) throw new Error(d.error||"登录失败");
+      if(d.role!=="parent") throw new Error("该账号为孩子账号，请使用儿童端安卓 App 登录");
       localStorage.setItem("gb_parent_token",d.token);
       await loadOverview();
     }catch(e){note("pLoginMsg",e.message,true);}

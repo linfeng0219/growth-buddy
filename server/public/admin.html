@@ -129,7 +129,7 @@
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="relForce" style="width:auto"> 强制升级（不显示“稍后再说”）
+            <input type="checkbox" id="relForce" checked style="width:auto"> 强制升级（不显示“稍后再说”，协议全量升级推荐勾选）
           </label>
           <button class="primary" id="btnPublishRelease">🚀 发布新版本</button>
         </div>
@@ -745,7 +745,7 @@
         throw new Error("请选择要上传的 .apk 文件，或填写外部直链");
       }
       $id("relVerName").value="";$id("relNotes").value="";
-      $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=false;
+      $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=true;
       note("relMsg","🎉 新版本 "+vName+" 发布成功！App 启动后即可检测到远程升级。");
       await loadReleases();
     }catch(e){

@@ -26,6 +26,9 @@ var embeddedPublicFS embed.FS
 // SystemVersion 默认取编译注入时间（YYYY.MM.DD-HHMM），未注入时取程序文件最后修改时间。
 var SystemVersion = ""
 
+// ProtocolVersion 统一前后端通信协议代次（不保留旧版兼容接口）。
+const ProtocolVersion = 2
+
 func init() {
 	if SystemVersion != "" {
 		return
@@ -301,7 +304,13 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 	m := r.Method
 
 	if m == http.MethodGet && p == "/api/health" {
-		writeJSON(w, 200, map[string]any{"ok": true, "engine": "go-sqlite", "version": SystemVersion, "time": nowMs()})
+		writeJSON(w, 200, map[string]any{
+			"ok":              true,
+			"engine":          "go-sqlite",
+			"version":         SystemVersion,
+			"protocolVersion": ProtocolVersion,
+			"time":            nowMs(),
+		})
 		return
 	}
 
@@ -334,19 +343,25 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		rel, err := a.store.GetLatestRelease(platform)
 		if err != nil {
 			writeJSON(w, 200, map[string]any{
-				"hasRelease":  false,
-				"hasUpdate":   false,
-				"forceUpdate": false,
-				"release":     nil,
+				"protocolVersion":         ProtocolVersion,
+				"hasRelease":              false,
+				"hasUpdate":               false,
+				"forceUpdate":             false,
+				"minSupportedVersionCode": 0,
+				"release":                 nil,
 			})
 			return
 		}
+		minForced := a.store.GetMinForcedVersionCode(platform)
 		hasUpdate := curCode > 0 && rel.VersionCode > curCode
+		forceUpdate := hasUpdate && (rel.ForceUpdate || (minForced > 0 && curCode < minForced))
 		writeJSON(w, 200, map[string]any{
-			"hasRelease":  true,
-			"hasUpdate":   hasUpdate,
-			"forceUpdate": hasUpdate && rel.ForceUpdate,
-			"release":     rel,
+			"protocolVersion":         ProtocolVersion,
+			"hasRelease":              true,
+			"hasUpdate":               hasUpdate,
+			"forceUpdate":             forceUpdate,
+			"minSupportedVersionCode": minForced,
+			"release":                 rel,
 		})
 		return
 	}
@@ -516,84 +531,6 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m == http.MethodPost && p == "/api/auth/parent-login" {
-		body, err := readJSONMap(r, 0)
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		parent, fam, err := a.store.VerifyParentLogin(mapStr(body, "username"), mapStr(body, "password"))
-		if err != nil {
-			writeJSON(w, 401, map[string]string{"error": "账号或密码不正确"})
-			return
-		}
-		tok := SignToken(TokenClaims{Role: "parent", ParentID: parent.ID, FamilyID: fam.ID}, 0)
-		writeJSON(w, 200, map[string]any{
-			"token":  tok,
-			"parent": parent,
-			"family": fam,
-		})
-		return
-	}
-
-	if m == http.MethodGet && p == "/api/family/roster" {
-		code := strings.TrimSpace(r.URL.Query().Get("code"))
-		if code == "" {
-			writeJSON(w, 400, map[string]string{"error": "请输入家庭码"})
-			return
-		}
-		fam, kids, err := a.store.GetFamilyRoster(code)
-		if err != nil {
-			writeJSON(w, 404, map[string]string{"error": "未找到该家庭码，请向家长确认"})
-			return
-		}
-		writeJSON(w, 200, map[string]any{"family": fam, "children": kids})
-		return
-	}
-
-	if m == http.MethodPost && p == "/api/auth/child-login" {
-		body, err := readJSONMap(r, 0)
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		if _, hasUser := body["username"]; hasUser {
-			u := strings.TrimSpace(mapStr(body, "username"))
-			pw := mapStr(body, "password")
-			if u == "" || pw == "" {
-				writeJSON(w, 400, map[string]string{"error": "请输入孩子账号和密码"})
-				return
-			}
-			cid, fid, fcode, err := a.store.LoginChildByAccount(u, pw)
-			if err != nil {
-				writeJSON(w, 401, map[string]string{"error": err.Error()})
-				return
-			}
-			tok := SignToken(TokenClaims{Role: "child", ChildID: cid, FamilyID: fid}, 0)
-			writeJSON(w, 200, map[string]any{
-				"token":      tok,
-				"childId":    cid,
-				"familyId":   fid,
-				"familyCode": fcode,
-				"loginMode":  "account",
-			})
-			return
-		}
-
-		cid := strings.TrimSpace(mapStr(body, "childId"))
-		fid, stCode, err := a.store.LoginChildByRoster(mapStr(body, "familyCode"), cid, mapStr(body, "pin"))
-		if err != nil {
-			if stCode == 0 {
-				stCode = 400
-			}
-			writeJSON(w, stCode, map[string]string{"error": err.Error()})
-			return
-		}
-		tok := SignToken(TokenClaims{Role: "child", ChildID: cid, FamilyID: fid}, 0)
-		writeJSON(w, 200, map[string]any{"token": tok, "childId": cid, "familyId": fid, "loginMode": "roster"})
-		return
-	}
-
 	/* ===== 2. 孩子端接口 ===== */
 	if strings.HasPrefix(p, "/api/child/") {
 		a.handleChildAPI(w, r)
@@ -640,17 +577,14 @@ func (a *AppServer) serveReleaseAPK(w http.ResponseWriter, r *http.Request, rel 
 func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 	auth := getAuth(r)
 	if auth == nil {
-		writeJSON(w, 401, map[string]string{"error": "请先选择小朋友身份登录"})
+		writeJSON(w, 401, map[string]string{"error": "请先登录孩子账号"})
+		return
+	}
+	if auth.Role != "child" || auth.ChildID == "" {
+		writeJSON(w, 403, map[string]string{"error": "请使用孩子账号访问儿童端接口"})
 		return
 	}
 	targetChildID := auth.ChildID
-	if auth.Role != "child" {
-		targetChildID = strings.TrimSpace(r.URL.Query().Get("childId"))
-	}
-	if targetChildID == "" {
-		writeJSON(w, 400, map[string]string{"error": "缺少 childId"})
-		return
-	}
 
 	p := r.URL.Path
 	m := r.Method
@@ -1312,31 +1246,6 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m == http.MethodPost && p == "/api/parent/questions" {
-		var q QuizQuestion
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&q); err != nil {
-			writeJSON(w, 400, map[string]string{"error": "请求格式错误"})
-			return
-		}
-		created, err := a.store.AddFamilyQuestion(fid, q)
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, 200, map[string]any{"question": created})
-		return
-	}
-
-	if strings.HasPrefix(p, "/api/parent/questions/") && m == http.MethodDelete {
-		qid := strings.TrimPrefix(p, "/api/parent/questions/")
-		if err := a.store.DeleteFamilyQuestion(fid, qid); err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, 200, map[string]any{"ok": true})
-		return
-	}
-
 	if m == http.MethodGet && p == "/api/parent/letters" {
 		cid := strings.TrimSpace(r.URL.Query().Get("childId"))
 		list, unread := a.store.ListLettersForParent(fid, cid)
@@ -1384,21 +1293,6 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"ok": true})
-		return
-	}
-
-	if m == http.MethodPost && p == "/api/parent/import-backup" {
-		body, err := readJSONMap(r, 0)
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		res, err := a.store.ImportLegacyBackup(fid, mapStr(body, "childId"), mapStr(body, "backupCode"))
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, 200, res)
 		return
 	}
 
