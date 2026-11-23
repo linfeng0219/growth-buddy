@@ -265,6 +265,19 @@
   </div>
 </div>
 
+<!-- 家庭改名弹窗 -->
+<div class="modal-backdrop" id="renameFamModal">
+  <div class="modal-card" style="text-align:left;max-width:400px">
+    <h3 style="font-family:var(--serif);margin-bottom:8px">修改家庭名称</h3>
+    <div class="field"><label>新家庭名称</label><input type="text" id="rfName" maxlength="20" placeholder="输入新的家庭名称"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="primary" id="btnSaveRenameFam" style="flex:1">保存</button>
+      <button class="ghost" id="btnCancelRenameFam">取消</button>
+    </div>
+    <div class="msg" id="rfMsg"></div>
+  </div>
+</div>
+
 <script src="/shared/pet-art.js"></script>
 <script src="/shared/changelog-modal.js"></script>
 <script>
@@ -286,6 +299,7 @@
   var data=null;
   var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }
   var childCtx=null;  // { mode: 'create'|'edit', familyId, child }
+  var renameFamCtx=null;
 
   function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   function token(){return localStorage.getItem("gb_admin_token")||"";}
@@ -404,11 +418,11 @@
           +childRows
         +'</div>';
 
-      card.querySelector(".rename-fam").addEventListener("click",async function(){
-        var nn=prompt("输入新的家庭名称：",f.name);
-        if(nn===null||!nn.trim()) return;
-        try{await api("/api/admin/families/"+f.id,{method:"PATCH",body:JSON.stringify({name:nn.trim()})});await loadOverview();}
-        catch(e){note("globalMsg",e.message,true);}
+      card.querySelector(".rename-fam").addEventListener("click",function(){
+        renameFamCtx=f;
+        $id("rfName").value=f.name||"";
+        $id("rfMsg").textContent="";
+        $id("renameFamModal").classList.add("show");
       });
       card.querySelector(".del-fam").addEventListener("click",async function(){
         if(!this._arm){this._arm=true;this.textContent="确认删除整户？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除家庭";},3500);return;}
@@ -555,6 +569,18 @@
     $id("childModal").classList.add("show");
   }
   $id("btnCancelChild").addEventListener("click",function(){$id("childModal").classList.remove("show");});
+  $id("btnCancelRenameFam").addEventListener("click",function(){$id("renameFamModal").classList.remove("show");});
+  $id("btnSaveRenameFam").addEventListener("click",async function(){
+    if(!renameFamCtx) return;
+    var nn=$id("rfName").value.trim();
+    if(!nn){note("rfMsg","请输入家庭名称",true);return;}
+    try{
+      await api("/api/admin/families/"+renameFamCtx.id,{method:"PATCH",body:JSON.stringify({name:nn})});
+      $id("renameFamModal").classList.remove("show");
+      note("globalMsg","已修改家庭名称为："+nn);
+      await loadOverview();
+    }catch(e){note("rfMsg",e.message,true);}
+  });
   $id("btnSaveChild").addEventListener("click",async function(){
     if(!childCtx) return;
     try{

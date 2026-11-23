@@ -82,6 +82,14 @@
     padding:2px 9px;font-size:11.5px;cursor:pointer;line-height:1.5;font-weight:500;
   }
   .qchip:hover{background:#e4f1e9;border-color:var(--accent)}
+  .gb-toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);
+    background:#2b2620;color:#fff;padding:10px 18px;border-radius:999px;
+    font-size:13px;font-weight:500;box-shadow:0 10px 26px rgba(0,0,0,.22);
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:99;max-width:90vw;text-align:center;
+  }
+  .gb-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .gb-toast.err{background:#c0392b}
 </style>
 </head>
 <body>
@@ -824,6 +832,8 @@
   </div>
 </div>
 
+<div class="gb-toast" id="gbToast"></div>
+
 <script src="/shared/pet-art.js"></script>
 <script>
 (function(){
@@ -834,6 +844,11 @@
   function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   function token(){return localStorage.getItem("gb_parent_token")||"";}
   function note(id,t,err){var m=$id(id);m.textContent=t;m.className="msg"+(err?" err":"");clearTimeout(m._t);m._t=setTimeout(function(){m.textContent="";},4200);}
+  function showToast(t,err){
+    var el=$id("gbToast");if(!el)return;
+    el.textContent=t;el.className="gb-toast show"+(err?" err":"");
+    clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove("show");},3600);
+  }
   function fmtTime(ms){
     if(!ms)return "";
     var dt=new Date(ms);
@@ -1042,8 +1057,8 @@
         renderTasksTab();
       });
       box.querySelector(".undo-btn").addEventListener("click",async function(){
-        try{await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:c.id})});await loadOverview();}
-        catch(e){alert(e.message);}
+        try{await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:c.id})});showToast("已撤销最近一次打卡");await loadOverview();}
+        catch(e){showToast(e.message,true);}
       });
       g.appendChild(box);
     });
@@ -1309,8 +1324,9 @@
             pcb.addEventListener("click",async function(){
               try{
                 await api("/api/parent/checkin",{method:"POST",body:JSON.stringify({childId:curKid.id,taskId:t.id,date:today()})});
+                showToast("已帮 "+curKid.name+" 完成「"+t.label+"」");
                 await loadOverview();
-              }catch(e){alert(e.message);}
+              }catch(e){showToast(e.message,true);}
             });
           }
           var pub=row.querySelector(".parent-undo-btn");
@@ -1318,8 +1334,9 @@
             pub.addEventListener("click",async function(){
               try{
                 await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:curKid.id,taskId:t.id,date:today()})});
+                showToast("已取消今日打卡");
                 await loadOverview();
-              }catch(e){alert(e.message);}
+              }catch(e){showToast(e.message,true);}
             });
           }
           plist.appendChild(row);
@@ -1619,8 +1636,8 @@
       row.querySelector(".set-auth").addEventListener("click",function(){openKidAuthModal(c);});
       row.querySelector(".del-kid").addEventListener("click",async function(){
         if(!this._arm){this._arm=true;this.textContent="确认删除档案？";var self=this;setTimeout(function(){self._arm=false;self.textContent="删除";},3500);return;}
-        try{await api("/api/parent/children/"+c.id,{method:"DELETE"});await loadOverview();}
-        catch(e){alert(e.message);}
+        try{await api("/api/parent/children/"+c.id,{method:"DELETE"});showToast("已删除孩子档案");await loadOverview();}
+        catch(e){showToast(e.message,true);}
       });
       cm.appendChild(row);
     });

@@ -313,21 +313,6 @@ class MainActivity : AppCompatActivity() {
             sound.playPat()
             mailboxLauncher.launch(Intent(this, MailboxActivity::class.java))
         }
-        binding.btnRunBattle.setOnClickListener {
-            binding.tvBattleMsg.text = ""
-            binding.battleStageView.setMonsterHp(3, 3)
-            binding.battleStageView.triggerAttack(
-                isFinishingBlow = true,
-                onHit = {
-                    binding.battleStageView.setMonsterHp(0, 3)
-                    sound.playFeed()
-                },
-                onWin = {
-                    sound.playWin()
-                    binding.tvBattleMsg.text = "拖延怪史莱姆被击退啦！继续保持打卡节奏~"
-                }
-            )
-        }
     }
 
     private fun refreshServerFooter() {
@@ -765,15 +750,32 @@ class MainActivity : AppCompatActivity() {
         binding.tvFamilySub.text = "${st.family.name} · 点击头像可更换 ✎"
         binding.btnMute.text = if (c.muted) "🔇" else "🔊"
 
-        val healthTag = when (c.petHealth) {
-            "weak" -> " · 💧虚弱(${c.healProgress}/${c.healTarget.coerceAtLeast(10)})"
-            "sick" -> " · 🤒生病(${c.healProgress}/${c.healTarget.coerceAtLeast(20)})"
-            else -> ""
-        }
-        binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}$healthTag"
+        binding.tvStagePill.text = "Lv.${lv + 1} ${lvSpec.name}"
         binding.tvStreakPill.text = "🌟 连续 ${computeStreakDays(st.logs)} 天"
+        when (c.petHealth) {
+            "weak" -> {
+                binding.tvHealthPill.visibility = View.VISIBLE
+                binding.tvHealthPill.text = "💧 虚弱 ${c.healProgress}/${c.healTarget.coerceAtLeast(10)}"
+                binding.tvHealthPill.setTextColor(0xFFB86511.toInt())
+                binding.tvHealthPill.background = GradientDrawable().apply {
+                    cornerRadius = dp(99).toFloat()
+                    setColor(0xFFFFF4E5.toInt())
+                    setStroke(dp(1), 0xFFEDC68C.toInt())
+                }
+            }
+            "sick" -> {
+                binding.tvHealthPill.visibility = View.VISIBLE
+                binding.tvHealthPill.text = "🤒 生病 ${c.healProgress}/${c.healTarget.coerceAtLeast(20)}"
+                binding.tvHealthPill.setTextColor(0xFFC0392B.toInt())
+                binding.tvHealthPill.background = GradientDrawable().apply {
+                    cornerRadius = dp(99).toFloat()
+                    setColor(0xFFFDEAEA.toInt())
+                    setStroke(dp(1), 0xFFE5A9A9.toInt())
+                }
+            }
+            else -> binding.tvHealthPill.visibility = View.GONE
+        }
         binding.petStageView.setPetState(lv, asleep, activeComp, c.petHealth)
-        binding.battleStageView.setPet(activeComp, lv)
 
         binding.tvBubble.text = when {
             c.petHealth == "sick" -> {
@@ -791,11 +793,13 @@ class MainActivity : AppCompatActivity() {
         binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
 
         if (c.unreadLetters > 0) {
-            binding.btnOpenMailbox.text = "📬 信箱(${c.unreadLetters}新信)"
-            binding.btnOpenMailbox.setTextColor(0xFFD97706.toInt())
+            binding.btnOpenMailbox.text = "📬 ${c.unreadLetters}封新信"
+            binding.btnOpenMailbox.setTextColor(0xFFB86511.toInt())
+            binding.btnOpenMailbox.setBackgroundColor(0xFFFFF7EA.toInt())
         } else {
-            binding.btnOpenMailbox.text = "📬 家长信箱"
+            binding.btnOpenMailbox.text = "📬 信箱"
             binding.btnOpenMailbox.setTextColor(0xFF2F6B4F.toInt())
+            binding.btnOpenMailbox.setBackgroundColor(0xFFFFFDF9.toInt())
         }
 
         val totalDays = st.logs.map { it.checkinDate }.toSet().size
@@ -975,14 +979,28 @@ class MainActivity : AppCompatActivity() {
             leftCol.addView(subTv)
 
             val ptsTv = TextView(this).apply {
-                text = if (done) (if (!photoUrl.isNullOrEmpty()) "📷 查看" else "已领") else "+${t.pts}"
+                text = when {
+                    done -> if (!photoUrl.isNullOrEmpty()) "📷 查看" else "已领"
+                    !isRope && t.timerMode == "none" && !t.requirePhoto -> "✓ 打卡 +${t.pts}"
+                    else -> "+${t.pts}"
+                }
                 textSize = 13f
                 setTypeface(null, Typeface.BOLD)
-                setTextColor(if (done) 0xFF2F6B4F.toInt() else 0xFFC56C14.toInt())
-                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setTextColor(
+                    when {
+                        done -> 0xFF2F6B4F.toInt()
+                        !isRope && t.timerMode == "none" && !t.requirePhoto -> Color.WHITE
+                        else -> 0xFFC56C14.toInt()
+                    }
+                )
+                setPadding(dp(12), dp(5), dp(12), dp(5))
                 background = GradientDrawable().apply {
                     cornerRadius = dp(99).toFloat()
-                    setColor(if (done) Color.WHITE else 0xFFFDF0DF.toInt())
+                    when {
+                        done -> setColor(Color.WHITE)
+                        !isRope && t.timerMode == "none" && !t.requirePhoto -> setColor(0xFF2F6B4F.toInt())
+                        else -> setColor(0xFFFDF0DF.toInt())
+                    }
                 }
             }
 
@@ -990,14 +1008,25 @@ class MainActivity : AppCompatActivity() {
             card.addView(ptsTv)
 
             if (!done) {
-                card.setOnClickListener {
+                val launchTaskFlow = {
                     when {
                         isRope -> launchRopeChallenge(t)
                         t.timerMode == "countdown" || t.timerMode == "countup" -> launchTaskFocus(t)
                         t.requirePhoto -> showCheckinConfirmDialog(t, null, null)
-                        else -> submitCheckin(t.id, null, null, null)
+                        else -> {
+                            AlertDialog.Builder(this)
+                                .setTitle("确认完成任务？")
+                                .setMessage("已完成「${t.label}」，现在喂小伙伴并领取 +${t.pts} 成长值吗？")
+                                .setPositiveButton("✓ 确认打卡") { _, _ -> submitCheckin(t.id, null, null, null) }
+                                .setNegativeButton("再想想", null)
+                                .show()
+                        }
                     }
                 }
+                if (!isRope && t.timerMode == "none" && !t.requirePhoto) {
+                    ptsTv.setOnClickListener { submitCheckin(t.id, null, null, null) }
+                }
+                card.setOnClickListener { launchTaskFlow() }
             } else if (!photoUrl.isNullOrEmpty()) {
                 card.setOnClickListener {
                     showCheckinPhotoViewDialog(t.label, photoUrl)
