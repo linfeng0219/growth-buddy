@@ -196,6 +196,8 @@ func (s *Store) initSchema() error {
 			pet_health TEXT NOT NULL DEFAULT 'normal',
 			heal_progress INTEGER NOT NULL DEFAULT 0,
 			last_health_date TEXT NOT NULL DEFAULT '',
+			age INTEGER NOT NULL DEFAULT 7,
+			quiz_difficulty TEXT NOT NULL DEFAULT 'normal',
 			created_at INTEGER NOT NULL
 		);
 
@@ -333,6 +335,8 @@ func (s *Store) initSchema() error {
 		{"children", "pet_health", "pet_health TEXT NOT NULL DEFAULT 'normal'"},
 		{"children", "heal_progress", "heal_progress INTEGER NOT NULL DEFAULT 0"},
 		{"children", "last_health_date", "last_health_date TEXT NOT NULL DEFAULT ''"},
+		{"children", "age", "age INTEGER NOT NULL DEFAULT 7"},
+		{"children", "quiz_difficulty", "quiz_difficulty TEXT NOT NULL DEFAULT 'normal'"},
 		{"polaroids", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "icon_url", "icon_url TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},
@@ -566,6 +570,8 @@ type ChildSummaryDTO struct {
 	PetHealth       string  `json:"pet_health"`
 	HealProgress    int     `json:"heal_progress"`
 	HealTarget      int     `json:"heal_target"`
+	Age             int     `json:"age"`
+	QuizDifficulty  string  `json:"quiz_difficulty"`
 }
 
 type ChildStateDTO struct {
@@ -970,7 +976,7 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	s.syncChildHealthLocked(tx, childID, todayStr)
 	var child ChildSummaryDTO
 	err := tx.QueryRow(`
-		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress
+		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress, age, quiz_difficulty
 		FROM children WHERE id = ? AND family_id = ?
 	`, func(r SQLiteRow) error {
 		cid := r.String(0)
@@ -992,6 +998,8 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 			PetHealth:       h,
 			HealProgress:    r.Int(12),
 			HealTarget:      healTargetForHealth(h),
+			Age:             NormalizeAge(r.Int(13)),
+			QuizDifficulty:  NormalizeDifficulty(r.String(14)),
 		}
 		return nil
 	}, childID, familyID)
@@ -1915,11 +1923,11 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 		}, familyID)
 
 		type rawKid struct {
-			id, name, username, passHash, pin, petName, petHealth string
-			avatarIdx, xp, coupons, healProgress                  int
-			hasAvatarData                                         bool
-			avatarUpdatedAt                                       int64
-			activeComp                                            *string
+			id, name, username, passHash, pin, petName, petHealth, quizDiff string
+			avatarIdx, xp, coupons, healProgress, age                       int
+			hasAvatarData                                                   bool
+			avatarUpdatedAt                                                 int64
+			activeComp                                                      *string
 		}
 		kidIDs := make([]string, 0)
 		_ = tx.Query("SELECT id FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
@@ -1930,7 +1938,7 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 			s.syncChildHealthLocked(tx, kidID, todayStr)
 		}
 		rawKids := make([]rawKid, 0)
-		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, active_companion, pet_health, heal_progress FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, active_companion, pet_health, heal_progress, age, quiz_difficulty FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
 			h := r.String(12)
 			if h == "" {
 				h = "normal"
@@ -1941,6 +1949,7 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				username: r.String(5), passHash: r.String(6), pin: r.String(7),
 				petName: r.String(8), xp: r.Int(9), coupons: r.Int(10), activeComp: r.NullableString(11),
 				petHealth: h, healProgress: r.Int(13),
+				age: NormalizeAge(r.Int(14)), quizDiff: NormalizeDifficulty(r.String(15)),
 			})
 			return nil
 		}, familyID)
@@ -1996,6 +2005,8 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				"pet_health":       c.petHealth,
 				"heal_progress":    c.healProgress,
 				"heal_target":      healTargetForHealth(c.petHealth),
+				"age":              c.age,
+				"quiz_difficulty":  c.quizDiff,
 				"active_companion": c.activeComp,
 				"tasks":            myTasks,
 				"today_done_ids":   todayDone,
@@ -2095,11 +2106,29 @@ func (s *Store) AddParent(familyID, username, displayName, password string) (*Pa
 	return out, err
 }
 
-func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username, password string) (map[string]any, error) {
+func (s *Store) GetChildQuizProfile(familyID, childID string) (int, string) {
+	age := 7
+	diff := "normal"
+	_ = s.db.WithLock(func(tx *Tx) error {
+		return tx.QueryRow(
+			"SELECT age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?",
+			func(r SQLiteRow) error {
+				age = NormalizeAge(r.Int(0))
+				diff = NormalizeDifficulty(r.String(1))
+				return nil
+			}, childID, familyID,
+		)
+	})
+	return age, diff
+}
+
+func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username, password string, age int, quizDiff string) (map[string]any, error) {
 	cleanName := truncateRunes(strings.TrimSpace(name), 12)
 	if cleanName == "" {
 		return nil, errors.New("请输入孩子昵称")
 	}
+	normAge := NormalizeAge(age)
+	normDiff := NormalizeDifficulty(quizDiff)
 	cleanPin := truncateRunes(strings.TrimSpace(pin), 6)
 	cleanUser, err := normalizeChildUsername(username)
 	if err != nil {
@@ -2129,34 +2158,36 @@ func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username,
 			passHash = HashPassword(password)
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, pin, pet_name, xp, coupons, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?)",
-			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, cleanPin, nowMs(),
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, pin, pet_name, xp, coupons, age, quiz_difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?)",
+			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, cleanPin, normAge, normDiff, nowMs(),
 		); err != nil {
 			return err
 		}
-		res = map[string]any{"id": id, "name": cleanName, "username": cleanUser}
+		res = map[string]any{"id": id, "name": cleanName, "username": cleanUser, "age": normAge, "quiz_difficulty": normDiff}
 		return nil
 	})
 	return res, err
 }
 
 type UpdateChildInput struct {
-	Name       *string `json:"name"`
-	AvatarIdx  *int    `json:"avatar_idx"`
-	AvatarData *string `json:"avatar_data"`
-	Pin        *string `json:"pin"`
-	PetName    *string `json:"pet_name"`
-	Username   *string `json:"username"`
-	Password   *string `json:"password"`
-	XP         *int    `json:"xp"`
-	Coupons    *int    `json:"coupons"`
+	Name           *string `json:"name"`
+	AvatarIdx      *int    `json:"avatar_idx"`
+	AvatarData     *string `json:"avatar_data"`
+	Pin            *string `json:"pin"`
+	PetName        *string `json:"pet_name"`
+	Username       *string `json:"username"`
+	Password       *string `json:"password"`
+	Age            *int    `json:"age"`
+	QuizDifficulty *string `json:"quiz_difficulty"`
+	XP             *int    `json:"xp"`
+	Coupons        *int    `json:"coupons"`
 }
 
 func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChildInput) (map[string]any, error) {
-	var curName, curUser, curPassHash, curPin, curPet, curAvatarData string
-	var curAvatar int
+	var curName, curUser, curPassHash, curPin, curPet, curAvatarData, curDiff string
+	var curAvatar, curAge int
 	var curAvatarUpdated int64
-	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, pin, pet_name FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, pin, pet_name, age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
 		curName = r.String(0)
 		curAvatar = clampAvatarIdx(r.Int(1))
 		curAvatarData = r.String(2)
@@ -2165,6 +2196,8 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 		curPassHash = r.String(5)
 		curPin = r.String(6)
 		curPet = r.String(7)
+		curAge = NormalizeAge(r.Int(8))
+		curDiff = NormalizeDifficulty(r.String(9))
 		return nil
 	}, childID, familyID); err != nil {
 		return nil, ErrNotFound
@@ -2226,19 +2259,28 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 		return nil, errors.New("首次设置独立登录账号时请同时设置至少 4 位密码")
 	}
 
+	if in.Age != nil {
+		curAge = NormalizeAge(*in.Age)
+	}
+	if in.QuizDifficulty != nil {
+		curDiff = NormalizeDifficulty(*in.QuizDifficulty)
+	}
+
 	if _, err := tx.Exec(
-		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, pin = ?, pet_name = ? WHERE id = ? AND family_id = ?",
-		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPin, curPet, childID, familyID,
+		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, pin = ?, pet_name = ?, age = ?, quiz_difficulty = ? WHERE id = ? AND family_id = ?",
+		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPin, curPet, curAge, curDiff, childID, familyID,
 	); err != nil {
 		return nil, err
 	}
 	return map[string]any{
-		"id":           childID,
-		"name":         curName,
-		"avatar_idx":   curAvatar,
-		"avatar_url":   avatarURL("child", childID, curAvatarData != "", curAvatarUpdated),
-		"username":     curUser,
-		"has_password": curPassHash != "",
+		"id":              childID,
+		"name":            curName,
+		"avatar_idx":      curAvatar,
+		"avatar_url":      avatarURL("child", childID, curAvatarData != "", curAvatarUpdated),
+		"username":        curUser,
+		"has_password":    curPassHash != "",
+		"age":             curAge,
+		"quiz_difficulty": curDiff,
 	}, nil
 }
 
@@ -2275,11 +2317,11 @@ func (s *Store) DeleteChild(familyID, childID string) error {
 }
 
 type TaskInput struct {
-	Emoji       *string  `json:"emoji"`
-	IconURL     *string  `json:"icon_url"`
-	Label       *string  `json:"label"`
-	Pts         *int     `json:"pts"`
-	Scope       *string  `json:"scope"`
+	Emoji        *string  `json:"emoji"`
+	IconURL      *string  `json:"icon_url"`
+	Label        *string  `json:"label"`
+	Pts          *int     `json:"pts"`
+	Scope        *string  `json:"scope"`
 	TaskType     *string  `json:"task_type"`
 	DurationSec  *int     `json:"duration_sec"`
 	TargetCount  *int     `json:"target_count"`
@@ -2289,8 +2331,8 @@ type TaskInput struct {
 	RepeatDays   *string  `json:"repeat_days"`
 	DueDate      *string  `json:"due_date"`
 	Enabled      *bool    `json:"enabled"`
-	ChildIDs    []string `json:"childIds"`
-	HasChildIDs bool     `json:"-"`
+	ChildIDs     []string `json:"childIds"`
+	HasChildIDs  bool     `json:"-"`
 }
 
 func (s *Store) CreateTask(familyID string, in TaskInput) (string, error) {
@@ -2633,15 +2675,15 @@ func (s *Store) ImportLegacyBackup(familyID, childID, rawBackupCode string) (map
 		return nil, errors.New("备份码无法解析")
 	}
 	var parsed struct {
-		XP              *int               `json:"xp"`
-		Coupons         *int               `json:"coupons"`
-		CouponsUsed     int                `json:"couponsUsed"`
-		Name            string             `json:"name"`
-		ActiveCompanion string             `json:"activeCompanion"`
-		Species         []Species          `json:"species"`
-		Owned           map[string]any     `json:"owned"`
-		Log             []map[string]any   `json:"log"`
-		Wall            []map[string]any   `json:"wall"`
+		XP              *int             `json:"xp"`
+		Coupons         *int             `json:"coupons"`
+		CouponsUsed     int              `json:"couponsUsed"`
+		Name            string           `json:"name"`
+		ActiveCompanion string           `json:"activeCompanion"`
+		Species         []Species        `json:"species"`
+		Owned           map[string]any   `json:"owned"`
+		Log             []map[string]any `json:"log"`
+		Wall            []map[string]any `json:"wall"`
 	}
 	if err := json.Unmarshal(decoded, &parsed); err != nil || parsed.XP == nil {
 		return nil, errors.New("备份码内容无效")

@@ -607,8 +607,25 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 	m := r.Method
 
 	if m == http.MethodGet && p == "/api/child/questions" {
-		list := a.store.ListFamilyQuestions(auth.FamilyID)
-		writeJSON(w, 200, map[string]any{"questions": list})
+		age, diff := a.store.GetChildQuizProfile(auth.FamilyID, targetChildID)
+		if rawAge := strings.TrimSpace(r.URL.Query().Get("age")); rawAge != "" {
+			if parsedAge, err := strconv.Atoi(rawAge); err == nil {
+				age = NormalizeAge(parsedAge)
+			}
+		}
+		if rawDiff := strings.TrimSpace(r.URL.Query().Get("difficulty")); rawDiff != "" {
+			diff = NormalizeDifficulty(rawDiff)
+		}
+		list := QueryOnlineQuestions(age, diff, 24)
+		ageGroup, ageLabel := AgeGroupForAge(age)
+		writeJSON(w, 200, map[string]any{
+			"age":              age,
+			"age_group":        ageGroup,
+			"age_label":        ageLabel,
+			"difficulty":       diff,
+			"difficulty_label": DifficultyLabelZh(diff),
+			"questions":        list,
+		})
 		return
 	}
 
@@ -831,7 +848,7 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		created, err := a.store.CreateChild(fid, mapStr(body, "name"), mapInt(body, "avatar_idx", 0), mapStr(body, "pin"), mapStr(body, "username"), mapStr(body, "password"))
+		created, err := a.store.CreateChild(fid, mapStr(body, "name"), mapInt(body, "avatar_idx", 0), mapStr(body, "pin"), mapStr(body, "username"), mapStr(body, "password"), mapInt(body, "age", 7), mapStr(body, "quiz_difficulty"))
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -858,13 +875,15 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 					avData = mapOptStr(body, "avatarData")
 				}
 				updated, err := a.store.UpdateChild(fid, cid, UpdateChildInput{
-					Name:       mapOptStr(body, "name"),
-					AvatarIdx:  avIdx,
-					AvatarData: avData,
-					Pin:        mapOptStr(body, "pin"),
-					PetName:    mapOptStr(body, "pet_name"),
-					Username:   mapOptStr(body, "username"),
-					Password:   mapOptStr(body, "password"),
+					Name:           mapOptStr(body, "name"),
+					AvatarIdx:      avIdx,
+					AvatarData:     avData,
+					Pin:            mapOptStr(body, "pin"),
+					PetName:        mapOptStr(body, "pet_name"),
+					Username:       mapOptStr(body, "username"),
+					Password:       mapOptStr(body, "password"),
+					Age:            mapOptInt(body, "age"),
+					QuizDifficulty: mapOptStr(body, "quiz_difficulty"),
 				})
 				if errors.Is(err, ErrNotFound) {
 					writeJSON(w, 404, map[string]string{"error": "孩子档案不存在"})
@@ -919,8 +938,8 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			Emoji:        mapOptStr(body, "emoji"),
 			IconURL:      mapOptStr(body, "icon_url"),
 			Label:        mapOptStr(body, "label"),
-			Pts:         mapOptInt(body, "pts"),
-			Scope:       mapOptStr(body, "scope"),
+			Pts:          mapOptInt(body, "pts"),
+			Scope:        mapOptStr(body, "scope"),
 			TaskType:     mapOptStr(body, "task_type"),
 			DurationSec:  mapOptInt(body, "duration_sec"),
 			TargetCount:  mapOptInt(body, "target_count"),
@@ -930,7 +949,7 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			RepeatDays:   mapOptStr(body, "repeat_days"),
 			DueDate:      mapOptStr(body, "due_date"),
 			ChildIDs:     cids,
-			HasChildIDs: hasCids,
+			HasChildIDs:  hasCids,
 		})
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -954,8 +973,8 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 					Emoji:        mapOptStr(body, "emoji"),
 					IconURL:      mapOptStr(body, "icon_url"),
 					Label:        mapOptStr(body, "label"),
-					Pts:         mapOptInt(body, "pts"),
-					Scope:       mapOptStr(body, "scope"),
+					Pts:          mapOptInt(body, "pts"),
+					Scope:        mapOptStr(body, "scope"),
 					TaskType:     mapOptStr(body, "task_type"),
 					DurationSec:  mapOptInt(body, "duration_sec"),
 					TargetCount:  mapOptInt(body, "target_count"),
@@ -965,8 +984,8 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 					RepeatDays:   mapOptStr(body, "repeat_days"),
 					DueDate:      mapOptStr(body, "due_date"),
 					Enabled:      mapOptBool(body, "enabled"),
-					ChildIDs:    cids,
-					HasChildIDs: hasCids,
+					ChildIDs:     cids,
+					HasChildIDs:  hasCids,
 				})
 				if err != nil {
 					writeJSON(w, 400, map[string]string{"error": err.Error()})
@@ -1133,8 +1152,24 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m == http.MethodGet && p == "/api/parent/questions" {
-		list := a.store.ListFamilyQuestions(fid)
-		writeJSON(w, 200, map[string]any{"questions": list})
+		age := 7
+		if rawAge := strings.TrimSpace(r.URL.Query().Get("age")); rawAge != "" {
+			if parsedAge, err := strconv.Atoi(rawAge); err == nil {
+				age = NormalizeAge(parsedAge)
+			}
+		}
+		diff := NormalizeDifficulty(r.URL.Query().Get("difficulty"))
+		list := QueryOnlineQuestions(age, diff, 18)
+		ageGroup, ageLabel := AgeGroupForAge(age)
+		writeJSON(w, 200, map[string]any{
+			"age":              age,
+			"age_group":        ageGroup,
+			"age_label":        ageLabel,
+			"difficulty":       diff,
+			"difficulty_label": DifficultyLabelZh(diff),
+			"total_curated":    len(onlineCuratedBank),
+			"questions":        list,
+		})
 		return
 	}
 
@@ -1344,7 +1379,7 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 404, map[string]string{"error": "目标家庭不存在"})
 			return
 		}
-		created, err := a.store.CreateChild(famID, mapStr(body, "name"), mapInt(body, "avatar_idx", 0), mapStr(body, "pin"), mapStr(body, "username"), mapStr(body, "password"))
+		created, err := a.store.CreateChild(famID, mapStr(body, "name"), mapInt(body, "avatar_idx", 0), mapStr(body, "pin"), mapStr(body, "username"), mapStr(body, "password"), mapInt(body, "age", 7), mapStr(body, "quiz_difficulty"))
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -1363,14 +1398,16 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				updated, err := a.store.AdminUpdateChild(cid, UpdateChildInput{
-					Name:      mapOptStr(body, "name"),
-					AvatarIdx: mapOptInt(body, "avatar_idx"),
-					Pin:       mapOptStr(body, "pin"),
-					PetName:   mapOptStr(body, "pet_name"),
-					Username:  mapOptStr(body, "username"),
-					Password:  mapOptStr(body, "password"),
-					XP:        mapOptInt(body, "xp"),
-					Coupons:   mapOptInt(body, "coupons"),
+					Name:           mapOptStr(body, "name"),
+					AvatarIdx:      mapOptInt(body, "avatar_idx"),
+					Pin:            mapOptStr(body, "pin"),
+					PetName:        mapOptStr(body, "pet_name"),
+					Username:       mapOptStr(body, "username"),
+					Password:       mapOptStr(body, "password"),
+					Age:            mapOptInt(body, "age"),
+					QuizDifficulty: mapOptStr(body, "quiz_difficulty"),
+					XP:             mapOptInt(body, "xp"),
+					Coupons:        mapOptInt(body, "coupons"),
 				})
 				if errors.Is(err, ErrNotFound) {
 					writeJSON(w, 404, map[string]string{"error": "儿童档案不存在"})

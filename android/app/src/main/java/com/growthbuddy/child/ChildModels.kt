@@ -22,7 +22,9 @@ data class ChildInfo(
     val muted: Boolean,
     val petHealth: String = "normal",
     val healProgress: Int = 0,
-    val healTarget: Int = 0
+    val healTarget: Int = 0,
+    val age: Int = 7,
+    val quizDifficulty: String = "normal"
 )
 
 data class TaskItem(
@@ -250,7 +252,9 @@ object GrowthMeta {
                 muted = childObj.optBoolean("muted", false),
                 petHealth = childObj.optString("pet_health", "normal"),
                 healProgress = childObj.optInt("heal_progress", 0),
-                healTarget = childObj.optInt("heal_target", 0)
+                healTarget = childObj.optInt("heal_target", 0),
+                age = childObj.optInt("age", 7).coerceIn(3, 14),
+                quizDifficulty = childObj.optString("quiz_difficulty", "normal").ifBlank { "normal" }
             ),
             childCount = obj.optInt("child_count", 1),
             tasks = tasks,

@@ -277,6 +277,8 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(this, AdventureActivity::class.java).apply {
                 putExtra(AdventureActivity.EXTRA_PET_STAGE, lv)
                 putExtra(AdventureActivity.EXTRA_PET_ASLEEP, asleep)
+                putExtra(AdventureActivity.EXTRA_CHILD_AGE, st?.child?.age ?: 7)
+                putExtra(AdventureActivity.EXTRA_QUIZ_DIFFICULTY, st?.child?.quizDifficulty ?: "normal")
                 if (activeComp != null) putExtra(AdventureActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
             startActivity(intent)

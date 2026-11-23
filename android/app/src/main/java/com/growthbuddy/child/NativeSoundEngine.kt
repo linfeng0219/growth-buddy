@@ -38,6 +38,7 @@ class NativeSoundEngine(context: Context) {
     @Volatile private var sfxFeed = 0
     @Volatile private var sfxPat = 0
     @Volatile private var sfxWin = 0
+    @Volatile private var sfxVictoryFanfare = 0
     @Volatile private var sfxError = 0
 
     private var tts: TextToSpeech? = null
@@ -110,6 +111,7 @@ class NativeSoundEngine(context: Context) {
     fun playFeed() = playId(sfxFeed, 1.0f)
     fun playPat() = playId(sfxPat, 0.95f)
     fun playWin() = playId(sfxWin, 1.0f)
+    fun playVictoryFanfare() = playId(if (sfxVictoryFanfare != 0) sfxVictoryFanfare else sfxWin, 1.0f)
     fun playError() = playId(sfxError, 0.90f)
 
     fun speak(text: String, flush: Boolean = true): Boolean {
@@ -271,6 +273,21 @@ class NativeSoundEngine(context: Context) {
                     ToneNote(1046.50, 0.24, 0.96, 0.5)
                 ),
                 overlapSec = 0.015
+            )
+        }
+
+        // 6b. 冒险战斗凯旋号角（欢快六音祝贺旋律）
+        sfxVictoryFanfare = loadOrGen("victory_fanfare") {
+            synthToneSequence(
+                listOf(
+                    ToneNote(523.25, 0.085, 0.92, 0.38),
+                    ToneNote(659.25, 0.085, 0.93, 0.38),
+                    ToneNote(783.99, 0.085, 0.94, 0.38),
+                    ToneNote(1046.50, 0.14, 0.98, 0.42),
+                    ToneNote(783.99, 0.09, 0.92, 0.38),
+                    ToneNote(1046.50, 0.34, 1.00, 0.50)
+                ),
+                overlapSec = 0.012
             )
         }
 

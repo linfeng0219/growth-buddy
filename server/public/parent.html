@@ -357,6 +357,30 @@
           <div class="field"><label>孩子登录账号（至少3位）</label><input type="text" id="newKidUser" maxlength="32" placeholder="如 erbao01"></div>
           <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="newKidPass" placeholder="供孩子登录儿童端"></div>
         </div>
+        <div class="row2">
+          <div class="field"><label>孩子年龄（匹配在线题库）</label>
+            <select id="newKidAge">
+              <option value="4">4 岁（幼儿启蒙）</option>
+              <option value="5">5 岁（幼儿大班）</option>
+              <option value="6">6 岁（幼小衔接）</option>
+              <option value="7" selected>7 岁（小学一年级）</option>
+              <option value="8">8 岁（小学二年级）</option>
+              <option value="9">9 岁（小学三年级）</option>
+              <option value="10">10 岁（小学四年级）</option>
+              <option value="11">11 岁（小学五年级）</option>
+              <option value="12">12 岁（小学六年级）</option>
+              <option value="13">13 岁（初中一年级）</option>
+              <option value="14">14 岁（初中二年级）</option>
+            </select>
+          </div>
+          <div class="field"><label>默认冒险答题难度</label>
+            <select id="newKidDiff">
+              <option value="easy">🌱 简单启蒙</option>
+              <option value="normal" selected>⚔️ 适中闯关</option>
+              <option value="hard">🔥 进阶挑战</option>
+            </select>
+          </div>
+        </div>
         <div class="field">
           <label>选择头像</label>
           <div id="newKidAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
@@ -382,20 +406,30 @@
       </div>
 
       <div class="card">
-        <h3>📚 冒险小剧场题库（一年级预设 + 自定义）</h3>
-        <div class="row2">
-          <div class="field"><label>学科分类</label><select id="qCat"><option value="语文">语文</option><option value="数学">数学</option><option value="科学常识">科学常识</option><option value="趣味问答">趣味问答</option></select></div>
-          <div class="field"><label>正确答案</label><select id="qAns"><option value="0">选项 A</option><option value="1">选项 B</option><option value="2">选项 C</option></select></div>
-        </div>
-        <div class="field"><label>题目内容</label><input type="text" id="qText" placeholder="例如：7 + 6 等于多少？" maxlength="80"></div>
+        <h3>🌐 在线分级题库（按儿童年龄与难度自动匹配）</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">已取消家长手动录题。冒险战斗时系统将自动拉取在线分级题库（语文/数学速算/科学百科/英语/趣味思维），并根据孩子档案里的年龄与难度精准出题；孩子也可在战斗界面随时切换难度。</p>
         <div class="row3">
-          <div class="field"><label>选项 A</label><input type="text" id="qOpt0" placeholder="选项 A" maxlength="30"></div>
-          <div class="field"><label>选项 B</label><input type="text" id="qOpt1" placeholder="选项 B" maxlength="30"></div>
-          <div class="field"><label>选项 C</label><input type="text" id="qOpt2" placeholder="选项 C" maxlength="30"></div>
+          <div class="field"><label>预览年龄段</label>
+            <select id="qFilterAge">
+              <option value="5">3~6 岁（幼儿启蒙）</option>
+              <option value="7" selected>7~8 岁（小学低年级）</option>
+              <option value="9">9~10 岁（小学中年级）</option>
+              <option value="12">11~14 岁（高年级/初中）</option>
+            </select>
+          </div>
+          <div class="field"><label>预览难度</label>
+            <select id="qFilterDiff">
+              <option value="easy">🌱 简单启蒙</option>
+              <option value="normal" selected>⚔️ 适中闯关</option>
+              <option value="hard">🔥 进阶挑战</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <button type="button" id="btnRefreshQuestions" style="width:100%">🔄 换一批预览</button>
+          </div>
         </div>
-        <button id="btnAddQuestion" style="width:100%">➕ 添加到家庭题库</button>
         <div class="msg" id="qMsg"></div>
-        <div id="questionList" style="margin-top:12px;max-height:260px;overflow-y:auto"></div>
+        <div id="questionList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
       </div>
     </section>
   </div>
@@ -510,10 +544,27 @@
 <!-- 孩子账号密码弹窗 -->
 <div class="modal-backdrop" id="kidAuthModal">
   <div class="modal-card" style="text-align:left;max-width:400px">
-    <h3 id="kaTitle" style="font-family:var(--serif);margin-bottom:6px">设置孩子登录账号与密码</h3>
-    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">孩子在安卓儿童端 App（或网页端）直接使用这里的账号和密码登录。</p>
+    <h3 id="kaTitle" style="font-family:var(--serif);margin-bottom:6px">设置孩子账号、年龄与难度</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">账号密码用于儿童端登录；年龄与难度将用于自动匹配冒险战斗在线题库。</p>
     <div class="field"><label>孩子登录账号（英文/数字，至少3位）</label><input type="text" id="kaUser" maxlength="32" placeholder="例如：dabao01"></div>
     <div class="field"><label>登录密码（至少4位；重置时填写，不改密码可留空）</label><input type="password" id="kaPass" placeholder="请输入新密码"></div>
+    <div class="row2">
+      <div class="field"><label>孩子年龄</label>
+        <select id="kaAge">
+          <option value="3">3 岁</option><option value="4">4 岁</option><option value="5">5 岁</option>
+          <option value="6">6 岁</option><option value="7">7 岁</option><option value="8">8 岁</option>
+          <option value="9">9 岁</option><option value="10">10 岁</option><option value="11">11 岁</option>
+          <option value="12">12 岁</option><option value="13">13 岁</option><option value="14">14 岁</option>
+        </select>
+      </div>
+      <div class="field"><label>默认答题难度</label>
+        <select id="kaDiff">
+          <option value="easy">🌱 简单启蒙</option>
+          <option value="normal">⚔️ 适中闯关</option>
+          <option value="hard">🔥 进阶挑战</option>
+        </select>
+      </div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="primary" id="btnSaveKidAuth" style="flex:1">保存设置</button>
       <button class="ghost" id="btnCancelKidAuth">取消</button>
@@ -1207,9 +1258,11 @@
   var editingKidAuthId=null;
   function openKidAuthModal(c){
     editingKidAuthId=c.id;
-    $id("kaTitle").textContent="设置 "+c.name+" 的登录账号与密码";
+    $id("kaTitle").textContent="设置 "+c.name+" 的账号与题库偏好";
     $id("kaUser").value=c.username||"";
     $id("kaPass").value="";
+    $id("kaAge").value=String(c.age||7);
+    $id("kaDiff").value=c.quiz_difficulty||"normal";
     $id("kaMsg").textContent="";
     $id("kidAuthModal").classList.add("show");
   }
@@ -1217,7 +1270,11 @@
   $id("btnSaveKidAuth").addEventListener("click",async function(){
     if(!editingKidAuthId)return;
     try{
-      var payload={username:$id("kaUser").value.trim()};
+      var payload={
+        username:$id("kaUser").value.trim(),
+        age:parseInt($id("kaAge").value,10)||7,
+        quiz_difficulty:$id("kaDiff").value||"normal"
+      };
       var pw=$id("kaPass").value;
       if(pw!=="") payload.password=pw;
       await api("/api/parent/children/"+editingKidAuthId,{method:"PATCH",body:JSON.stringify(payload)});
@@ -1277,14 +1334,21 @@
     });
   });
 
+  function quizDiffLabel(d){
+    if(d==="easy") return "简单";
+    if(d==="hard") return "挑战";
+    return "适中";
+  }
+
   function renderFamilyTab(){
     buildNewKidAvatars();
     var cm=$id("childManageList");cm.innerHTML="";
     data.children.forEach(function(c){
       var row=document.createElement("div");row.className="task-item";
       var accTxt=c.username?("账号 @"+GBArt.esc(c.username)+(c.has_password?"":"(未设密码)")):"未设独立账号";
-      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,28)+'<strong>'+GBArt.esc(c.name)+'</strong><span style="font-size:12px;color:var(--muted)">'+accTxt+' · '+c.xp+' XP</span></div>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-avatar">设头像</button><button class="sm set-auth">设/改账号密码</button><button class="sm danger del-kid">删除</button></div>';
+      var ageDiffTxt=(c.age||7)+"岁 · "+quizDiffLabel(c.quiz_difficulty)+"难度";
+      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,28)+'<strong>'+GBArt.esc(c.name)+'</strong><span style="font-size:12px;color:var(--muted)">'+accTxt+' · '+ageDiffTxt+' · '+c.xp+' XP</span></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-avatar">设头像</button><button class="sm set-auth">账号/年龄难度</button><button class="sm danger del-kid">删除</button></div>';
       row.querySelector(".set-avatar").addEventListener("click",function(){openAvatarModal({kind:"child",child:c});});
       row.querySelector(".set-auth").addEventListener("click",function(){openKidAuthModal(c);});
       row.querySelector(".del-kid").addEventListener("click",async function(){
@@ -1304,7 +1368,9 @@
           name:$id("newKidName").value.trim(),
           avatar_idx:newKidAv,
           username:$id("newKidUser").value.trim(),
-          password:$id("newKidPass").value
+          password:$id("newKidPass").value,
+          age:parseInt($id("newKidAge").value,10)||7,
+          quiz_difficulty:$id("newKidDiff").value||"normal"
         })
       });
       $id("newKidName").value="";$id("newKidUser").value="";$id("newKidPass").value="";
@@ -1327,42 +1393,23 @@
 
   async function loadQuestions(){
     try{
-      var r=await api("/api/parent/questions");
+      var age=encodeURIComponent($id("qFilterAge").value||"7");
+      var diff=encodeURIComponent($id("qFilterDiff").value||"normal");
+      var r=await api("/api/parent/questions?age="+age+"&difficulty="+diff);
       var box=$id("questionList");
       var list=r.questions||[];
+      $id("qMsg").textContent="当前匹配："+(r.age_label||"")+" · "+(r.difficulty_label||"")+"（后台题库 "+((r.total_curated||0))+" 道精选 + 实时动态出题）";
       box.innerHTML=list.map(function(q){
-        var del=q.is_preset?'<span style="font-size:11px;color:#888">预设</span>':'<button class="ghost sm" data-del-q="'+GBArt.esc(q.id)+'" style="color:#c0392b">删除</button>';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #e5dfd3;gap:8px">'
           +'<div style="font-size:13px"><b>['+GBArt.esc(q.category)+']</b> '+GBArt.esc(q.question)+' <span style="color:#2f6b4f;font-size:12px">（答案：'+GBArt.esc((q.options&&q.options[q.answer_idx])||"")+'）</span></div>'
-          +del+'</div>';
+          +'<span style="font-size:11px;color:#2f6b4f;background:#e8f2ec;padding:2px 7px;border-radius:999px;white-space:nowrap">在线匹配</span></div>';
       }).join("");
-      box.querySelectorAll("[data-del-q]").forEach(function(btn){
-        btn.addEventListener("click",async function(){
-          await api("/api/parent/questions/"+btn.getAttribute("data-del-q"),{method:"DELETE"});
-          loadQuestions();
-        });
-      });
     }catch(e){}
   }
 
-  $id("btnAddQuestion").addEventListener("click",async function(){
-    $id("qMsg").textContent="";
-    try{
-      var opts=[$id("qOpt0").value.trim(),$id("qOpt1").value.trim(),$id("qOpt2").value.trim()].filter(Boolean);
-      await api("/api/parent/questions",{
-        method:"POST",
-        body:JSON.stringify({
-          category:$id("qCat").value,
-          question:$id("qText").value.trim(),
-          options:opts,
-          answer_idx:parseInt($id("qAns").value,10)||0
-        })
-      });
-      $id("qText").value="";$id("qOpt0").value="";$id("qOpt1").value="";$id("qOpt2").value="";
-      $id("qMsg").textContent="已添加到家庭题库！";
-      loadQuestions();
-    }catch(e){$id("qMsg").textContent=e.message;}
-  });
+  $id("qFilterAge").addEventListener("change",loadQuestions);
+  $id("qFilterDiff").addEventListener("change",loadQuestions);
+  $id("btnRefreshQuestions").addEventListener("click",loadQuestions);
 
   var PRESET_TASK_ICONS={
     "生活":[["🦷","刷牙"],["🛏️","叠被子"],["🍚","好好吃饭"],["🧹","收拾房间"],["🛁","洗澡"],["💤","早睡"],["🎒","整理书包"],["💧","喝水"]],
