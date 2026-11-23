@@ -504,3 +504,47 @@ func TestAppOTAReleaseLifecycle(t *testing.T) {
 		t.Fatalf("expected local APK file to be deleted")
 	}
 }
+
+func TestHardDifficultyAddsEnglishAndHigherMath(t *testing.T) {
+	for _, age := range []int{4, 7} {
+		normalQs := QueryOnlineQuestions(age, "normal", 24)
+		for _, q := range normalQs {
+			if q.Category == "英语" || q.Category == "数学拓展" {
+				t.Fatalf("expected age=%d normal difficulty not to include %s question (%s)", age, q.Category, q.Question)
+			}
+		}
+
+		hardQs := QueryOnlineQuestions(age, "hard", 24)
+		hasEnglish := false
+		hasHigherMath := false
+		for _, q := range hardQs {
+			if q.Category == "英语" {
+				hasEnglish = true
+			}
+			if q.Category == "数学拓展" {
+				hasHigherMath = true
+			}
+		}
+		if !hasEnglish || !hasHigherMath {
+			t.Fatalf("expected age=%d hard difficulty to include both English (%v) and higher-grade math (%v)", age, hasEnglish, hasHigherMath)
+		}
+	}
+}
+
+func TestChangelogLatestDate(t *testing.T) {
+	ts, _, cleanup := setupTestApp(t)
+	defer cleanup()
+
+	st, res := doJSON(t, ts, "GET", "/api/changelog", "", nil)
+	if st != 200 {
+		t.Fatalf("changelog endpoint failed: %d", st)
+	}
+	arr, ok := res["changelog"].([]any)
+	if !ok || len(arr) < 2 {
+		t.Fatalf("expected at least 2 changelog entries, got %+v", res["changelog"])
+	}
+	first, ok := arr[0].(map[string]any)
+	if !ok || first["date"] != "2026-11-23" {
+		t.Fatalf("expected newest changelog entry date 2026-11-23, got %+v", arr[0])
+	}
+}

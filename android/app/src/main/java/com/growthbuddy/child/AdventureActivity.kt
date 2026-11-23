@@ -206,7 +206,8 @@ class AdventureActivity : AppCompatActivity() {
                                 binding.tvQuizLevelInfo.text = "🌐 $serverAgeLabel"
                                 if (monsterHp > 0) {
                                     showCurrentQuestion()
-                                    binding.tvAdvStatus.text = "在线题库已就绪（${diffLabel(reqDiff)}难度），答对充能击败怪兽！"
+                                    val diffHint = if (reqDiff == "hard") "进阶挑战（含英语与数学拓展）" else "${diffLabel(reqDiff)}难度"
+                                    binding.tvAdvStatus.text = "在线题库已就绪（${diffHint}），答对充能击败怪兽！"
                                 }
                             }
                         }

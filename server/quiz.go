@@ -169,6 +169,10 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 
 	var exact []QuizQuestion
 	var sameAgeNearbyDiff []QuizQuestion
+	var boostEnglish []QuizQuestion
+	var boostMath []QuizQuestion
+	seenID := make(map[string]bool)
+
 	for _, q := range allBank {
 		q.IsOnline = true
 		if q.AgeGroup == ageGroup {
@@ -181,28 +185,84 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 			} else if diff == "easy" && q.Difficulty == "normal" {
 				sameAgeNearbyDiff = append(sameAgeNearbyDiff, q)
 			}
+		} else if diff == "hard" && isHigherGradeChallengeCandidate(ageGroup, q) {
+			if q.Category == "英语" {
+				boostEnglish = append(boostEnglish, q)
+			} else if strings.Contains(q.Category, "数学") || q.Category == "趣味思维" || q.Category == "图形数数" {
+				boostMath = append(boostMath, q)
+			}
 		}
 	}
 
 	shuffleQuizSlice(rng, exact)
 	shuffleQuizSlice(rng, sameAgeNearbyDiff)
+	shuffleQuizSlice(rng, boostEnglish)
+	shuffleQuizSlice(rng, boostMath)
 
 	dynCount := 7
 	dynamicQs := generateDynamicMathQuestions(rng, ageGroup, diff, dynCount)
 
 	selected := make([]QuizQuestion, 0, limit)
 	staticQuota := limit - len(dynamicQs)
+	addUnique := func(q QuizQuestion, forceDiff bool) bool {
+		if q.ID != "" {
+			if seenID[q.ID] {
+				return false
+			}
+			seenID[q.ID] = true
+		}
+		if forceDiff {
+			q.Difficulty = diff
+		}
+		selected = append(selected, shuffleQuestionOptions(rng, q))
+		return true
+	}
+
+	// 选择「进阶挑战」时，先确保混入适量英语与高年级拓展题（各最多 3 道）
+	if diff == "hard" {
+		enAdded := 0
+		for _, q := range exact {
+			if q.Category == "英语" && enAdded < 3 && len(selected) < staticQuota {
+				if addUnique(q, false) {
+					enAdded++
+				}
+			}
+		}
+		for _, q := range boostEnglish {
+			if enAdded < 3 && len(selected) < staticQuota {
+				if addUnique(q, true) {
+					enAdded++
+				}
+			}
+		}
+		mathAdded := 0
+		for _, q := range exact {
+			if (q.Category == "数学拓展" || q.Category == "数学") && mathAdded < 2 && len(selected) < staticQuota {
+				if addUnique(q, false) {
+					mathAdded++
+				}
+			}
+		}
+		for _, q := range boostMath {
+			if mathAdded < 3 && len(selected) < staticQuota {
+				if addUnique(q, true) {
+					mathAdded++
+				}
+			}
+		}
+	}
+
 	for _, q := range exact {
 		if len(selected) >= staticQuota {
 			break
 		}
-		selected = append(selected, shuffleQuestionOptions(rng, q))
+		addUnique(q, false)
 	}
 	for _, q := range sameAgeNearbyDiff {
 		if len(selected) >= staticQuota {
 			break
 		}
-		selected = append(selected, shuffleQuestionOptions(rng, q))
+		addUnique(q, false)
 	}
 	for _, dq := range dynamicQs {
 		if len(selected) >= limit {
@@ -213,6 +273,24 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 
 	shuffleQuizSlice(rng, selected)
 	return selected
+}
+
+func isHigherGradeChallengeCandidate(curGroup string, q QuizQuestion) bool {
+	if q.Difficulty == "hard" {
+		return false
+	}
+	switch curGroup {
+	case "3-5":
+		return q.AgeGroup == "6-7" || (q.AgeGroup == "9-10" && q.Category == "英语" && q.Difficulty == "easy")
+	case "6-7":
+		return q.AgeGroup == "8" || (q.AgeGroup == "9-10" && q.Category == "英语" && q.Difficulty == "easy")
+	case "8":
+		return q.AgeGroup == "9-10"
+	case "9-10":
+		return q.AgeGroup == "11-14"
+	default:
+		return false
+	}
 }
 
 func shuffleQuizSlice(rng *rand.Rand, s []QuizQuestion) {
@@ -277,11 +355,12 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 		var text string
 		var opts []string
 		var ansIdx int
+		cat := "数学速算"
 		kind := i % 3
 
 		switch ageGroup {
 		case "3-5":
-			// 幼儿园小班/中班：纯 5~10 以内数数与极简单加减
+			// 幼儿园小班/中班：easy/normal 纯 5~10 以内数数与极简单加减；hard 适当融入一年级 10~20 加法衔接
 			switch diff {
 			case "easy":
 				a := rng.Intn(3) + 1
@@ -294,14 +373,28 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					opts, ansIdx = makeIntOpts(a + b)
 				}
 			case "hard":
-				a := rng.Intn(4) + 5
-				b := rng.Intn(4) + 2
-				if kind == 1 {
-					text = fmt.Sprintf("盘子里有 %d 颗草莓，吃掉了 %d 颗，还剩几颗？", a, b)
-					opts, ansIdx = makeIntOpts(a - b)
+				if kind == 2 {
+					cat = "数学拓展"
+					if rng.Intn(2) == 0 {
+						a := rng.Intn(7) + 2
+						text = fmt.Sprintf("【一年级进阶】10 + %d 等于多少？", a)
+						opts, ansIdx = makeIntOpts(10 + a)
+					} else {
+						a := rng.Intn(4) + 6
+						b := rng.Intn(4) + 5
+						text = fmt.Sprintf("【一年级进阶】%d + %d 等于多少？", a, b)
+						opts, ansIdx = makeIntOpts(a + b)
+					}
 				} else {
-					text = fmt.Sprintf("%d + %d 等于多少？", a, 10-a)
-					opts, ansIdx = makeIntOpts(10)
+					a := rng.Intn(4) + 5
+					b := rng.Intn(4) + 2
+					if kind == 1 {
+						text = fmt.Sprintf("盘子里有 %d 颗草莓，吃掉了 %d 颗，还剩几颗？", a, b)
+						opts, ansIdx = makeIntOpts(a - b)
+					} else {
+						text = fmt.Sprintf("%d + %d 等于多少？", a, 10-a)
+						opts, ansIdx = makeIntOpts(10)
+					}
 				}
 			default: // normal
 				a := rng.Intn(4) + 2
@@ -317,7 +410,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 			}
 
 		case "6-7":
-			// 江苏小学一年级（苏教版）：20以内进退位加减、整十数与100以内不进位加减、钟面、排队与元角，不涉及乘除法
+			// 江苏小学一年级（苏教版）：easy/normal 严格不涉及乘除法；hard 适当增加二年级乘除法启蒙
 			switch diff {
 			case "easy":
 				a := rng.Intn(8) + 4
@@ -342,10 +435,18 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					text = fmt.Sprintf("%d 元 %d 角一共是多少角？", yuan, jiao)
 					opts, ansIdx = makeIntOpts(yuan*10 + jiao)
 				} else {
-					front := rng.Intn(5) + 3
-					back := rng.Intn(5) + 3
-					text = fmt.Sprintf("小朋友排成一队，小明前面有 %d 人，后面有 %d 人，这队一共有几人？", front, back)
-					opts, ansIdx = makeIntOpts(front + back + 1)
+					cat = "数学拓展"
+					if rng.Intn(2) == 0 {
+						a := rng.Intn(5) + 2
+						b := rng.Intn(5) + 2
+						text = fmt.Sprintf("【高年级数学拓展】%d 个 %d 相加（%d × %d）等于多少？", a, b, a, b)
+						opts, ansIdx = makeIntOpts(a * b)
+					} else {
+						b := rng.Intn(3) + 2
+						q := rng.Intn(4) + 2
+						text = fmt.Sprintf("【高年级数学拓展】把 %d 颗草莓平均分给 %d 个小朋友，每人分几颗？", b*q, b)
+						opts, ansIdx = makeIntOpts(q)
+					}
 				}
 			default: // normal
 				if kind == 0 {
@@ -367,7 +468,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 			}
 
 		case "8":
-			// 江苏小学二年级（苏教版）：表内乘除法、乘加混合、厘米与米换算
+			// 江苏小学二年级（苏教版）：表内乘除法；hard 适当增加三~四年级两位数乘法与周长
 			switch diff {
 			case "easy":
 				a := rng.Intn(4) + 2
@@ -396,9 +497,11 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					text = fmt.Sprintf("把 %d 颗糖平均分给 %d 个小朋友，每人最多分几颗？", total, b)
 					opts, ansIdx = makeIntOpts(q)
 				} else {
-					m := rng.Intn(5) + 2
-					text = fmt.Sprintf("%d 米等于多少厘米？", m)
-					opts, ansIdx = makeIntOpts(m * 100)
+					cat = "数学拓展"
+					a := rng.Intn(8) + 12
+					b := rng.Intn(4) + 3
+					text = fmt.Sprintf("【高年级数学拓展】%d × %d 等于多少？", a, b)
+					opts, ansIdx = makeIntOpts(a * b)
 				}
 			default: // normal
 				if kind == 0 {
@@ -420,7 +523,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 			}
 
 		case "9-10":
-			// 三~四年级：多位数乘除、周长面积、时间换算
+			// 三~四年级：多位数乘除、周长面积、时间换算；hard 适当增加五~六年级面积与方程
 			switch diff {
 			case "easy":
 				a := rng.Intn(40) + 30
@@ -440,10 +543,12 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 					text = fmt.Sprintf("%d × %d - %d 等于多少？", a, b, c)
 					opts, ansIdx = makeIntOpts(a*b - c)
 				} else {
-					hrs := rng.Intn(3) + 2
-					mins := rng.Intn(35) + 10
-					text = fmt.Sprintf("%d 小时 %d 分钟一共是多少分钟？", hrs, mins)
-					opts, ansIdx = makeIntOpts(hrs*60 + mins)
+					cat = "数学拓展"
+					x := rng.Intn(7) + 3
+					a := rng.Intn(3) + 2
+					b := rng.Intn(9) + 3
+					text = fmt.Sprintf("【高年级数学拓展】解简单方程：%dx + %d = %d，x 等于多少？", a, b, a*x+b)
+					opts, ansIdx = makeIntOpts(x)
 				}
 			default: // normal
 				if kind == 0 {
@@ -471,6 +576,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 				text = fmt.Sprintf("%d - %d 等于多少？", a, b)
 				opts, ansIdx = makeIntOpts(a - b)
 			case "hard":
+				cat = "数学拓展"
 				if kind == 0 {
 					x := rng.Intn(9) + 4
 					a := rng.Intn(5) + 3
@@ -510,7 +616,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 
 		res = append(res, QuizQuestion{
 			ID:         fmt.Sprintf("dyn_%s_%s_%d_%d", ageGroup, diff, time.Now().UnixNano()%100000, i),
-			Category:   "数学速算",
+			Category:   cat,
 			AgeGroup:   ageGroup,
 			MinAge:     minA,
 			MaxAge:     maxA,
@@ -568,6 +674,10 @@ var onlineCuratedBank = []QuizQuestion{
 	{ID: "k_h_3", Category: "自然认知", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "水里游的小蝌蚪长大后会变成什么？", Options: []string{"青蛙", "蝴蝶", "小鸟"}, AnswerIdx: 0},
 	{ID: "k_h_4", Category: "趣味思维", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "哥哥 5 岁，妹妹 3 岁，谁的年龄大一些？", Options: []string{"哥哥", "妹妹", "一样大"}, AnswerIdx: 0},
 	{ID: "k_h_5", Category: "生活安全", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "发现着火了需要拨打哪个急救报警电话？", Options: []string{"119", "120", "110"}, AnswerIdx: 0},
+	{ID: "k_h_en1", Category: "英语", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "英语单词 “apple” 指的是哪种水果？", Options: []string{"苹果", "香蕉", "西瓜"}, AnswerIdx: 0},
+	{ID: "k_h_en2", Category: "英语", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "小猫用英语怎么说？", Options: []string{"cat", "dog", "bird"}, AnswerIdx: 0},
+	{ID: "k_h_en3", Category: "英语", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "英语 “Hello!” 在见面时表示什么？", Options: []string{"你好！", "再见！", "晚安！"}, AnswerIdx: 0},
+	{ID: "k_h_m1", Category: "数学拓展", AgeGroup: "3-5", MinAge: 3, MaxAge: 5, Difficulty: "hard", Question: "按规律填数：2、4、6、（  ），括号里应填几？", Options: []string{"8", "7", "9"}, AnswerIdx: 0},
 
 	// ==================== 6-7 岁 · 江苏小学一年级（无乘除、无正式英语） ====================
 	{ID: "g1_e_1", Category: "语文", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "easy", Question: "“床前明月光”的下一句是什么？", Options: []string{"疑是地上霜", "低头思故乡", "春眠不觉晓"}, AnswerIdx: 0},
@@ -589,6 +699,11 @@ var onlineCuratedBank = []QuizQuestion{
 	{ID: "g1_h_4", Category: "科学百科", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "绿色植物生长最离不开阳光、空气和什么？", Options: []string{"水", "糖果", "玻璃"}, AnswerIdx: 0},
 	{ID: "g1_h_5", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "树上有 8 只小鸟，猎人开枪打响了一声（没有打中任何小鸟），树上还剩几只鸟？", Options: []string{"0 只（都吓飞了）", "8 只", "7 只"}, AnswerIdx: 0},
 	{ID: "g1_h_6", Category: "趣味思维", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "一个星期有 7 天，一整个星期加上星期一和星期二一共有几天？", Options: []string{"9 天", "8 天", "10 天"}, AnswerIdx: 0},
+	{ID: "g1_h_en1", Category: "英语", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "英语单词 “book” 是下面哪种学习用品？", Options: []string{"书本", "尺子", "橡皮"}, AnswerIdx: 0},
+	{ID: "g1_h_en2", Category: "英语", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "表示“红色”的英语单词是哪一个？", Options: []string{"red", "blue", "green"}, AnswerIdx: 0},
+	{ID: "g1_h_en3", Category: "英语", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "别人对你说 “Thank you!” 时，可以礼貌回复哪句英语？", Options: []string{"You're welcome!", "Good night!", "How old are you?"}, AnswerIdx: 0},
+	{ID: "g1_h_m1", Category: "数学拓展", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "【高年级数学拓展】4 个 3 相加（4 × 3）一共是多少？", Options: []string{"12", "7", "15"}, AnswerIdx: 0},
+	{ID: "g1_h_m2", Category: "数学拓展", AgeGroup: "6-7", MinAge: 6, MaxAge: 7, Difficulty: "hard", Question: "【高年级数学拓展】15 块积木平均分给 3 个小朋友，每人能分到几块？", Options: []string{"5 块", "4 块", "6 块"}, AnswerIdx: 0},
 
 	// ==================== 8 岁 · 江苏小学二年级（开始学表内乘除法） ====================
 	{ID: "g2_e_1", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "easy", Question: "“白日依山尽”的下一句是？", Options: []string{"黄河入海流", "欲穷千里目", "更上一层楼"}, AnswerIdx: 0},
@@ -601,6 +716,8 @@ var onlineCuratedBank = []QuizQuestion{
 	{ID: "g2_h_1", Category: "语文", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "“野火烧不尽，春风吹又生”是赞美什么植物顽强的生命力？", Options: []string{"小草", "松树", "荷花"}, AnswerIdx: 0},
 	{ID: "g2_h_2", Category: "科学百科", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "“坐井观天”故事里，小青蛙为什么觉得天只有井口那么大？", Options: []string{"井壁挡住了它的视线", "天空本来就这么小", "小青蛙近视了"}, AnswerIdx: 0},
 	{ID: "g2_h_3", Category: "趣味思维", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "时钟 3 点敲 3 下用了 4 秒，那么 5 点敲 5 下需要几秒？", Options: []string{"8 秒", "6 秒", "10 秒"}, AnswerIdx: 0},
+	{ID: "g2_h_en1", Category: "英语", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "英语单词 “pencil” 的中文意思是？", Options: []string{"铅笔", "书包", "黑板"}, AnswerIdx: 0},
+	{ID: "g2_h_m1", Category: "数学拓展", AgeGroup: "8", MinAge: 8, MaxAge: 8, Difficulty: "hard", Question: "【高年级数学拓展】一个正方形边长是 6 厘米，它的周长是多少厘米？", Options: []string{"24 厘米", "12 厘米", "36 厘米"}, AnswerIdx: 0},
 
 	// ==================== 9-10 岁 · 江苏小学三~四年级（译林英语起点 + 多位数乘除） ====================
 	{ID: "g3_e_1", Category: "语文", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "easy", Question: "“飞流直下三千尺”描写的是哪座名山？", Options: []string{"庐山", "泰山", "黄山"}, AnswerIdx: 0},
@@ -620,6 +737,8 @@ var onlineCuratedBank = []QuizQuestion{
 	{ID: "g3_h_4", Category: "科学百科", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "声音在哪种介质中传播速度最快？", Options: []string{"钢铁等固体", "水等液体", "空气等气体"}, AnswerIdx: 0},
 	{ID: "g3_h_5", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "句子 “Where is my pencil case?” 是在询问什么？", Options: []string{"我的铅笔盒在哪里？", "今天星期几？", "现在几点钟？"}, AnswerIdx: 0},
 	{ID: "g3_h_6", Category: "趣味思维", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "一根木头锯成 4 段需要 6 分钟，照这样计算锯成 6 段需要几分钟？", Options: []string{"10 分钟", "9 分钟", "12 分钟"}, AnswerIdx: 0},
+	{ID: "g3_h_en2", Category: "英语", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "英语中询问“你几岁了？”怎么表达最准确？", Options: []string{"How old are you?", "How are you?", "What color is it?"}, AnswerIdx: 0},
+	{ID: "g3_h_m1", Category: "数学拓展", AgeGroup: "9-10", MinAge: 9, MaxAge: 10, Difficulty: "hard", Question: "【高年级数学拓展】一个长方形长 12 厘米、宽 5 厘米，它的面积是多少平方厘米？", Options: []string{"60 平方厘米", "34 平方厘米", "17 平方厘米"}, AnswerIdx: 0},
 
 	// ==================== 11-14 岁 · 小学高年级 / 初中 ====================
 	{ID: "g5_e_1", Category: "语文", AgeGroup: "11-14", MinAge: 11, MaxAge: 14, Difficulty: "easy", Question: "我国四大名著中，以描写农民起义故事为主的是？", Options: []string{"《水浒传》", "《红楼梦》", "《西游记》"}, AnswerIdx: 0},

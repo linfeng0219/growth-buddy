@@ -74,7 +74,8 @@ func NewAppServer(store *Store, publicDir string) *AppServer {
 }
 
 func serverToday() string {
-	return time.Now().Format("2006-01-02")
+	loc := time.FixedZone("CST", 8*3600)
+	return time.Now().In(loc).Format("2006-01-02")
 }
 
 func sanitizeDate(in string) string {
@@ -305,7 +306,14 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m == http.MethodGet && p == "/api/changelog" {
-		raw, err := fs.ReadFile(embeddedPublicFS, "public/shared/changelog.json")
+		var raw []byte
+		var err error
+		if a.publicDir != "" {
+			raw, err = os.ReadFile(filepath.Join(a.publicDir, "shared", "changelog.json"))
+		}
+		if err != nil || len(raw) == 0 {
+			raw, err = fs.ReadFile(embeddedPublicFS, "public/shared/changelog.json")
+		}
 		if err != nil {
 			writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": []any{}})
 			return
