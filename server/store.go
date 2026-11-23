@@ -198,6 +198,8 @@ func (s *Store) initSchema() error {
 			last_health_date TEXT NOT NULL DEFAULT '',
 			age INTEGER NOT NULL DEFAULT 7,
 			quiz_difficulty TEXT NOT NULL DEFAULT 'normal',
+			adventure_win_date TEXT NOT NULL DEFAULT '',
+			adventure_win_xp INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL
 		);
 
@@ -352,6 +354,8 @@ func (s *Store) initSchema() error {
 		{"children", "last_health_date", "last_health_date TEXT NOT NULL DEFAULT ''"},
 		{"children", "age", "age INTEGER NOT NULL DEFAULT 7"},
 		{"children", "quiz_difficulty", "quiz_difficulty TEXT NOT NULL DEFAULT 'normal'"},
+		{"children", "adventure_win_date", "adventure_win_date TEXT NOT NULL DEFAULT ''"},
+		{"children", "adventure_win_xp", "adventure_win_xp INTEGER NOT NULL DEFAULT 0"},
 		{"polaroids", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "icon_url", "icon_url TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},
@@ -572,22 +576,24 @@ type PolaroidDTO struct {
 }
 
 type ChildSummaryDTO struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	AvatarIdx       int     `json:"avatar_idx"`
-	AvatarURL       string  `json:"avatar_url"`
-	PetName         string  `json:"pet_name"`
-	XP              int     `json:"xp"`
-	Coupons         int     `json:"coupons"`
-	ActiveCompanion *string `json:"active_companion"`
-	Muted           bool    `json:"muted"`
-	HasPin          bool    `json:"has_pin"`
-	PetHealth       string  `json:"pet_health"`
-	HealProgress    int     `json:"heal_progress"`
-	HealTarget      int     `json:"heal_target"`
-	Age             int     `json:"age"`
-	QuizDifficulty  string  `json:"quiz_difficulty"`
-	UnreadLetters   int     `json:"unread_letters"`
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	AvatarIdx        int     `json:"avatar_idx"`
+	AvatarURL        string  `json:"avatar_url"`
+	PetName          string  `json:"pet_name"`
+	XP               int     `json:"xp"`
+	Coupons          int     `json:"coupons"`
+	ActiveCompanion  *string `json:"active_companion"`
+	Muted            bool    `json:"muted"`
+	HasPin           bool    `json:"has_pin"`
+	PetHealth        string  `json:"pet_health"`
+	HealProgress     int     `json:"heal_progress"`
+	HealTarget       int     `json:"heal_target"`
+	Age              int     `json:"age"`
+	QuizDifficulty   string  `json:"quiz_difficulty"`
+	UnreadLetters    int     `json:"unread_letters"`
+	AdventureXPToday int     `json:"adventure_xp_today"`
+	AdventureXPLimit int     `json:"adventure_xp_limit"`
 }
 
 type ChildStateDTO struct {
@@ -1004,7 +1010,7 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	s.syncChildHealthLocked(tx, childID, todayStr)
 	var child ChildSummaryDTO
 	err := tx.QueryRow(`
-		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress, age, quiz_difficulty
+		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress, age, quiz_difficulty, adventure_win_date, adventure_win_xp
 		FROM children WHERE id = ? AND family_id = ?
 	`, func(r SQLiteRow) error {
 		cid := r.String(0)
@@ -1012,22 +1018,29 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 		if h == "" {
 			h = "normal"
 		}
+		advDate := r.String(15)
+		advXP := 0
+		if advDate == todayStr {
+			advXP = r.Int(16)
+		}
 		child = ChildSummaryDTO{
-			ID:              cid,
-			Name:            r.String(1),
-			AvatarIdx:       clampAvatarIdx(r.Int(2)),
-			AvatarURL:       avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-			PetName:         r.String(5),
-			XP:              r.Int(6),
-			Coupons:         r.Int(7),
-			ActiveCompanion: r.NullableString(8),
-			Muted:           r.Int(9) != 0,
-			HasPin:          r.String(10) != "",
-			PetHealth:       h,
-			HealProgress:    r.Int(12),
-			HealTarget:      healTargetForHealth(h),
-			Age:             NormalizeAge(r.Int(13)),
-			QuizDifficulty:  NormalizeDifficulty(r.String(14)),
+			ID:               cid,
+			Name:             r.String(1),
+			AvatarIdx:        clampAvatarIdx(r.Int(2)),
+			AvatarURL:        avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
+			PetName:          r.String(5),
+			XP:               r.Int(6),
+			Coupons:          r.Int(7),
+			ActiveCompanion:  r.NullableString(8),
+			Muted:            r.Int(9) != 0,
+			HasPin:           r.String(10) != "",
+			PetHealth:        h,
+			HealProgress:     r.Int(12),
+			HealTarget:       healTargetForHealth(h),
+			Age:              NormalizeAge(r.Int(13)),
+			QuizDifficulty:   NormalizeDifficulty(r.String(14)),
+			AdventureXPToday: advXP,
+			AdventureXPLimit: DailyAdventureXPLimit,
 		}
 		return nil
 	}, childID, familyID)
@@ -3668,6 +3681,74 @@ func (s *Store) MarkChildLetterReadAndClaim(familyID, childID, letterID string) 
 		return nil
 	})
 	return claimedXP, newXP, err
+}
+
+// DailyAdventureXPLimit 每日冒险小剧场战斗最多可获得的成长值上限。
+const DailyAdventureXPLimit = 10
+
+// RecordAdventureWin 结算孩子冒险战斗胜利奖励：赢一场 +1 成长值，每日上限 10 点。
+func (s *Store) RecordAdventureWin(familyID, childID, todayStr string) (map[string]any, error) {
+	if todayStr == "" {
+		todayStr = time.Now().In(time.FixedZone("CST", 8*3600)).Format("2006-01-02")
+	}
+	var out map[string]any
+	err := s.db.WithTx(func(tx *Tx) error {
+		var xp int
+		var winDate string
+		var winXP int
+		if err := tx.QueryRow(
+			"SELECT xp, adventure_win_date, adventure_win_xp FROM children WHERE id = ? AND family_id = ?",
+			func(r SQLiteRow) error {
+				xp = r.Int(0)
+				winDate = r.String(1)
+				winXP = r.Int(2)
+				return nil
+			}, childID, familyID,
+		); err != nil {
+			return ErrNotFound
+		}
+
+		if winDate != todayStr {
+			winDate = todayStr
+			winXP = 0
+		}
+
+		earned := 0
+		newXP := xp
+		if winXP < DailyAdventureXPLimit {
+			earned = 1
+			winXP += 1
+			newXP = xp + 1
+			if _, err := tx.Exec(
+				"UPDATE children SET xp = ?, adventure_win_date = ?, adventure_win_xp = ? WHERE id = ? AND family_id = ?",
+				newXP, winDate, winXP, childID, familyID,
+			); err != nil {
+				return err
+			}
+			s.applyHealProgressLocked(tx, childID, earned)
+		} else if _, err := tx.Exec(
+			"UPDATE children SET adventure_win_date = ?, adventure_win_xp = ? WHERE id = ? AND family_id = ?",
+			winDate, winXP, childID, familyID,
+		); err != nil {
+			return err
+		}
+
+		remaining := DailyAdventureXPLimit - winXP
+		if remaining < 0 {
+			remaining = 0
+		}
+		out = map[string]any{
+			"ok":                 true,
+			"earned_xp":          earned,
+			"new_xp":             newXP,
+			"today_adventure_xp": winXP,
+			"daily_limit":        DailyAdventureXPLimit,
+			"remaining":          remaining,
+			"reached_limit":      winXP >= DailyAdventureXPLimit,
+		}
+		return nil
+	})
+	return out, err
 }
 
 func nonEmpty(v, def string) string {

@@ -18,6 +18,9 @@ import com.growthbuddy.child.databinding.ActivityAdventureBinding
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 data class QuizItem(
@@ -40,6 +43,8 @@ class AdventureActivity : AppCompatActivity() {
         const val EXTRA_SPECIES_ITEM = "species_item"
         const val EXTRA_CHILD_AGE = "child_age"
         const val EXTRA_QUIZ_DIFFICULTY = "quiz_difficulty"
+        const val EXTRA_ADVENTURE_XP_TODAY = "adventure_xp_today"
+        const val EXTRA_ADVENTURE_XP_LIMIT = "adventure_xp_limit"
     }
 
     private lateinit var binding: ActivityAdventureBinding
@@ -58,6 +63,9 @@ class AdventureActivity : AppCompatActivity() {
     private var roundsCleared: Int = 0
     private var wrongCountInRound: Int = 0
     private var fastCritCountInRound: Int = 0
+    private var adventureXpToday: Int = 0
+    private var adventureXpLimit: Int = 10
+    private var serverAgeLabel: String = ""
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var questionShownAtMs: Long = 0L
@@ -82,6 +90,9 @@ class AdventureActivity : AppCompatActivity() {
         val petAsleep = intent.getBooleanExtra(EXTRA_PET_ASLEEP, false)
         childAge = intent.getIntExtra(EXTRA_CHILD_AGE, 7).coerceIn(3, 14)
         currentDiff = normalizeDiff(intent.getStringExtra(EXTRA_QUIZ_DIFFICULTY))
+        adventureXpToday = intent.getIntExtra(EXTRA_ADVENTURE_XP_TODAY, 0).coerceAtLeast(0)
+        adventureXpLimit = intent.getIntExtra(EXTRA_ADVENTURE_XP_LIMIT, 10).coerceAtLeast(1)
+        serverAgeLabel = "${childAge}岁"
         @Suppress("DEPRECATION")
         val speciesItem = intent.getSerializableExtra(EXTRA_SPECIES_ITEM) as? SpeciesItem
         binding.advBattleStage.setPet(speciesItem, petStage, petAsleep)
@@ -146,7 +157,8 @@ class AdventureActivity : AppCompatActivity() {
     }
 
     private fun updateDifficultyChips() {
-        binding.tvQuizLevelInfo.text = "🌐 ${childAge}岁 · 在线题库"
+        val baseLabel = serverAgeLabel.ifBlank { "${childAge}岁 · 在线题库" }
+        binding.tvQuizLevelInfo.text = "🌐 $baseLabel · 今日战利品 $adventureXpToday/$adventureXpLimit"
         val map = listOf(
             binding.btnDiffEasy to "easy",
             binding.btnDiffNormal to "normal",
@@ -218,7 +230,7 @@ class AdventureActivity : AppCompatActivity() {
                     val body = conn.inputStream.bufferedReader().readText()
                     val root = JSONObject(body)
                     val arr = root.optJSONArray("questions")
-                    val serverAgeLabel = root.optString("age_label", "${reqAge}岁")
+                    val fetchedAgeLabel = root.optString("age_label", "${reqAge}岁")
                     if (arr != null && arr.length() > 0) {
                         val loaded = mutableListOf<QuizItem>()
                         for (i in 0 until arr.length()) {
@@ -244,7 +256,8 @@ class AdventureActivity : AppCompatActivity() {
                                 questions.clear()
                                 questions.addAll(loaded)
                                 qIndex = 0
-                                binding.tvQuizLevelInfo.text = "🌐 $serverAgeLabel"
+                                this@AdventureActivity.serverAgeLabel = fetchedAgeLabel.ifBlank { "${reqAge}岁" }
+                                updateDifficultyChips()
                                 if (monsterHp > 0) {
                                     showCurrentQuestion()
                                     val diffHint = if (reqDiff == "hard") "进阶挑战（含英语与数学拓展）" else "${diffLabel(reqDiff)}难度"
@@ -468,9 +481,30 @@ class AdventureActivity : AppCompatActivity() {
             setLineSpacing(6f, 1.15f)
             setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
         }
+        val rewardTv = TextView(this).apply {
+            text = "⏳ 正在结算本场战斗成长值奖励..."
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#B8621B"))
+            gravity = Gravity.CENTER
+            setPadding((10 * dp).toInt(), (8 * dp).toInt(), (10 * dp).toInt(), (8 * dp).toInt())
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#FFF4D6"))
+                cornerRadius = 12 * dp
+            }
+        }
+        val rewardLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = (8 * dp).toInt()
+        }
+        rewardTv.layoutParams = rewardLp
+
         card.addView(iconTv)
         card.addView(titleTv)
         card.addView(detailTv)
+        card.addView(rewardTv)
 
         AlertDialog.Builder(this)
             .setView(card)
@@ -483,6 +517,77 @@ class AdventureActivity : AppCompatActivity() {
                 finish()
             }
             .show()
+
+        claimAdventureWinReward(rewardTv)
+    }
+
+    /**
+     * 向后端结算本场冒险战斗胜利奖励（赢一场 +1 成长值，每日上限 10 点）。
+     */
+    private fun claimAdventureWinReward(rewardTv: TextView) {
+        val baseUrl = ServerPrefs.getServerUrl(this).trimEnd('/')
+        val token = ServerPrefs.getChildToken(this)
+        if (baseUrl.isBlank() || token.isBlank()) {
+            rewardTv.text = "⚠️ 离线练习模式，暂未结算成长值"
+            return
+        }
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        io.execute {
+            try {
+                val url = "$baseUrl/api/child/adventure-win"
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    doOutput = true
+                    setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                }
+                val payload = JSONObject().put("date", todayStr).toString()
+                conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                val body = if (code in 200..299) {
+                    conn.inputStream.bufferedReader().readText()
+                } else {
+                    conn.errorStream?.bufferedReader()?.readText().orEmpty()
+                }
+                conn.disconnect()
+
+                if (code in 200..299) {
+                    val obj = JSONObject(body)
+                    val earned = obj.optInt("earned_xp", 0)
+                    val todayXp = obj.optInt("today_adventure_xp", adventureXpToday)
+                    val limit = obj.optInt("daily_limit", adventureXpLimit)
+                    val remaining = obj.optInt("remaining", (limit - todayXp).coerceAtLeast(0))
+                    val reachedLimit = obj.optBoolean("reached_limit", todayXp >= limit)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        adventureXpToday = todayXp
+                        adventureXpLimit = limit
+                        updateDifficultyChips()
+                        rewardTv.text = if (earned > 0) {
+                            "🌟 成长值 +$earned！今日战斗已获 $todayXp/$limit 点（还可领 $remaining 点）"
+                        } else if (reachedLimit) {
+                            "🏅 今日战斗奖励已达上限（$todayXp/$limit 成长值），继续闯关巩固知识吧！"
+                        } else {
+                            "🎉 挑战成功！今日战斗已获 $todayXp/$limit 成长值"
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            rewardTv.text = "⚠️ 奖励结算失败，请检查网络连接"
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        rewardTv.text = "⚠️ 网络波动，成长值奖励结算失败"
+                    }
+                }
+            }
+        }
     }
 
     /**

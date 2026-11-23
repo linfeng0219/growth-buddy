@@ -25,7 +25,9 @@ data class ChildInfo(
     val healTarget: Int = 0,
     val age: Int = 7,
     val quizDifficulty: String = "normal",
-    val unreadLetters: Int = 0
+    val unreadLetters: Int = 0,
+    val adventureXpToday: Int = 0,
+    val adventureXpLimit: Int = 10
 )
 
 data class TaskItem(
@@ -256,7 +258,9 @@ object GrowthMeta {
                 healTarget = childObj.optInt("heal_target", 0),
                 age = childObj.optInt("age", 7).coerceIn(3, 14),
                 quizDifficulty = childObj.optString("quiz_difficulty", "normal").ifBlank { "normal" },
-                unreadLetters = childObj.optInt("unread_letters", 0)
+                unreadLetters = childObj.optInt("unread_letters", 0),
+                adventureXpToday = childObj.optInt("adventure_xp_today", 0),
+                adventureXpLimit = childObj.optInt("adventure_xp_limit", 10)
             ),
             childCount = obj.optInt("child_count", 1),
             tasks = tasks,

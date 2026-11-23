@@ -104,6 +104,12 @@ class MainActivity : AppCompatActivity() {
         loadChildState()
     }
 
+    private val adventureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        loadChildState()
+    }
+
     private val parentPortalLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { res ->
@@ -290,9 +296,11 @@ class MainActivity : AppCompatActivity() {
                 putExtra(AdventureActivity.EXTRA_PET_ASLEEP, asleep)
                 putExtra(AdventureActivity.EXTRA_CHILD_AGE, st?.child?.age ?: 7)
                 putExtra(AdventureActivity.EXTRA_QUIZ_DIFFICULTY, st?.child?.quizDifficulty ?: "normal")
+                putExtra(AdventureActivity.EXTRA_ADVENTURE_XP_TODAY, st?.child?.adventureXpToday ?: 0)
+                putExtra(AdventureActivity.EXTRA_ADVENTURE_XP_LIMIT, st?.child?.adventureXpLimit ?: 10)
                 if (activeComp != null) putExtra(AdventureActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
-            startActivity(intent)
+            adventureLauncher.launch(intent)
         }
         binding.btnOpenMailbox.setOnClickListener {
             sound.playPat()

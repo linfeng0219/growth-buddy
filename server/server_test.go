@@ -576,3 +576,41 @@ func TestCuratedBankIntegrity(t *testing.T) {
 		t.Fatalf("expected expanded curated bank >= 140 questions, got %d", len(onlineCuratedBank))
 	}
 }
+
+func TestAdventureWinDailyCap(t *testing.T) {
+	ts, store, cleanup := setupTestApp(t)
+	defer cleanup()
+
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "测试家", "displayName": "妈妈", "username": "momadv", "password": "pass1234",
+		"childName": "大宝", "childUsername": "kid_adv", "childPassword": "pass1234",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d %+v", st, reg)
+	}
+	st, login := doJSON(t, ts, "POST", "/api/auth/child-login", "", map[string]any{
+		"username": "kid_adv", "password": "pass1234",
+	})
+	if st != 200 {
+		t.Fatalf("child login failed: %d %+v", st, login)
+	}
+	tok, _ := login["token"].(string)
+	_ = store
+
+	for i := 1; i <= 10; i++ {
+		st, res := doJSON(t, ts, "POST", "/api/child/adventure-win", tok, map[string]any{"date": "2026-11-23"})
+		if st != 200 || int(res["earned_xp"].(float64)) != 1 || int(res["today_adventure_xp"].(float64)) != i {
+			t.Fatalf("win %d failed: %d %+v", i, st, res)
+		}
+	}
+	st, capped := doJSON(t, ts, "POST", "/api/child/adventure-win", tok, map[string]any{"date": "2026-11-23"})
+	if st != 200 || int(capped["earned_xp"].(float64)) != 0 || capped["reached_limit"] != true || int(capped["new_xp"].(float64)) != 10 {
+		t.Fatalf("expected daily cap at 10: %d %+v", st, capped)
+	}
+
+	// Next day resets daily cap
+	st, nextDay := doJSON(t, ts, "POST", "/api/child/adventure-win", tok, map[string]any{"date": "2026-11-24"})
+	if st != 200 || int(nextDay["earned_xp"].(float64)) != 1 || int(nextDay["today_adventure_xp"].(float64)) != 1 || int(nextDay["new_xp"].(float64)) != 11 {
+		t.Fatalf("expected next day reset: %d %+v", st, nextDay)
+	}
+}

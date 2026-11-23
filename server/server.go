@@ -727,6 +727,18 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodPost && p == "/api/child/adventure-win" {
+		body, _ := readJSONMap(r, 0)
+		todayStr := sanitizeDate(mapStr(body, "date"))
+		res, err := a.store.RecordAdventureWin(auth.FamilyID, targetChildID, todayStr)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, res)
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/child/checkin" {
 		body, err := readJSONMap(r, 4*1024*1024)
 		if err != nil {
