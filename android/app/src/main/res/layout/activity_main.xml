@@ -30,7 +30,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="GROWTH BUDDY · 儿童端原生版"
+                    android:text="GROWTH BUDDY · 家庭成长助手"
                     android:textColor="#8A7E6E"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -68,7 +68,7 @@
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="18dp"
                 android:gravity="center"
-                android:text="输入家长给你分配的专属账号和密码，\n开始今天的打卡与 AI 跳绳挑战吧！"
+                android:text="输入孩子或家长账号和密码，自动识别身份，\n已登录过的账号可在下方直接下拉切换哦！"
                 android:textColor="#6B6052"
                 android:textSize="13.5sp" />
 
@@ -79,10 +79,69 @@
                 android:orientation="vertical"
                 android:padding="18dp">
 
+                <!-- 已记住账号与头像下拉切换器 -->
+                <LinearLayout
+                    android:id="@+id/layoutSavedAccountPicker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="14dp"
+                    android:background="@drawable/bg_pill"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="8dp"
+                    android:visibility="gone">
+
+                    <com.growthbuddy.child.SpeciesThumbView
+                        android:id="@+id/ivLoginSavedAvatar"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_marginEnd="10dp" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvLoginSavedName"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="快速选择已记住账号"
+                            android:textColor="#233128"
+                            android:textSize="14sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvLoginSavedSub"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:text="@username"
+                            android:textColor="#6B6052"
+                            android:textSize="11.5sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="▾ 选择账号"
+                        android:textColor="#2F6B4F"
+                        android:textSize="12.5sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="我的孩子账号"
+                    android:text="登录账号（孩子 / 家长通用）"
                     android:textColor="#5C5347"
                     android:textSize="13sp"
                     android:textStyle="bold" />
@@ -94,7 +153,7 @@
                     android:layout_marginTop="6dp"
                     android:layout_marginBottom="12dp"
                     android:background="@android:drawable/edit_text"
-                    android:hint="例如：dabao01"
+                    android:hint="例如：dabao01 或 mama01"
                     android:imeOptions="actionNext"
                     android:inputType="textNoSuggestions"
                     android:paddingHorizontal="12dp"
@@ -130,7 +189,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="50dp"
                     android:backgroundTint="#E8913A"
-                    android:text="登录我的小伙伴 →"
+                    android:text="登录进入 →"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp"
                     android:textStyle="bold" />

@@ -807,6 +807,10 @@
 
   $id("btnLogout").addEventListener("click",function(){
     localStorage.removeItem("gb_parent_token");
+    if(window.AndroidBridge&&window.AndroidBridge.onWebLogout){
+      window.AndroidBridge.onWebLogout();
+      return;
+    }
     showAuth();
   });
 

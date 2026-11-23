@@ -868,6 +868,18 @@ func (s *Store) LoginChildByAccount(username, password string) (childID, familyI
 	return childID, familyID, familyCode, nil
 }
 
+func (s *Store) GetChildBasicProfile(childID string) (name string, avatarIdx int, avURL string) {
+	_ = s.db.WithLock(func(tx *Tx) error {
+		return tx.QueryRow("SELECT name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at FROM children WHERE id = ?", func(r SQLiteRow) error {
+			name = r.String(0)
+			avatarIdx = clampAvatarIdx(r.Int(1))
+			avURL = avatarURL("child", childID, r.Int(2) != 0, r.Int64(3))
+			return nil
+		}, childID)
+	})
+	return name, avatarIdx, avURL
+}
+
 func (s *Store) LoginChildByRoster(code, childID, pin string) (familyID string, status int, err error) {
 	cleanCode := strings.ToUpper(strings.TrimSpace(code))
 	cleanPin := strings.TrimSpace(pin)

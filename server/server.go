@@ -467,6 +467,47 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodPost && p == "/api/auth/login" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		u := strings.TrimSpace(mapStr(body, "username"))
+		pw := mapStr(body, "password")
+		if u == "" || pw == "" {
+			writeJSON(w, 400, map[string]string{"error": "请输入账号和密码"})
+			return
+		}
+		if parent, fam, err := a.store.VerifyParentLogin(u, pw); err == nil {
+			tok := SignToken(TokenClaims{Role: "parent", ParentID: parent.ID, FamilyID: fam.ID}, 0)
+			writeJSON(w, 200, map[string]any{
+				"role":   "parent",
+				"token":  tok,
+				"parent": parent,
+				"family": fam,
+			})
+			return
+		}
+		if cid, fid, fcode, err := a.store.LoginChildByAccount(u, pw); err == nil {
+			tok := SignToken(TokenClaims{Role: "child", ChildID: cid, FamilyID: fid}, 0)
+			cname, avIdx, avURL := a.store.GetChildBasicProfile(cid)
+			writeJSON(w, 200, map[string]any{
+				"role":       "child",
+				"token":      tok,
+				"childId":    cid,
+				"familyId":   fid,
+				"familyCode": fcode,
+				"name":       cname,
+				"avatar_idx": avIdx,
+				"avatar_url": avURL,
+			})
+			return
+		}
+		writeJSON(w, 401, map[string]string{"error": "账号或密码不正确"})
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/auth/parent-login" {
 		body, err := readJSONMap(r, 0)
 		if err != nil {

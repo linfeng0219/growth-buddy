@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -101,6 +102,16 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { _ ->
         loadChildState()
+    }
+
+    private val parentPortalLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == ParentPortalActivity.RESULT_SWITCH_ACCOUNT) {
+            showLoginView("已退出家长端，可直接下拉选择或输入账号切换")
+        } else {
+            finish()
+        }
     }
 
     private val pickAvatarLauncher = registerForActivityResult(
@@ -186,7 +197,11 @@ class MainActivity : AppCompatActivity() {
         setupLoginUi()
         setupAppUi()
 
-        if (ServerPrefs.getChildToken(this).isNotEmpty()) {
+        val activeRole = ServerPrefs.getActiveRole(this)
+        if (activeRole == "parent" && ServerPrefs.getParentToken(this).isNotEmpty()) {
+            showLoginView()
+            launchParentPortal("")
+        } else if (ServerPrefs.getChildToken(this).isNotEmpty()) {
             showAppView()
             loadChildState()
         } else {
@@ -210,15 +225,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupLoginUi() {
         binding.loginPetPreview.setPetState(3, false, null)
-        binding.etLoginUser.setText(ServerPrefs.getSavedUsername(this))
+        refreshSavedAccountPicker(autoFillIfBlank = true)
+        binding.layoutSavedAccountPicker.setOnClickListener {
+            showSavedAccountsDropdown()
+        }
         refreshServerFooter()
         binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
 
         binding.btnLoginUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
-        binding.btnDoLogin.setOnClickListener { performChildLogin() }
+        binding.btnDoLogin.setOnClickListener { performUnifiedLogin() }
         binding.etLoginPass.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) {
-                performChildLogin()
+                performUnifiedLogin()
                 true
             } else false
         }
@@ -362,8 +380,172 @@ class MainActivity : AppCompatActivity() {
         binding.loginContainer.visibility = View.VISIBLE
         binding.appContainer.visibility = View.GONE
         binding.tvLoginMsg.text = message
+        refreshSavedAccountPicker(autoFillIfBlank = true)
         refreshServerFooter()
         binding.tvServerFooter.setOnClickListener { showChangelogDialog() }
+    }
+
+    private fun selectSavedAccountIntoForm(acc: SavedAccount) {
+        binding.etLoginUser.setText(acc.username)
+        binding.etLoginPass.setText(acc.password)
+        bindAvatarView(binding.ivLoginSavedAvatar, acc.avatarIdx, acc.avatarUrl)
+        val roleLabel = if (acc.role == "parent") "👨‍👩‍👧 家长端" else "👧 孩子端"
+        binding.tvLoginSavedName.text = "${acc.displayName} · $roleLabel"
+        binding.tvLoginSavedSub.text = "@${acc.username}"
+    }
+
+    private fun refreshSavedAccountPicker(autoFillIfBlank: Boolean) {
+        val accounts = ServerPrefs.getSavedAccounts(this)
+        if (accounts.isEmpty()) {
+            binding.layoutSavedAccountPicker.visibility = View.GONE
+            if (autoFillIfBlank && binding.etLoginUser.text.isNullOrBlank()) {
+                binding.etLoginUser.setText(ServerPrefs.getSavedUsername(this))
+            }
+            return
+        }
+        binding.layoutSavedAccountPicker.visibility = View.VISIBLE
+        val typedUser = binding.etLoginUser.text.toString().trim()
+        val curAcc = accounts.firstOrNull { it.username.equals(typedUser, ignoreCase = true) } ?: accounts.first()
+        if (autoFillIfBlank && typedUser.isEmpty()) {
+            selectSavedAccountIntoForm(curAcc)
+        } else {
+            bindAvatarView(binding.ivLoginSavedAvatar, curAcc.avatarIdx, curAcc.avatarUrl)
+            val roleLabel = if (curAcc.role == "parent") "👨‍👩‍👧 家长端" else "👧 孩子端"
+            binding.tvLoginSavedName.text = "${curAcc.displayName} · $roleLabel"
+            binding.tvLoginSavedSub.text = "@${curAcc.username}"
+        }
+    }
+
+    private fun showSavedAccountsDropdown() {
+        val accounts = ServerPrefs.getSavedAccounts(this)
+        if (accounts.isEmpty()) return
+        sound.playPat()
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#FFFDF9"))
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.parseColor("#D8CFC0"))
+            }
+            elevation = dp(8).toFloat()
+        }
+
+        val listCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scroll = ScrollView(this).apply {
+            addView(listCol)
+        }
+        card.addView(scroll)
+
+        val anchorW = binding.layoutSavedAccountPicker.width.coerceAtLeast(dp(260))
+        val popup = PopupWindow(
+            card,
+            anchorW,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            elevation = dp(10).toFloat()
+        }
+
+        accounts.forEachIndexed { idx, acc ->
+            val isParent = acc.role == "parent"
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(8), dp(8), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor(if (idx == 0) "#F5F9F6" else "#FFFFFF"))
+                    cornerRadius = dp(10).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    if (idx < accounts.lastIndex) bottomMargin = dp(4)
+                }
+            }
+
+            val avatar = SpeciesThumbView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                    rightMargin = dp(10)
+                }
+            }
+            bindAvatarView(avatar, acc.avatarIdx, acc.avatarUrl)
+
+            val infoCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val titleRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            titleRow.addView(TextView(this).apply {
+                text = acc.displayName
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#233128"))
+            })
+            titleRow.addView(TextView(this).apply {
+                text = if (isParent) "家长端" else "孩子端"
+                textSize = 10.5f
+                setTextColor(Color.parseColor(if (isParent) "#B8621B" else "#2F6B4F"))
+                setPadding(dp(6), dp(1), dp(6), dp(1))
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor(if (isParent) "#FFF1DE" else "#E6F4EC"))
+                    cornerRadius = dp(99).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { leftMargin = dp(6) }
+            })
+            infoCol.addView(titleRow)
+            infoCol.addView(TextView(this).apply {
+                text = "@${acc.username}" + if (acc.password.isNotEmpty()) " · 已记密码" else ""
+                textSize = 11.5f
+                setTextColor(Color.parseColor("#8A7E6E"))
+            })
+
+            val delBtn = TextView(this).apply {
+                text = "✕"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#B0A596"))
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                setOnClickListener {
+                    ServerPrefs.removeSavedAccount(this@MainActivity, acc.username, acc.role)
+                    popup.dismiss()
+                    refreshSavedAccountPicker(autoFillIfBlank = false)
+                }
+            }
+
+            row.addView(avatar)
+            row.addView(infoCol)
+            row.addView(delBtn)
+            row.setOnClickListener {
+                sound.playPat()
+                selectSavedAccountIntoForm(acc)
+                binding.tvLoginMsg.text = "已填入「${acc.displayName}」的账号与密码，点击登录即可进入"
+                popup.dismiss()
+            }
+            listCol.addView(row)
+        }
+
+        popup.showAsDropDown(binding.layoutSavedAccountPicker, 0, dp(4))
+    }
+
+    private fun launchParentPortal(parentDisplayName: String) {
+        val intent = Intent(this, ParentPortalActivity::class.java).apply {
+            if (parentDisplayName.isNotBlank()) {
+                putExtra(ParentPortalActivity.EXTRA_PARENT_NAME, parentDisplayName)
+            }
+        }
+        parentPortalLauncher.launch(intent)
     }
 
     private fun showAppView() {
@@ -383,50 +565,124 @@ class MainActivity : AppCompatActivity() {
         binding.mainScroll.scrollTo(0, 0)
     }
 
-    private fun performChildLogin() {
+    private fun performUnifiedLogin() {
         val username = binding.etLoginUser.text.toString().trim()
         val password = binding.etLoginPass.text.toString()
         if (username.isEmpty() || password.isEmpty()) {
-            binding.tvLoginMsg.text = "请输入孩子账号和密码"
+            binding.tvLoginMsg.text = "请输入登录账号和密码"
             sound.playError()
             return
         }
         binding.btnDoLogin.isEnabled = false
-        binding.btnDoLogin.text = "正在登录..."
+        binding.btnDoLogin.text = "正在识别身份并登录..."
         binding.tvLoginMsg.text = ""
 
         val payload = JSONObject().apply {
             put("username", username)
             put("password", password)
         }
-        api.request("POST", "/api/auth/child-login", payload, useAuth = false) { res ->
-            binding.btnDoLogin.isEnabled = true
-            binding.btnDoLogin.text = "登录我的小伙伴 →"
+        api.request("POST", "/api/auth/login", payload, useAuth = false) { res ->
             if (res.ok && res.json != null) {
-                val token = res.json.optString("token", "")
-                if (token.isNotEmpty()) {
-                    ServerPrefs.setChildToken(this, token)
-                    ServerPrefs.setSavedUsername(this, username)
-                    binding.etLoginPass.setText("")
-                    sound.playWin()
-                    showAppView()
-                    loadChildState()
+                binding.btnDoLogin.isEnabled = true
+                binding.btnDoLogin.text = "登录进入 →"
+                val role = res.json.optString("role", "")
+                if (role == "parent") {
+                    onParentLoginSuccess(username, password, res.json)
+                } else {
+                    onChildLoginSuccess(username, password, res.json)
                 }
+            } else if (res.status == 404) {
+                // 兼容尚未更新统一登录接口的旧服务端：依次尝试孩子端与家长端登录
+                fallbackSplitLogin(username, password, payload)
             } else {
+                binding.btnDoLogin.isEnabled = true
+                binding.btnDoLogin.text = "登录进入 →"
                 sound.playError()
-                binding.tvLoginMsg.text = res.error ?: "登录失败"
+                binding.tvLoginMsg.text = res.error ?: "账号或密码不正确"
             }
         }
+    }
+
+    private fun fallbackSplitLogin(username: String, password: String, payload: JSONObject) {
+        api.request("POST", "/api/auth/child-login", payload, useAuth = false) { childRes ->
+            if (childRes.ok && childRes.json != null) {
+                binding.btnDoLogin.isEnabled = true
+                binding.btnDoLogin.text = "登录进入 →"
+                onChildLoginSuccess(username, password, childRes.json)
+            } else {
+                api.request("POST", "/api/auth/parent-login", payload, useAuth = false) { parentRes ->
+                    binding.btnDoLogin.isEnabled = true
+                    binding.btnDoLogin.text = "登录进入 →"
+                    if (parentRes.ok && parentRes.json != null) {
+                        onParentLoginSuccess(username, password, parentRes.json)
+                    } else {
+                        sound.playError()
+                        binding.tvLoginMsg.text = parentRes.error ?: childRes.error ?: "账号或密码不正确"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun onChildLoginSuccess(username: String, password: String, json: JSONObject) {
+        val token = json.optString("token", "")
+        if (token.isEmpty()) return
+        ServerPrefs.clearParentToken(this)
+        ServerPrefs.setChildToken(this, token)
+        ServerPrefs.saveOrUpdateAccount(
+            this,
+            SavedAccount(
+                username = username,
+                password = password,
+                role = "child",
+                displayName = json.optString("name", username),
+                avatarIdx = json.optInt("avatar_idx", 0),
+                avatarUrl = json.optString("avatar_url", "")
+            )
+        )
+        binding.etLoginPass.setText("")
+        sound.playWin()
+        showAppView()
+        loadChildState()
+    }
+
+    private fun onParentLoginSuccess(username: String, password: String, json: JSONObject) {
+        val token = json.optString("token", "")
+        if (token.isEmpty()) return
+        val pObj = json.optJSONObject("parent")
+        val displayName = pObj?.optString("display_name", username)?.ifBlank { username } ?: username
+        val avatarIdx = pObj?.optInt("avatar_idx", 0) ?: 0
+        val avatarUrl = pObj?.optString("avatar_url", "") ?: ""
+
+        ServerPrefs.clearChildToken(this)
+        ServerPrefs.setParentToken(this, token)
+        ServerPrefs.saveOrUpdateAccount(
+            this,
+            SavedAccount(
+                username = username,
+                password = password,
+                role = "parent",
+                displayName = displayName,
+                avatarIdx = avatarIdx,
+                avatarUrl = avatarUrl
+            )
+        )
+        binding.etLoginPass.setText("")
+        sound.playWin()
+        launchParentPortal(displayName)
     }
 
     private fun confirmLogout() {
         AlertDialog.Builder(this)
             .setTitle("退出当前账号？")
-            .setMessage("退出后可以切换其他小朋友的账号登录")
+            .setMessage("退出后可在登录页下拉快速切换其他孩子或家长账号")
             .setPositiveButton("退出登录") { _, _ ->
                 ServerPrefs.clearChildToken(this)
+                ServerPrefs.clearParentToken(this)
                 state = null
-                showLoginView("已退出登录，请输入孩子账号和密码")
+                binding.etLoginUser.setText("")
+                binding.etLoginPass.setText("")
+                showLoginView("已退出登录，可在上方下拉选择账号")
             }
             .setNegativeButton("取消", null)
             .show()
@@ -491,6 +747,14 @@ class MainActivity : AppCompatActivity() {
         val activeComp = st.catalog.find { it.id == c.activeCompanion }
 
         bindAvatarView(binding.ivHeaderAvatar, c.avatarIdx, c.avatarUrl)
+        ServerPrefs.updateAccountProfile(
+            this,
+            ServerPrefs.getSavedUsername(this),
+            "child",
+            c.name,
+            c.avatarIdx,
+            c.avatarUrl
+        )
         binding.tvKidBanner.text = "${c.name}的小屋"
         binding.tvFamilySub.text = "${st.family.name} · 点击头像可更换 ✎"
         binding.btnMute.text = if (c.muted) "🔇" else "🔊"
