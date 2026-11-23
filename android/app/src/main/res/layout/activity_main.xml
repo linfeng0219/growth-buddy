@@ -282,20 +282,6 @@
             </LinearLayout>
 
             <Button
-                android:id="@+id/btnBoostVolMain"
-                style="@style/Widget.Material3.Button.TonalButton"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:layout_marginEnd="4dp"
-                android:backgroundTint="#FBE9D0"
-                android:minWidth="0dp"
-                android:paddingHorizontal="8dp"
-                android:text="🔊 音量+"
-                android:textColor="#B86511"
-                android:textSize="11.5sp"
-                android:visibility="gone" />
-
-            <Button
                 android:id="@+id/btnMute"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
@@ -305,17 +291,6 @@
                 android:text="🔊"
                 android:textColor="#2F6B4F"
                 android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btnAppUpdate"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:minWidth="0dp"
-                android:paddingHorizontal="6dp"
-                android:text="更新"
-                android:textColor="#2F6B4F"
-                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/btnRefresh"

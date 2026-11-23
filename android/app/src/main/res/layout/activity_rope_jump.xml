@@ -211,17 +211,6 @@
                 android:backgroundTint="#E8913A"
                 android:text="直接开始 3 秒倒计时"
                 android:textColor="#FFFFFF" />
-
-            <Button
-                android:id="@+id/btnBoostVol"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="🔊 音量+"
-                android:textColor="#F4B254"
-                android:visibility="gone"
-                app:strokeColor="#F4B254" />
         </LinearLayout>
     </LinearLayout>
 

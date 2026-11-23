@@ -27,7 +27,6 @@ class NativeSoundEngine(context: Context) {
 
     private val appContext = context.applicationContext
     private val ioExecutor = Executors.newSingleThreadExecutor()
-    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private val soundPool: SoundPool
     @Volatile private var muted: Boolean = false
@@ -89,21 +88,6 @@ class NativeSoundEngine(context: Context) {
     }
 
     fun isMuted(): Boolean = muted
-
-    fun isMediaVolumeLow(): Boolean {
-        val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        return cur.toFloat() / max < 0.45f
-    }
-
-    fun boostMediaVolumeToRecommended() {
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val target = (max * 0.80f).toInt().coerceAtLeast(1)
-        val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        if (cur < target) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        }
-    }
 
     fun playJumpTick() = playId(sfxJumpTick, 1.0f)
     fun playCountdown() = playId(sfxCountdown, 1.0f)

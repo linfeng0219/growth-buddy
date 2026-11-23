@@ -101,14 +101,6 @@ class RopeJumpActivity : AppCompatActivity() {
         binding.tvCount.text = "0"
 
         sound = NativeSoundEngine(this)
-        if (sound.isMediaVolumeLow()) {
-            binding.btnBoostVol.visibility = View.VISIBLE
-        }
-        binding.btnBoostVol.setOnClickListener {
-            sound.boostMediaVolumeToRecommended()
-            sound.playJumpTick()
-            binding.btnBoostVol.visibility = View.GONE
-        }
 
         val options = PoseDetectorOptions.Builder()
             .setDetectorMode(PoseDetectorOptions.STREAM_MODE)

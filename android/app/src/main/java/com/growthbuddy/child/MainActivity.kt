@@ -214,13 +214,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateVolumeBoostButton()
         updater.resumePendingInstallIfAllowed()
-    }
-
-    private fun updateVolumeBoostButton() {
-        val low = !sound.isMuted() && sound.isMediaVolumeLow()
-        binding.btnBoostVolMain.visibility = if (low) View.VISIBLE else View.GONE
     }
 
     private fun setupLoginUi() {
@@ -243,14 +237,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupAppUi() {
-        binding.btnBoostVolMain.setOnClickListener {
-            sound.boostMediaVolumeToRecommended()
-            sound.playPat()
-            updateVolumeBoostButton()
-        }
         binding.ivHeaderAvatar.setOnClickListener { showAvatarPickerDialog() }
         binding.btnMute.setOnClickListener { toggleMute() }
-        binding.btnAppUpdate.setOnClickListener { updater.checkForUpdate(silent = false) }
         binding.btnRefresh.setOnClickListener { loadChildState() }
         binding.btnLogout.setOnClickListener { confirmLogout() }
 
@@ -711,7 +699,6 @@ class MainActivity : AppCompatActivity() {
                 state = parsed
                 sound.setMuted(parsed.child.muted)
                 renderAll(parsed)
-                updateVolumeBoostButton()
             } else {
                 Toast.makeText(this, res.error ?: "同步状态失败", Toast.LENGTH_SHORT).show()
             }
@@ -1322,7 +1309,6 @@ class MainActivity : AppCompatActivity() {
         sound.setMuted(nextMute)
         binding.btnMute.text = if (nextMute) "🔇" else "🔊"
         if (!nextMute) sound.playPat()
-        updateVolumeBoostButton()
         api.request("PATCH", "/api/child/mute", JSONObject().put("muted", nextMute)) { }
     }
 
