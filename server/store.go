@@ -176,6 +176,7 @@ func (s *Store) initSchema() error {
 			username TEXT NOT NULL UNIQUE,
 			display_name TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
+			password_plain TEXT NOT NULL DEFAULT '',
 			created_at INTEGER NOT NULL
 		);
 
@@ -186,6 +187,7 @@ func (s *Store) initSchema() error {
 			avatar_idx INTEGER NOT NULL DEFAULT 0,
 			username TEXT NOT NULL DEFAULT '',
 			password_hash TEXT NOT NULL DEFAULT '',
+			password_plain TEXT NOT NULL DEFAULT '',
 			pin TEXT NOT NULL DEFAULT '',
 			pet_name TEXT NOT NULL DEFAULT '',
 			xp INTEGER NOT NULL DEFAULT 0,
@@ -331,11 +333,13 @@ func (s *Store) initSchema() error {
 	}
 
 	migrations := [][3]string{
+		{"parents", "password_plain", "password_plain TEXT NOT NULL DEFAULT ''"},
 		{"parents", "avatar_idx", "avatar_idx INTEGER NOT NULL DEFAULT 0"},
 		{"parents", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"parents", "avatar_updated_at", "avatar_updated_at INTEGER NOT NULL DEFAULT 0"},
 		{"children", "username", "username TEXT NOT NULL DEFAULT ''"},
 		{"children", "password_hash", "password_hash TEXT NOT NULL DEFAULT ''"},
+		{"children", "password_plain", "password_plain TEXT NOT NULL DEFAULT ''"},
 		{"children", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"children", "avatar_updated_at", "avatar_updated_at INTEGER NOT NULL DEFAULT 0"},
 		{"children", "pet_health", "pet_health TEXT NOT NULL DEFAULT 'normal'"},
@@ -688,8 +692,8 @@ func (s *Store) RegisterFamily(in RegisterFamilyInput) (*RegisterFamilyResult, e
 			return err
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO parents (id, family_id, username, display_name, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-			parentID, familyID, cleanUser, displayName, HashPassword(in.Password), now,
+			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			parentID, familyID, cleanUser, displayName, HashPassword(in.Password), in.Password, now,
 		); err != nil {
 			return err
 		}
@@ -700,12 +704,14 @@ func (s *Store) RegisterFamily(in RegisterFamilyInput) (*RegisterFamilyResult, e
 		}
 		childID := GenID("kid_")
 		childPassHash := ""
+		childPassPlain := ""
 		if cleanChildUser != "" {
 			childPassHash = HashPassword(in.ChildPassword)
+			childPassPlain = in.ChildPassword
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, pin, pet_name, xp, coupons, created_at) VALUES (?, ?, ?, 0, ?, ?, '', '', 0, 0, ?)",
-			childID, familyID, firstChildName, cleanChildUser, childPassHash, now,
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, created_at) VALUES (?, ?, ?, 0, ?, ?, ?, '', '', 0, 0, ?)",
+			childID, familyID, firstChildName, cleanChildUser, childPassHash, childPassPlain, now,
 		); err != nil {
 			return err
 		}
@@ -2086,8 +2092,8 @@ func (s *Store) AddParent(familyID, username, displayName, password string, avat
 		id := GenID("par_")
 		ts := nowMs()
 		if _, err := tx.Exec(
-			"INSERT INTO parents (id, family_id, username, display_name, password_hash, avatar_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			id, familyID, cleanUser, disp, HashPassword(password), avIdx, ts,
+			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, avatar_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			id, familyID, cleanUser, disp, HashPassword(password), password, avIdx, ts,
 		); err != nil {
 			return err
 		}
@@ -2110,19 +2116,20 @@ func (s *Store) UpdateParent(familyID, parentID string, in UpdateParentInput) (*
 	}
 	var out *ParentDTO
 	err := s.db.WithTx(func(tx *Tx) error {
-		var curUser, curDisp, curHash, curData string
+		var curUser, curDisp, curHash, curPlain, curData string
 		var curIdx int
 		var updatedAt, createdAt int64
 		if err := tx.QueryRow(
-			"SELECT username, display_name, password_hash, avatar_idx, avatar_data, avatar_updated_at, created_at FROM parents WHERE id = ? AND family_id = ?",
+			"SELECT username, display_name, password_hash, password_plain, avatar_idx, avatar_data, avatar_updated_at, created_at FROM parents WHERE id = ? AND family_id = ?",
 			func(r SQLiteRow) error {
 				curUser = r.String(0)
 				curDisp = r.String(1)
 				curHash = r.String(2)
-				curIdx = clampAvatarIdx(r.Int(3))
-				curData = r.String(4)
-				updatedAt = r.Int64(5)
-				createdAt = r.Int64(6)
+				curPlain = r.String(3)
+				curIdx = clampAvatarIdx(r.Int(4))
+				curData = r.String(5)
+				updatedAt = r.Int64(6)
+				createdAt = r.Int64(7)
 				return nil
 			}, parentID, familyID,
 		); err != nil {
@@ -2152,6 +2159,7 @@ func (s *Store) UpdateParent(familyID, parentID string, in UpdateParentInput) (*
 				return errors.New("密码至少 4 位")
 			}
 			curHash = HashPassword(*in.Password)
+			curPlain = *in.Password
 		}
 		if in.AvatarIdx != nil {
 			curIdx = clampAvatarIdx(*in.AvatarIdx)
@@ -2165,8 +2173,8 @@ func (s *Store) UpdateParent(familyID, parentID string, in UpdateParentInput) (*
 			updatedAt = nowMs()
 		}
 		if _, err := tx.Exec(
-			"UPDATE parents SET username = ?, display_name = ?, password_hash = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ? WHERE id = ? AND family_id = ?",
-			curUser, curDisp, curHash, curIdx, curData, updatedAt, parentID, familyID,
+			"UPDATE parents SET username = ?, display_name = ?, password_hash = ?, password_plain = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ? WHERE id = ? AND family_id = ?",
+			curUser, curDisp, curHash, curPlain, curIdx, curData, updatedAt, parentID, familyID,
 		); err != nil {
 			return err
 		}
@@ -2256,12 +2264,14 @@ func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username,
 		}
 		id := GenID("kid_")
 		passHash := ""
+		passPlain := ""
 		if cleanUser != "" {
 			passHash = HashPassword(password)
+			passPlain = password
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, pin, pet_name, xp, coupons, age, quiz_difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?)",
-			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, cleanPin, normAge, normDiff, nowMs(),
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, age, quiz_difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?)",
+			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, passPlain, cleanPin, normAge, normDiff, nowMs(),
 		); err != nil {
 			return err
 		}
@@ -2286,20 +2296,21 @@ type UpdateChildInput struct {
 }
 
 func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChildInput) (map[string]any, error) {
-	var curName, curUser, curPassHash, curPin, curPet, curAvatarData, curDiff string
+	var curName, curUser, curPassHash, curPassPlain, curPin, curPet, curAvatarData, curDiff string
 	var curAvatar, curAge int
 	var curAvatarUpdated int64
-	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, pin, pet_name, age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, password_plain, pin, pet_name, age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
 		curName = r.String(0)
 		curAvatar = clampAvatarIdx(r.Int(1))
 		curAvatarData = r.String(2)
 		curAvatarUpdated = r.Int64(3)
 		curUser = r.String(4)
 		curPassHash = r.String(5)
-		curPin = r.String(6)
-		curPet = r.String(7)
-		curAge = NormalizeAge(r.Int(8))
-		curDiff = NormalizeDifficulty(r.String(9))
+		curPassPlain = r.String(6)
+		curPin = r.String(7)
+		curPet = r.String(8)
+		curAge = NormalizeAge(r.Int(9))
+		curDiff = NormalizeDifficulty(r.String(10))
 		return nil
 	}, childID, familyID); err != nil {
 		return nil, ErrNotFound
@@ -2347,6 +2358,7 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 			}
 		} else {
 			curPassHash = ""
+			curPassPlain = ""
 		}
 	}
 	if in.Password != nil && *in.Password != "" {
@@ -2357,6 +2369,7 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 			return nil, errors.New("请先设置孩子登录账号")
 		}
 		curPassHash = HashPassword(*in.Password)
+		curPassPlain = *in.Password
 	} else if curUser != "" && curPassHash == "" {
 		return nil, errors.New("首次设置独立登录账号时请同时设置至少 4 位密码")
 	}
@@ -2369,8 +2382,8 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 	}
 
 	if _, err := tx.Exec(
-		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, pin = ?, pet_name = ?, age = ?, quiz_difficulty = ? WHERE id = ? AND family_id = ?",
-		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPin, curPet, curAge, curDiff, childID, familyID,
+		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, password_plain = ?, pin = ?, pet_name = ?, age = ?, quiz_difficulty = ? WHERE id = ? AND family_id = ?",
+		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPassPlain, curPin, curPet, curAge, curDiff, childID, familyID,
 	); err != nil {
 		return nil, err
 	}
@@ -2792,20 +2805,21 @@ func (s *Store) GetAdminOverview(todayStr string) (map[string]any, error) {
 			return nil
 		})
 
-		parentsByFam := make(map[string][]ParentDTO)
+		parentsByFam := make(map[string][]map[string]any)
 		parentCount := 0
-		_ = tx.Query("SELECT id, family_id, username, display_name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, created_at FROM parents ORDER BY created_at ASC", func(r SQLiteRow) error {
+		_ = tx.Query("SELECT id, family_id, username, display_name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, password_plain, created_at FROM parents ORDER BY created_at ASC", func(r SQLiteRow) error {
 			pid := r.String(0)
-			p := ParentDTO{
-				ID:          pid,
-				FamilyID:    r.String(1),
-				Username:    r.String(2),
-				DisplayName: r.String(3),
-				AvatarIdx:   clampAvatarIdx(r.Int(4)),
-				AvatarURL:   avatarURL("parent", pid, r.Int(5) != 0, r.Int64(6)),
-				CreatedAt:   r.Int64(7),
-			}
-			parentsByFam[p.FamilyID] = append(parentsByFam[p.FamilyID], p)
+			fid := r.String(1)
+			parentsByFam[fid] = append(parentsByFam[fid], map[string]any{
+				"id":             pid,
+				"family_id":      fid,
+				"username":       r.String(2),
+				"display_name":   r.String(3),
+				"avatar_idx":     clampAvatarIdx(r.Int(4)),
+				"avatar_url":     avatarURL("parent", pid, r.Int(5) != 0, r.Int64(6)),
+				"password_plain": r.String(7),
+				"created_at":     r.Int64(8),
+			})
 			parentCount++
 			return nil
 		})
@@ -2821,10 +2835,10 @@ func (s *Store) GetAdminOverview(todayStr string) (map[string]any, error) {
 
 		childrenByFam := make(map[string][]map[string]any)
 		childCount := 0
-		_ = tx.Query("SELECT id, family_id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, created_at FROM children ORDER BY created_at ASC", func(r SQLiteRow) error {
+		_ = tx.Query("SELECT id, family_id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, password_plain, pin, pet_name, xp, coupons, created_at FROM children ORDER BY created_at ASC", func(r SQLiteRow) error {
 			cid := r.String(0)
 			fid := r.String(1)
-			xp := r.Int(10)
+			xp := r.Int(11)
 			childrenByFam[fid] = append(childrenByFam[fid], map[string]any{
 				"id":             cid,
 				"family_id":      fid,
@@ -2833,13 +2847,14 @@ func (s *Store) GetAdminOverview(todayStr string) (map[string]any, error) {
 				"avatar_url":     avatarURL("child", cid, r.Int(4) != 0, r.Int64(5)),
 				"username":       r.String(6),
 				"has_password":   r.String(7) != "",
-				"has_pin":        r.String(8) != "",
-				"pet_name":       r.String(9),
+				"password_plain": r.String(8),
+				"has_pin":        r.String(9) != "",
+				"pet_name":       r.String(10),
 				"xp":             xp,
 				"level":          LevelForXP(xp),
-				"coupons":        r.Int(11),
+				"coupons":        r.Int(12),
 				"today_checkins": todayCountMap[cid],
-				"created_at":     r.Int64(12),
+				"created_at":     r.Int64(13),
 			})
 			childCount++
 			return nil
@@ -2858,7 +2873,7 @@ func (s *Store) GetAdminOverview(todayStr string) (map[string]any, error) {
 		for _, f := range families {
 			ps := parentsByFam[f.ID]
 			if ps == nil {
-				ps = make([]ParentDTO, 0)
+				ps = make([]map[string]any, 0)
 			}
 			cs := childrenByFam[f.ID]
 			if cs == nil {
@@ -2938,11 +2953,12 @@ func (s *Store) AdminDeleteFamily(familyID string) error {
 func (s *Store) AdminUpdateParent(parentID string, username, displayName, password *string) (*ParentDTO, error) {
 	var out *ParentDTO
 	err := s.db.WithTx(func(tx *Tx) error {
-		var curUser, curDisp, curHash string
-		if err := tx.QueryRow("SELECT username, display_name, password_hash FROM parents WHERE id = ?", func(r SQLiteRow) error {
+		var curUser, curDisp, curHash, curPlain string
+		if err := tx.QueryRow("SELECT username, display_name, password_hash, password_plain FROM parents WHERE id = ?", func(r SQLiteRow) error {
 			curUser = r.String(0)
 			curDisp = r.String(1)
 			curHash = r.String(2)
+			curPlain = r.String(3)
 			return nil
 		}, parentID); err != nil {
 			return ErrNotFound
@@ -2971,8 +2987,9 @@ func (s *Store) AdminUpdateParent(parentID string, username, displayName, passwo
 				return errors.New("密码至少 4 位")
 			}
 			curHash = HashPassword(*password)
+			curPlain = *password
 		}
-		if _, err := tx.Exec("UPDATE parents SET username = ?, display_name = ?, password_hash = ? WHERE id = ?", curUser, curDisp, curHash, parentID); err != nil {
+		if _, err := tx.Exec("UPDATE parents SET username = ?, display_name = ?, password_hash = ?, password_plain = ? WHERE id = ?", curUser, curDisp, curHash, curPlain, parentID); err != nil {
 			return err
 		}
 		out = &ParentDTO{ID: parentID, Username: curUser, DisplayName: curDisp}

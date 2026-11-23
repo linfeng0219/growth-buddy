@@ -104,7 +104,7 @@
     <div class="panel">
       <div class="tabs" style="margin:0 0 14px">
         <button id="tabPLogin" class="on" type="button">家长登录</button>
-        <button id="tabPReg" type="button">注册新家庭</button>
+        <button id="tabPReg" type="button">创建家庭</button>
       </div>
       <div id="pLoginBox">
         <div class="field"><label>家长账号</label><input type="text" id="pLoginUser" placeholder="输入家长账号"></div>
@@ -955,7 +955,7 @@
   function setAuthTab(reg){
     $id("tabPLogin").classList.toggle("on",!reg);$id("tabPReg").classList.toggle("on",reg);
     $id("pLoginBox").style.display=reg?"none":"";$id("pRegBox").style.display=reg?"":"none";
-    $id("authTitle").textContent=reg?"注册新家庭":"家长登录";
+    $id("authTitle").textContent=reg?"创建新家庭":"家长登录";
   }
   $id("tabPLogin").addEventListener("click",function(){setAuthTab(false);});
   $id("tabPReg").addEventListener("click",function(){setAuthTab(true);});

@@ -278,6 +278,30 @@
   </div>
 </div>
 
+<!-- 一键重置用户密码弹窗 -->
+<div class="modal-backdrop" id="resetPwdModal">
+  <div class="modal-card" style="text-align:left;max-width:400px">
+    <h3 id="rpTitle" style="font-family:var(--serif);margin-bottom:6px">重置账号密码</h3>
+    <p id="rpSub" style="font-size:12.5px;color:var(--muted);margin-bottom:10px"></p>
+    <div class="field">
+      <label>新密码（至少4位，重置后管理台会同步明文展示）</label>
+      <input type="text" id="rpPass" placeholder="输入或点下方快捷密码" autocomplete="off">
+      <div class="quick-chips">
+        <button type="button" class="qchip" data-qtarget="rpPass" data-qval="123456">123456</button>
+        <button type="button" class="qchip" data-qtarget="rpPass" data-qval="666666">666666</button>
+        <button type="button" class="qchip" data-qtarget="rpPass" data-qval="888888">888888</button>
+        <button type="button" class="qchip" data-qtarget="rpPass" data-qval="202601">202601</button>
+        <button type="button" class="qchip" id="btnGenRandPwd">🎲 随机6位</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="primary" id="btnSaveResetPwd" style="flex:1">确认重置</button>
+      <button class="ghost" id="btnCancelResetPwd">取消</button>
+    </div>
+    <div class="msg" id="rpMsg"></div>
+  </div>
+</div>
+
 <script src="/shared/pet-art.js"></script>
 <script src="/shared/changelog-modal.js"></script>
 <script>
@@ -300,6 +324,7 @@
   var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }
   var childCtx=null;  // { mode: 'create'|'edit', familyId, child }
   var renameFamCtx=null;
+  var resetPwdCtx=null; // { kind: 'parent'|'child', id, label, username }
 
   function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   function token(){return localStorage.getItem("gb_admin_token")||"";}
@@ -380,10 +405,13 @@
       card.className="fam-card";
 
       var parentRows=f.parents.map(function(p){
+        var pwdTag=p.password_plain
+          ? '<span class="tag" style="background:#fff4e5;color:#9c5812">🔑 '+GBArt.esc(p.password_plain)+'</span>'
+          : '<span class="tag gray">🔑 旧密码未记录</span>';
         return '<div class="user-row" data-pid="'+p.id+'">'
           +'<div class="user-meta">'+GBArt.avatarHtml(p.avatar_idx,p.avatar_url,24)
-          +'<strong>'+GBArt.esc(p.display_name)+'</strong><span class="tag">@'+GBArt.esc(p.username)+'</span></div>'
-          +'<div style="display:flex;gap:6px"><button class="sm edit-par" data-pid="'+p.id+'">编辑/改密</button><button class="sm danger del-par" data-pid="'+p.id+'">删除</button></div>'
+          +'<strong>'+GBArt.esc(p.display_name)+'</strong><span class="tag">@'+GBArt.esc(p.username)+'</span>'+pwdTag+'</div>'
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm reset-par-pw" data-pid="'+p.id+'">重置密码</button><button class="sm edit-par" data-pid="'+p.id+'">编辑</button><button class="sm danger del-par" data-pid="'+p.id+'">删除</button></div>'
           +'</div>';
       }).join("");
 
@@ -391,11 +419,16 @@
         var accTag=c.username
           ? '<span class="tag amber">App账号 @'+GBArt.esc(c.username)+'</span>'
           : '<span class="tag gray">未设App账号</span>';
+        var pwdTag=c.username
+          ? (c.password_plain
+              ? '<span class="tag" style="background:#fff4e5;color:#9c5812">🔑 '+GBArt.esc(c.password_plain)+'</span>'
+              : '<span class="tag gray">🔑 '+(c.has_password?'旧密码未记录':'未设密码')+'</span>')
+          : '';
         return '<div class="user-row" data-cid="'+c.id+'">'
           +'<div class="user-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)
-          +'<strong>'+GBArt.esc(c.name)+'</strong>'+accTag
+          +'<strong>'+GBArt.esc(c.name)+'</strong>'+accTag+pwdTag
           +'<span style="font-size:12px;color:var(--muted)">Lv.'+(c.level+1)+' · '+c.xp+' XP · 🥚'+c.coupons+' · 今日打卡 '+c.today_checkins+'</span></div>'
-          +'<div style="display:flex;gap:6px"><button class="sm edit-kid" data-cid="'+c.id+'">编辑/设账号密码</button><button class="sm danger del-kid" data-cid="'+c.id+'">删除</button></div>'
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm reset-kid-pw" data-cid="'+c.id+'">重置密码</button><button class="sm edit-kid" data-cid="'+c.id+'">编辑</button><button class="sm danger del-kid" data-cid="'+c.id+'">删除</button></div>'
           +'</div>';
       }).join("");
 
@@ -432,6 +465,12 @@
       card.querySelector(".add-par").addEventListener("click",function(){openParentModal("create",f.id,null);});
       card.querySelector(".add-kid").addEventListener("click",function(){openChildModal("create",f.id,null);});
 
+      card.querySelectorAll(".reset-par-pw").forEach(function(btn){
+        btn.addEventListener("click",function(){
+          var p=f.parents.find(function(x){return x.id===btn.getAttribute("data-pid");});
+          if(p) openResetPwdModal("parent",p.id,p.display_name,p.username,p.password_plain||"");
+        });
+      });
       card.querySelectorAll(".edit-par").forEach(function(btn){
         btn.addEventListener("click",function(){
           var p=f.parents.find(function(x){return x.id===btn.getAttribute("data-pid");});
@@ -443,6 +482,14 @@
           if(!this._arm){this._arm=true;this.textContent="确认删除？";var s=this;setTimeout(function(){s._arm=false;s.textContent="删除";},3500);return;}
           try{await api("/api/admin/parents/"+btn.getAttribute("data-pid"),{method:"DELETE"});await loadOverview();}
           catch(e){note("globalMsg",e.message,true);}
+        });
+      });
+      card.querySelectorAll(".reset-kid-pw").forEach(function(btn){
+        btn.addEventListener("click",function(){
+          var c=f.children.find(function(x){return x.id===btn.getAttribute("data-cid");});
+          if(!c) return;
+          if(!c.username){openChildModal("edit",f.id,c);note("cmMsg","该儿童尚未设置登录账号，请先填好账号与密码");return;}
+          openResetPwdModal("child",c.id,c.name,c.username,c.password_plain||"");
         });
       });
       card.querySelectorAll(".edit-kid").forEach(function(btn){
@@ -569,6 +616,31 @@
     $id("childModal").classList.add("show");
   }
   $id("btnCancelChild").addEventListener("click",function(){$id("childModal").classList.remove("show");});
+  function openResetPwdModal(kind,id,label,username,curPass){
+    resetPwdCtx={kind:kind,id:id,label:label,username:username};
+    $id("rpTitle").textContent="重置"+(kind==="parent"?"家长":"儿童")+"密码";
+    $id("rpSub").textContent=label+"（账号 @"+username+"）"+(curPass?(" · 当前密码："+curPass):"");
+    $id("rpPass").value="";
+    $id("rpMsg").textContent="";
+    $id("resetPwdModal").classList.add("show");
+  }
+  $id("btnGenRandPwd").addEventListener("click",function(){
+    $id("rpPass").value=String(Math.floor(100000+Math.random()*900000));
+  });
+  $id("btnCancelResetPwd").addEventListener("click",function(){$id("resetPwdModal").classList.remove("show");resetPwdCtx=null;});
+  $id("btnSaveResetPwd").addEventListener("click",async function(){
+    if(!resetPwdCtx) return;
+    var pw=$id("rpPass").value.trim();
+    if(pw.length<4){note("rpMsg","新密码至少 4 位",true);return;}
+    try{
+      var ep=(resetPwdCtx.kind==="parent"?"/api/admin/parents/":"/api/admin/children/")+resetPwdCtx.id;
+      await api(ep,{method:"PATCH",body:JSON.stringify({password:pw})});
+      $id("resetPwdModal").classList.remove("show");
+      note("globalMsg","已将 @"+resetPwdCtx.username+" 的密码重置为："+pw);
+      resetPwdCtx=null;
+      await loadOverview();
+    }catch(e){note("rpMsg",e.message,true);}
+  });
   $id("btnCancelRenameFam").addEventListener("click",function(){$id("renameFamModal").classList.remove("show");});
   $id("btnSaveRenameFam").addEventListener("click",async function(){
     if(!renameFamCtx) return;

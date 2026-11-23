@@ -1460,7 +1460,7 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 404, map[string]string{"error": "目标家庭不存在"})
 			return
 		}
-		created, err := a.store.AddParent(famID, mapStr(body, "username"), mapStr(body, "displayName"), mapStr(body, "password"))
+		created, err := a.store.AddParent(famID, mapStr(body, "username"), mapStr(body, "displayName"), mapStr(body, "password"), mapInt(body, "avatar_idx", 0))
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return

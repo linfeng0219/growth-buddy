@@ -749,3 +749,81 @@ func TestParentCoManagement(t *testing.T) {
 		t.Fatalf("expected 1 parent remaining after delete: %d %+v", st, ovAfter)
 	}
 }
+
+func TestAdminCredentialsAndPasswordReset(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "密码查看之家", "displayName": "妈妈", "username": "vis_mom", "password": "momPass1",
+		"childName": "大宝", "childUsername": "vis_kid", "childPassword": "kidPass1",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d %+v", st, reg)
+	}
+	parentID := reg["parent"].(map[string]any)["id"].(string)
+	childID := reg["firstChildId"].(string)
+	momTok := reg["token"].(string)
+
+	// Parent overview must NOT leak password_plain
+	st, pOv := doJSON(t, ts, "GET", "/api/parent/overview", momTok, nil)
+	if st != 200 {
+		t.Fatalf("parent overview failed: %d", st)
+	}
+	if _, leaked := pOv["parents"].([]any)[0].(map[string]any)["password_plain"]; leaked {
+		t.Fatalf("parent overview should not expose password_plain")
+	}
+
+	// Admin login and inspect credentials
+	st, aLogin := doJSON(t, ts, "POST", "/api/auth/admin-login", "", map[string]any{
+		"username": "admin", "password": "admin1234",
+	})
+	if st != 200 {
+		t.Fatalf("admin login failed: %d", st)
+	}
+	adminTok := aLogin["token"].(string)
+
+	st, aOv := doJSON(t, ts, "GET", "/api/admin/overview", adminTok, nil)
+	if st != 200 {
+		t.Fatalf("admin overview failed: %d", st)
+	}
+	fam := aOv["families"].([]any)[0].(map[string]any)
+	admPar := fam["parents"].([]any)[0].(map[string]any)
+	admKid := fam["children"].([]any)[0].(map[string]any)
+	if admPar["username"] != "vis_mom" || admPar["password_plain"] != "momPass1" {
+		t.Fatalf("expected admin to see parent credentials, got %+v", admPar)
+	}
+	if admKid["username"] != "vis_kid" || admKid["password_plain"] != "kidPass1" {
+		t.Fatalf("expected admin to see child credentials, got %+v", admKid)
+	}
+
+	// Admin resets both passwords
+	st, _ = doJSON(t, ts, "PATCH", "/api/admin/parents/"+parentID, adminTok, map[string]any{"password": "momNew99"})
+	if st != 200 {
+		t.Fatalf("admin reset parent password failed: %d", st)
+	}
+	st, _ = doJSON(t, ts, "PATCH", "/api/admin/children/"+childID, adminTok, map[string]any{"password": "kidNew99"})
+	if st != 200 {
+		t.Fatalf("admin reset child password failed: %d", st)
+	}
+
+	// New passwords visible in admin overview and usable for login
+	st, aOv2 := doJSON(t, ts, "GET", "/api/admin/overview", adminTok, nil)
+	if st != 200 {
+		t.Fatalf("admin overview2 failed: %d", st)
+	}
+	fam2 := aOv2["families"].([]any)[0].(map[string]any)
+	if fam2["parents"].([]any)[0].(map[string]any)["password_plain"] != "momNew99" {
+		t.Fatalf("expected updated parent password_plain")
+	}
+	if fam2["children"].([]any)[0].(map[string]any)["password_plain"] != "kidNew99" {
+		t.Fatalf("expected updated child password_plain")
+	}
+	st, pl := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{"username": "vis_mom", "password": "momNew99"})
+	if st != 200 || pl["role"] != "parent" {
+		t.Fatalf("parent login with reset password failed: %d %+v", st, pl)
+	}
+	st, cl := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{"username": "vis_kid", "password": "kidNew99"})
+	if st != 200 || cl["role"] != "child" {
+		t.Fatalf("child login with reset password failed: %d %+v", st, cl)
+	}
+}

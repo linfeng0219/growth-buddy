@@ -76,6 +76,7 @@ gradle assembleRelease -Parm64Only=true
 ## 最近更新记录
 
 - **2026-11-23**：
+  - 管理台账号密码透出与一键重置、首页「创建家庭」分流及萌宠新图标：系统管理台支持查看家庭内每个家长与儿童账号的当前密码并支持一键快捷重置；官网首页将「进入家长端」改为默认跳转「创建家庭」页（`/parent.html?register=1`），并在同行保留「直接登录家长端」直达入口；安卓 App 新增原创「糖霜小绿芽萌宠」自适应与高清桌面图标（`ic_launcher` / `ic_launcher_round`）。
   - 家长端新增「现有家长档案管理」：在「家庭与档案」页对等展示当前家庭所有家长成员（标明当前登录、账号、加入日期与头像），支持为任意家长修改称呼/账号、重置密码、更换或上传自定义头像及安全移除其他共同管理家长。
   - 修复安卓全端紧凑型 Material3 按钮裁剪问题：为主页顶栏静音（`🔊`）、刷新（`🔄`）、退出按钮以及小剧场/专注/信箱/跳绳/家长内嵌页等高度 `< 48dp` 按钮补全 `insetTop/insetBottom/minHeight/paddingVertical` 归零与安全触摸尺寸，确保图标和文字完整居中展示。
   - 彻底清理历史兼容包袱并统一前后端协议升级（协议代次 `v2`）：前后端全面统一至 `POST /api/auth/login` 唯一身份登录入口，彻底删除旧版 `/api/auth/parent-login`、`/api/auth/child-login`、`/api/family/roster`、旧题库写接口、早期纯前端备份导入 `import-backup` 以及安卓 `fallbackSplitLogin` 回退代码；儿童接口严格锁定为 `child` 令牌专用；OTA 升级接口新增 `minSupportedVersionCode` 强制升级底线机制，管理台发版默认勾选「强制升级」，安卓端改为所有用户启动即静默检查升级，配合请求头 `X-App-VersionCode` 实现全端同步升级。
