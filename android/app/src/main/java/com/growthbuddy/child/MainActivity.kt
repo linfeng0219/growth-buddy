@@ -206,10 +206,9 @@ class MainActivity : AppCompatActivity() {
             loadChildState()
         } else {
             showLoginView()
+            // 仅在登录页静默检查远程升级（有新版则提示，不打扰儿童页与家长页日常使用）
+            updater.checkForUpdate(silent = true)
         }
-
-        // 启动时静默检查远程升级（有新版则自动弹窗提示）
-        updater.checkForUpdate(silent = true)
     }
 
     override fun onResume() {
@@ -312,7 +311,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshServerFooter() {
-        binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · ${BuildConfig.VERSION_NAME} ⓘ"
+        binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · 版本 ${BuildConfig.VERSION_NAME} · 更新记录 ⓘ"
     }
 
     private fun showChangelogDialog() {

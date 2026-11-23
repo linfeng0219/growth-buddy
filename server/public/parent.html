@@ -137,7 +137,6 @@
       <div class="header-meta">
         <span class="pill" id="parentKidsPill">— 位孩子</span>
         <span class="pill amber" id="parentTasksPill">— 项启用任务</span>
-        <button type="button" class="pill" id="parentVerBadge" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9;cursor:pointer">版本加载中...</button>
       </div>
     </header>
 
@@ -690,10 +689,8 @@
 </div>
 
 <script src="/shared/pet-art.js"></script>
-<script src="/shared/changelog-modal.js"></script>
 <script>
 (function(){
-  if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("parentVerBadge"),"");
   GBArt.enableEyeTracking();
   var $id=function(id){return document.getElementById(id);};
   var data=null, previewKidId=null, newKidAv=0, previewSilo=false, editingTaskId=null;

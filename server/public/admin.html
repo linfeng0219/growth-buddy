@@ -89,6 +89,13 @@
         <button class="ghost" id="btnRefresh">🔄 刷新数据</button>
       </div>
       <div id="familiesContainer"></div>
+      <div class="panel" style="margin-top:14px">
+        <div class="sub-head" style="margin-bottom:8px">
+          <span>📋 系统版本与更新内容</span>
+          <span class="pill" id="adminSysVerTag" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9">加载中...</span>
+        </div>
+        <div id="adminChangelogBody" style="font-size:13px;color:var(--ink-soft);line-height:1.7">正在读取版本更新记录...</div>
+      </div>
     </div>
 
     <div id="secReleases" style="display:none">
@@ -207,6 +214,18 @@
 <script>
 (function(){
   if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("adminVerBadge"),"");
+  fetch("/api/changelog").then(function(r){return r.json();}).then(function(d){
+    var tag=$id("adminSysVerTag"), body=$id("adminChangelogBody");
+    if(tag) tag.textContent="当前系统版本 v"+(d.version||"—");
+    var list=d.changelog||[];
+    if(!list.length){if(body)body.textContent="暂无更新日志";return;}
+    if(body){
+      body.innerHTML=list.slice(0,5).map(function(entry){
+        var items=(entry.items||[]).map(function(x){return '<li style="margin:2px 0">'+String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;")+'</li>';}).join("");
+        return '<div style="margin-bottom:10px"><div style="font-weight:700;color:var(--ink)">📅 '+String(entry.date||"").replace(/</g,"&lt;")+(entry.title?(' · '+String(entry.title).replace(/</g,"&lt;")):"")+'</div><ul style="padding-left:18px;margin-top:4px">'+items+'</ul></div>';
+      }).join("");
+    }
+  }).catch(function(){});
   var $id=function(id){return document.getElementById(id);};
   var data=null;
   var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }
