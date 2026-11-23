@@ -319,6 +319,21 @@ func (s *Store) initSchema() error {
 			image_data TEXT NOT NULL,
 			created_at INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS family_letters (
+			id TEXT PRIMARY KEY,
+			family_id TEXT NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+			child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			sender_role TEXT NOT NULL,
+			sender_name TEXT NOT NULL,
+			stamp TEXT NOT NULL DEFAULT '💌',
+			title TEXT NOT NULL DEFAULT '',
+			content TEXT NOT NULL,
+			bonus_xp INTEGER NOT NULL DEFAULT 0,
+			is_read INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_family_letters_child ON family_letters(child_id, created_at DESC);
 	`
 	if err := s.db.ExecRaw(ddl); err != nil {
 		return err
@@ -572,6 +587,7 @@ type ChildSummaryDTO struct {
 	HealTarget      int     `json:"heal_target"`
 	Age             int     `json:"age"`
 	QuizDifficulty  string  `json:"quiz_difficulty"`
+	UnreadLetters   int     `json:"unread_letters"`
 }
 
 type ChildStateDTO struct {
@@ -1006,6 +1022,15 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	if err != nil {
 		return nil, err
 	}
+	var unreadLetters int
+	_ = tx.QueryRow(
+		"SELECT COUNT(*) FROM family_letters WHERE child_id = ? AND sender_role = 'parent' AND is_read = 0",
+		func(r SQLiteRow) error {
+			unreadLetters = r.Int(0)
+			return nil
+		}, childID,
+	)
+	child.UnreadLetters = unreadLetters
 
 	var fam FamilyDTO
 	_ = tx.QueryRow("SELECT id, name, family_code FROM families WHERE id = ?", func(r SQLiteRow) error {
@@ -2057,15 +2082,25 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 			return nil
 		}, familyID)
 
+		var unreadChildLetters int
+		_ = tx.QueryRow(
+			"SELECT COUNT(*) FROM family_letters WHERE family_id = ? AND sender_role = 'child' AND is_read = 0",
+			func(r SQLiteRow) error {
+				unreadChildLetters = r.Int(0)
+				return nil
+			}, familyID,
+		)
+
 		out = map[string]any{
-			"today":      todayStr,
-			"family":     fam,
-			"parent":     parent,
-			"parents":    parents,
-			"children":   childrenEnriched,
-			"tasks":      tasks,
-			"catalog":    catalog,
-			"egg_grants": grants,
+			"today":                todayStr,
+			"family":               fam,
+			"parent":               parent,
+			"parents":              parents,
+			"children":             childrenEnriched,
+			"tasks":                tasks,
+			"catalog":              catalog,
+			"egg_grants":           grants,
+			"unread_child_letters": unreadChildLetters,
 		}
 		return nil
 	})
@@ -3208,6 +3243,419 @@ func (s *Store) DeleteRelease(id string) error {
 		_ = os.Remove(filepath.Join(s.releasesDir, id+".apk"))
 	}
 	return nil
+}
+
+/* ==================== 批量作业创建 & 家长信箱 ==================== */
+
+func (s *Store) BatchCreateTasks(familyID string, items []TaskInput) ([]string, error) {
+	if len(items) == 0 {
+		return nil, errors.New("请至少解析出 1 条有效作业任务")
+	}
+	if len(items) > 30 {
+		return nil, errors.New("单次最多批量导入 30 条任务")
+	}
+	ids := make([]string, 0, len(items))
+	err := s.db.WithTx(func(tx *Tx) error {
+		var maxOrder int
+		_ = tx.QueryRow("SELECT COALESCE(MAX(sort_order), 0) FROM tasks WHERE family_id = ?", func(r SQLiteRow) error {
+			maxOrder = r.Int(0)
+			return nil
+		}, familyID)
+		for idx, in := range items {
+			label := ""
+			if in.Label != nil {
+				label = strings.TrimSpace(*in.Label)
+			}
+			if label == "" {
+				continue
+			}
+			pts := 4
+			if in.Pts != nil && *in.Pts > 0 {
+				pts = clampInt(*in.Pts, 1, 50)
+			}
+			scope := "all"
+			if in.Scope != nil && *in.Scope == "selected" {
+				scope = "selected"
+			}
+			taskType := "normal"
+			if in.TaskType != nil && *in.TaskType == "rope_jump" {
+				taskType = "rope_jump"
+			}
+			duration := 60
+			if in.DurationSec != nil && *in.DurationSec > 0 {
+				duration = clampInt(*in.DurationSec, 10, 7200)
+			}
+			target := 60
+			if in.TargetCount != nil && *in.TargetCount > 0 {
+				target = clampInt(*in.TargetCount, 1, 500)
+			}
+			timerMode := "none"
+			if in.TimerMode != nil && (*in.TimerMode == "countdown" || *in.TimerMode == "countup") {
+				timerMode = *in.TimerMode
+			}
+			requirePhoto := 0
+			if in.RequirePhoto != nil && *in.RequirePhoto {
+				requirePhoto = 1
+			}
+			repeatMode := "once"
+			if in.RepeatMode != nil && (*in.RepeatMode == "once" || *in.RepeatMode == "weekly" || *in.RepeatMode == "daily") {
+				repeatMode = *in.RepeatMode
+			}
+			repeatDays := "1,2,3,4,5,6,7"
+			if in.RepeatDays != nil && strings.TrimSpace(*in.RepeatDays) != "" {
+				repeatDays = strings.TrimSpace(*in.RepeatDays)
+			}
+			dueDate := ""
+			if repeatMode == "once" {
+				if in.DueDate != nil && strings.TrimSpace(*in.DueDate) != "" {
+					dueDate = strings.TrimSpace(*in.DueDate)
+				} else {
+					dueDate = time.Now().Format("2006-01-02")
+				}
+			}
+			emoji := "✨"
+			if taskType == "rope_jump" {
+				emoji = "🪢"
+			}
+			if in.Emoji != nil && strings.TrimSpace(*in.Emoji) != "" {
+				emoji = strings.TrimSpace(*in.Emoji)
+			}
+			assigned := make([]string, 0)
+			for _, cid := range in.ChildIDs {
+				if cid != "" {
+					assigned = append(assigned, cid)
+				}
+			}
+			if scope == "selected" && len(assigned) == 0 {
+				return errors.New("指定范围时请至少选择 1 位孩子")
+			}
+
+			tid := GenID("tsk_")
+			if _, err := tx.Exec(
+				"INSERT INTO tasks (id, family_id, emoji, icon_url, label, pts, scope, task_type, duration_sec, target_count, timer_mode, require_photo, repeat_mode, repeat_days, due_date, enabled, sort_order, created_at) VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+				tid, familyID, emoji, label, pts, scope, taskType, duration, target, timerMode, requirePhoto, repeatMode, repeatDays, dueDate, maxOrder+idx+1, nowMs(),
+			); err != nil {
+				return err
+			}
+			if scope == "selected" {
+				for _, cid := range assigned {
+					var ok string
+					if e := tx.QueryRow("SELECT id FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+						ok = r.String(0)
+						return nil
+					}, cid, familyID); e == nil && ok != "" {
+						_, _ = tx.Exec("INSERT OR IGNORE INTO task_assignments (task_id, child_id) VALUES (?, ?)", tid, cid)
+					}
+				}
+			}
+			ids = append(ids, tid)
+		}
+		if len(ids) == 0 {
+			return errors.New("未识别到有效的作业任务名称")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+type FamilyLetterDTO struct {
+	ID         string `json:"id"`
+	FamilyID   string `json:"family_id"`
+	ChildID    string `json:"child_id"`
+	ChildName  string `json:"child_name,omitempty"`
+	SenderRole string `json:"sender_role"` // parent | child
+	SenderName string `json:"sender_name"`
+	Stamp      string `json:"stamp"`
+	Title      string `json:"title"`
+	Content    string `json:"content"`
+	BonusXP    int    `json:"bonus_xp"`
+	IsRead     bool   `json:"is_read"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+func (s *Store) ListLettersForParent(familyID, childID string) ([]FamilyLetterDTO, int) {
+	list := make([]FamilyLetterDTO, 0)
+	var unreadFromChild int
+	_ = s.db.WithLock(func(tx *Tx) error {
+		_ = tx.QueryRow(
+			"SELECT COUNT(*) FROM family_letters WHERE family_id = ? AND sender_role = 'child' AND is_read = 0",
+			func(r SQLiteRow) error {
+				unreadFromChild = r.Int(0)
+				return nil
+			}, familyID,
+		)
+		q := `
+			SELECT l.id, l.family_id, l.child_id, COALESCE(c.name, '孩子'), l.sender_role, l.sender_name, l.stamp, l.title, l.content, l.bonus_xp, l.is_read, l.created_at
+			FROM family_letters l
+			LEFT JOIN children c ON c.id = l.child_id
+			WHERE l.family_id = ?`
+		args := []any{familyID}
+		if strings.TrimSpace(childID) != "" {
+			q += " AND l.child_id = ?"
+			args = append(args, strings.TrimSpace(childID))
+		}
+		q += " ORDER BY l.created_at DESC LIMIT 60"
+		return tx.Query(q, func(r SQLiteRow) error {
+			list = append(list, FamilyLetterDTO{
+				ID:         r.String(0),
+				FamilyID:   r.String(1),
+				ChildID:    r.String(2),
+				ChildName:  r.String(3),
+				SenderRole: r.String(4),
+				SenderName: r.String(5),
+				Stamp:      r.String(6),
+				Title:      r.String(7),
+				Content:    r.String(8),
+				BonusXP:    r.Int(9),
+				IsRead:     r.Int(10) != 0,
+				CreatedAt:  r.Int64(11),
+			})
+			return nil
+		}, args...)
+	})
+	return list, unreadFromChild
+}
+
+func (s *Store) SendParentLetter(familyID, parentID, childID, stamp, title, content string, bonusXP int) ([]FamilyLetterDTO, error) {
+	cleanContent := truncateRunes(strings.TrimSpace(content), 600)
+	if cleanContent == "" {
+		return nil, errors.New("请填写信件内容")
+	}
+	cleanStamp := truncateRunes(strings.TrimSpace(stamp), 8)
+	if cleanStamp == "" {
+		cleanStamp = "💌"
+	}
+	cleanTitle := truncateRunes(strings.TrimSpace(title), 40)
+	if cleanTitle == "" {
+		cleanTitle = "来自爸妈的一封信"
+	}
+	xpGift := clampInt(bonusXP, 0, 20)
+
+	created := make([]FamilyLetterDTO, 0)
+	err := s.db.WithTx(func(tx *Tx) error {
+		senderName := "爸爸妈妈"
+		_ = tx.QueryRow("SELECT display_name FROM parents WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			if n := strings.TrimSpace(r.String(0)); n != "" {
+				senderName = n
+			}
+			return nil
+		}, parentID, familyID)
+
+		var targetIDs []string
+		if childID == "" || childID == "all" {
+			_ = tx.Query("SELECT id FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+				targetIDs = append(targetIDs, r.String(0))
+				return nil
+			}, familyID)
+		} else {
+			var found string
+			_ = tx.QueryRow("SELECT id FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+				found = r.String(0)
+				return nil
+			}, childID, familyID)
+			if found == "" {
+				return errors.New("未找到收信的孩子档案")
+			}
+			targetIDs = []string{found}
+		}
+		if len(targetIDs) == 0 {
+			return errors.New("家庭里还没有孩子档案")
+		}
+		now := nowMs()
+		for i, cid := range targetIDs {
+			lid := GenID("ltr_")
+			ts := now + int64(i)
+			if _, err := tx.Exec(
+				"INSERT INTO family_letters (id, family_id, child_id, sender_role, sender_name, stamp, title, content, bonus_xp, is_read, created_at) VALUES (?, ?, ?, 'parent', ?, ?, ?, ?, ?, 0, ?)",
+				lid, familyID, cid, senderName, cleanStamp, cleanTitle, cleanContent, xpGift, ts,
+			); err != nil {
+				return err
+			}
+			created = append(created, FamilyLetterDTO{
+				ID: lid, FamilyID: familyID, ChildID: cid, SenderRole: "parent", SenderName: senderName,
+				Stamp: cleanStamp, Title: cleanTitle, Content: cleanContent, BonusXP: xpGift, IsRead: false, CreatedAt: ts,
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func (s *Store) MarkParentLettersRead(familyID, letterID, childID string) error {
+	return s.db.WithTx(func(tx *Tx) error {
+		if strings.TrimSpace(letterID) != "" {
+			_, err := tx.Exec("UPDATE family_letters SET is_read = 1 WHERE id = ? AND family_id = ? AND sender_role = 'child'", letterID, familyID)
+			return err
+		}
+		if strings.TrimSpace(childID) != "" {
+			_, err := tx.Exec("UPDATE family_letters SET is_read = 1 WHERE family_id = ? AND child_id = ? AND sender_role = 'child'", familyID, childID)
+			return err
+		}
+		_, err := tx.Exec("UPDATE family_letters SET is_read = 1 WHERE family_id = ? AND sender_role = 'child'", familyID)
+		return err
+	})
+}
+
+func (s *Store) DeleteFamilyLetter(familyID, letterID string) error {
+	return s.db.WithTx(func(tx *Tx) error {
+		_, err := tx.Exec("DELETE FROM family_letters WHERE id = ? AND family_id = ?", letterID, familyID)
+		return err
+	})
+}
+
+func (s *Store) ListLettersForChild(familyID, childID string) ([]FamilyLetterDTO, int) {
+	list := make([]FamilyLetterDTO, 0)
+	var unreadCount int
+	_ = s.db.WithLock(func(tx *Tx) error {
+		return tx.Query(`
+			SELECT id, family_id, child_id, sender_role, sender_name, stamp, title, content, bonus_xp, is_read, created_at
+			FROM family_letters
+			WHERE family_id = ? AND child_id = ?
+			ORDER BY created_at DESC LIMIT 60
+		`, func(r SQLiteRow) error {
+			dto := FamilyLetterDTO{
+				ID:         r.String(0),
+				FamilyID:   r.String(1),
+				ChildID:    r.String(2),
+				SenderRole: r.String(3),
+				SenderName: r.String(4),
+				Stamp:      r.String(5),
+				Title:      r.String(6),
+				Content:    r.String(7),
+				BonusXP:    r.Int(8),
+				IsRead:     r.Int(9) != 0,
+				CreatedAt:  r.Int64(10),
+			}
+			if dto.SenderRole == "parent" && !dto.IsRead {
+				unreadCount++
+			}
+			list = append(list, dto)
+			return nil
+		}, familyID, childID)
+	})
+	return list, unreadCount
+}
+
+func (s *Store) SendChildLetter(familyID, childID, stamp, title, content string) (*FamilyLetterDTO, error) {
+	cleanContent := truncateRunes(strings.TrimSpace(content), 600)
+	if cleanContent == "" {
+		return nil, errors.New("写一点想对爸爸妈妈说的话吧~")
+	}
+	cleanStamp := truncateRunes(strings.TrimSpace(stamp), 8)
+	if cleanStamp == "" {
+		cleanStamp = "🌟"
+	}
+	cleanTitle := truncateRunes(strings.TrimSpace(title), 40)
+	if cleanTitle == "" {
+		cleanTitle = "给爸爸妈妈的小信"
+	}
+
+	var dto *FamilyLetterDTO
+	err := s.db.WithTx(func(tx *Tx) error {
+		senderName := "宝贝"
+		if err := tx.QueryRow("SELECT name FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			if n := strings.TrimSpace(r.String(0)); n != "" {
+				senderName = n
+			}
+			return nil
+		}, childID, familyID); err != nil {
+			return errors.New("孩子档案不存在")
+		}
+		lid := GenID("ltr_")
+		now := nowMs()
+		if _, err := tx.Exec(
+			"INSERT INTO family_letters (id, family_id, child_id, sender_role, sender_name, stamp, title, content, bonus_xp, is_read, created_at) VALUES (?, ?, ?, 'child', ?, ?, ?, ?, 0, 0, ?)",
+			lid, familyID, childID, senderName, cleanStamp, cleanTitle, cleanContent, now,
+		); err != nil {
+			return err
+		}
+		dto = &FamilyLetterDTO{
+			ID: lid, FamilyID: familyID, ChildID: childID, ChildName: senderName,
+			SenderRole: "child", SenderName: senderName,
+			Stamp: cleanStamp, Title: cleanTitle, Content: cleanContent,
+			BonusXP: 0, IsRead: false, CreatedAt: now,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return dto, nil
+}
+
+func (s *Store) MarkChildLetterReadAndClaim(familyID, childID, letterID string) (int, int, error) {
+	claimedXP := 0
+	newXP := 0
+	err := s.db.WithTx(func(tx *Tx) error {
+		var xp int
+		var health string
+		var healProg int
+		if err := tx.QueryRow("SELECT xp, pet_health, heal_progress FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			xp = r.Int(0)
+			health = r.String(1)
+			healProg = r.Int(2)
+			return nil
+		}, childID, familyID); err != nil {
+			return ErrNotFound
+		}
+		newXP = xp
+
+		var ids []string
+		if strings.TrimSpace(letterID) != "" {
+			var bonus int
+			var alreadyRead int
+			if err := tx.QueryRow(
+				"SELECT bonus_xp, is_read FROM family_letters WHERE id = ? AND child_id = ? AND family_id = ? AND sender_role = 'parent'",
+				func(r SQLiteRow) error {
+					bonus = r.Int(0)
+					alreadyRead = r.Int(1)
+					return nil
+				}, letterID, childID, familyID,
+			); err == nil && alreadyRead == 0 {
+				ids = append(ids, letterID)
+				claimedXP += clampInt(bonus, 0, 20)
+			}
+		} else {
+			_ = tx.Query(
+				"SELECT id, bonus_xp FROM family_letters WHERE child_id = ? AND family_id = ? AND sender_role = 'parent' AND is_read = 0",
+				func(r SQLiteRow) error {
+					ids = append(ids, r.String(0))
+					claimedXP += clampInt(r.Int(1), 0, 20)
+					return nil
+				}, childID, familyID,
+			)
+		}
+		for _, lid := range ids {
+			if _, err := tx.Exec("UPDATE family_letters SET is_read = 1 WHERE id = ?", lid); err != nil {
+				return err
+			}
+		}
+		if claimedXP > 0 {
+			newXP = xp + claimedXP
+			if health != "" && health != "normal" {
+				healProg += claimedXP
+				target := healTargetForHealth(health)
+				if target > 0 && healProg >= target {
+					health = "normal"
+					healProg = 0
+				}
+			}
+			if _, err := tx.Exec(
+				"UPDATE children SET xp = ?, pet_health = ?, heal_progress = ? WHERE id = ? AND family_id = ?",
+				newXP, health, healProg, childID, familyID,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return claimedXP, newXP, err
 }
 
 func nonEmpty(v, def string) string {

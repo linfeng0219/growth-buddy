@@ -97,6 +97,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val mailboxLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        loadChildState()
+    }
+
     private val pickAvatarLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -282,6 +288,10 @@ class MainActivity : AppCompatActivity() {
                 if (activeComp != null) putExtra(AdventureActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
             startActivity(intent)
+        }
+        binding.btnOpenMailbox.setOnClickListener {
+            sound.playPat()
+            mailboxLauncher.launch(Intent(this, MailboxActivity::class.java))
         }
         binding.btnRunBattle.setOnClickListener {
             binding.tvBattleMsg.text = ""
@@ -509,6 +519,14 @@ class MainActivity : AppCompatActivity() {
             else -> lvSpec.talk
         }
         binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
+
+        if (c.unreadLetters > 0) {
+            binding.btnOpenMailbox.text = "📬 信箱(${c.unreadLetters}新信)"
+            binding.btnOpenMailbox.setTextColor(0xFFD97706.toInt())
+        } else {
+            binding.btnOpenMailbox.text = "📬 家长信箱"
+            binding.btnOpenMailbox.setTextColor(0xFF2F6B4F.toInt())
+        }
 
         val totalDays = st.logs.map { it.checkinDate }.toSet().size
         val doneCount = st.tasks.count { st.todayDoneIds.contains(it.id) }

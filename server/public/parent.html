@@ -156,6 +156,7 @@
       <button data-tab="logs">打卡记录与汇总</button>
       <button data-tab="studio">伙伴工作室</button>
       <button data-tab="family">家庭与档案</button>
+      <button data-tab="mailbox">📬 家长信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
     </nav>
 
     <!-- 1. 孩子总览 -->
@@ -204,6 +205,7 @@
       <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
         <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
         <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
+        <button type="button" class="sm" data-subtab="import">📋 群作业导入</button>
         <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
       </div>
 
@@ -219,7 +221,7 @@
             <input type="hidden" id="tEmoji" value="✨">
             <input type="hidden" id="tIconUrl" value="">
           </div>
-          <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="18" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
+          <div class="field" style="grid-column:span 2"><label>任务名称</label><input type="text" id="tLabel" maxlength="40" placeholder="例如：背诵古诗一首 / 练琴20分钟"></div>
         </div>
         <div class="row2">
           <div class="field"><label>奖励成长值</label><input type="number" id="tPts" value="4" min="1" max="50"></div>
@@ -285,6 +287,53 @@
         </div>
         <button class="primary" id="btnCreateTask" style="width:100%">发布任务</button>
         <div class="msg" id="taskMsg"></div>
+      </div>
+
+      <!-- 群作业纯文本批量智能导入 -->
+      <div id="subtab-import" class="panel" style="display:none">
+        <div class="panel-head">
+          <h2>📋 群作业一键粘贴拆解（纯文本）</h2>
+          <button type="button" class="sm" id="btnFillHwSample">填入示例</button>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">
+          直接把老师在微信/QQ群里发的整段作业消息粘贴进来，系统会自动切分条目、过滤通知寒暄，并智能匹配学科图标、单次打卡日期，以及书写类（正计时+拍照）/ 朗读练习类（倒计时）/ 跳绳挑战参数。
+        </p>
+        <div class="field">
+          <label>粘贴群里的作业消息</label>
+          <textarea id="hwRawText" rows="6" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="例如：&#10;11月23日今日作业：&#10;1. 语文：写第5课生字两行，朗读课文15分钟&#10;2. 数学：完成口算本第12页&#10;3. 英语：听读 Unit 2 音频10分钟&#10;4. 体育：1分钟跳绳100个&#10;请家长签字，注意按时休息。"></textarea>
+        </div>
+        <div class="row3">
+          <div class="field"><label>执行日期（单次任务）</label><input type="date" id="hwDueDate"></div>
+          <div class="field"><label>快捷选日期</label>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="sm" id="btnHwToday" style="flex:1">今天</button>
+              <button type="button" class="sm" id="btnHwTomorrow" style="flex:1">明天</button>
+            </div>
+          </div>
+          <div class="field"><label>适用孩子</label>
+            <select id="hwScope">
+              <option value="all">全体孩子都有</option>
+              <option value="selected">指定孩子</option>
+            </select>
+          </div>
+        </div>
+        <div class="scope-box" id="hwAssignBox" style="display:none;margin-bottom:10px">
+          <div style="font-size:12.5px;color:var(--ink-soft);font-weight:600">勾选接收作业的孩子：</div>
+          <div class="check-pills" id="hwChildChecks"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button type="button" class="primary" id="btnParseHw" style="flex:1">✨ 智能拆解为打卡任务</button>
+          <button type="button" class="ghost" id="btnClearHw">清空</button>
+        </div>
+        <div id="hwPreviewWrap" style="display:none;margin-top:12px;border-top:1px dashed var(--hair-2);padding-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+            <strong id="hwPreviewCount" style="font-size:13.5px;color:var(--accent)">已识别 0 条任务（发布前可微调）</strong>
+            <button type="button" class="sm" id="btnAddBlankHw">+ 手动加一条</button>
+          </div>
+          <div id="hwPreviewList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+          <button type="button" class="primary" id="btnBatchPublishHw" style="width:100%">🚀 全部发布到打卡任务</button>
+        </div>
+        <div class="msg" id="hwMsg"></div>
       </div>
 
       <div id="subtab-today" class="panel">
@@ -432,6 +481,56 @@
         <div id="questionList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
       </div>
     </section>
+
+    <!-- 5. 家长信箱（家长与孩子双向写信互动） -->
+    <section id="tab-mailbox" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>✉️ 给孩子写一封暖心信</h2>
+          <span class="pill" style="background:#fff6eb;color:#b8621b;border-color:#efd2ab">孩子会在 App 收到新信提醒并可回复</span>
+        </div>
+        <div class="row3">
+          <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
+          <div class="field"><label>信封邮票</label>
+            <select id="mailStamp">
+              <option value="💌">💌 暖心表扬</option>
+              <option value="🌟">🌟 加油打气</option>
+              <option value="🎁">🎁 惊喜小礼</option>
+              <option value="🌙">🌙 睡前寄语</option>
+              <option value="❤️">❤️ 爸爸妈妈爱的话</option>
+            </select>
+          </div>
+          <div class="field"><label>附带鼓励成长值</label>
+            <select id="mailBonusXp">
+              <option value="0">不附带（纯信件）</option>
+              <option value="2">+2 成长值（孩子拆信领取）</option>
+              <option value="5">+5 成长值（孩子拆信领取）</option>
+              <option value="10">+10 成长值（大奖励！）</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>信件标题</label><input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
+          <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
+          <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
+        </div>
+        <div class="field"><label>正文内容</label><textarea id="mailContent" rows="4" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
+        <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
+        <div class="msg" id="mailMsg"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>📬 家庭往来信件墙</h2>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="mailFilterChild" style="width:auto;min-width:110px;padding:4px 8px;font-size:12.5px"><option value="">全部孩子</option></select>
+            <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部标为已读</button>
+          </div>
+        </div>
+        <div id="parentMailboxList"></div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -479,7 +578,7 @@
         <input type="hidden" id="etEmoji" value="✨">
         <input type="hidden" id="etIconUrl" value="">
       </div>
-      <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="18"></div>
+      <div class="field" style="grid-column:span 2"><label>名称</label><input type="text" id="etLabel" maxlength="40"></div>
     </div>
     <div class="row2">
       <div class="field"><label>成长值</label><input type="number" id="etPts" min="1" max="50"></div>
@@ -740,6 +839,7 @@
     renderTasksTab();
     renderStudioTab();
     renderFamilyTab();
+    updateMailboxAndImportOptions();
   }
 
   function renderOverview(){
@@ -882,8 +982,9 @@
     document.querySelectorAll(".tabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-tab")===tg);
     });
-    ["overview","tasks","logs","studio","family"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+    ["overview","tasks","logs","studio","family","mailbox"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
     if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
+    if(tg==="mailbox"){loadParentMailbox();}
   }
 
   $id("logDateFilter").value=today();
@@ -942,7 +1043,8 @@
     document.querySelectorAll("#taskSubTabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-subtab")===st);
     });
-    ["today","add","all"].forEach(function(k){$id("subtab-"+k).style.display=(k===st)?"":"none";});
+    ["today","add","import","all"].forEach(function(k){$id("subtab-"+k).style.display=(k===st)?"":"none";});
+    if(st==="import"&&!$id("hwDueDate").value){$id("hwDueDate").value=today();}
   }
   document.querySelectorAll("#taskSubTabs button").forEach(function(b){
     b.addEventListener("click",function(){switchTaskSubTab(b.getAttribute("data-subtab"));});
@@ -1545,6 +1647,316 @@
       img.src=reader.result;
     };
     reader.readAsDataURL(f);
+  });
+
+  /* ==================== 群作业纯文本智能拆解批量导入 ==================== */
+  var parsedHwItems=[];
+  $id("hwDueDate").value=today();
+  function shiftDateStr(days){
+    var d=new Date();d.setDate(d.getDate()+days);
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  $id("btnHwToday").addEventListener("click",function(){$id("hwDueDate").value=today();});
+  $id("btnHwTomorrow").addEventListener("click",function(){$id("hwDueDate").value=shiftDateStr(1);});
+  $id("hwScope").addEventListener("change",function(){
+    $id("hwAssignBox").style.display=this.value==="selected"?"block":"none";
+  });
+  $id("btnFillHwSample").addEventListener("click",function(){
+    $id("hwRawText").value="11月23日今日作业：\n1. 语文：写第5课生字两行，朗读课文15分钟\n2. 数学：完成口算本第12页\n3. 英语：听读 Unit 2 音频10分钟\n4. 体育：1分钟跳绳100个\n请家长签字，注意早点休息。";
+    $id("btnParseHw").click();
+  });
+  $id("btnClearHw").addEventListener("click",function(){
+    $id("hwRawText").value="";
+    parsedHwItems=[];
+    $id("hwPreviewWrap").style.display="none";
+    $id("hwMsg").textContent="";
+  });
+
+  function inferHomeworkTask(rawSegment, subjectHint){
+    var text=rawSegment.trim();
+    var full=subjectHint?(subjectHint+"："+text):text;
+    var emoji="✨";
+    if(/跳绳/.test(full)) emoji="🪢";
+    else if(/语文|生字|古诗|课文|作文|日记|听写|默写|阅读|看书/.test(full)) emoji=/写|抄|日记|作文/.test(full)?"✍️":"📖";
+    else if(/数学|口算|计算|应用题|算术/.test(full)) emoji="🔢";
+    else if(/英语|单词|unit|音频|听力|跟读/i.test(full)) emoji="🎧";
+    else if(/体育|跑步|拍球|健身|锻炼/.test(full)) emoji="🏃";
+    else if(/美术|画画|手工/.test(full)) emoji="🎨";
+    else if(/音乐|练琴|钢琴|唱歌/.test(full)) emoji="🎹";
+    else if(/科学|实验|观察/.test(full)) emoji="🔬";
+
+    var taskType="normal", durSec=60, targetCount=60, timerMode="none", focusMin=15, reqPhoto=false, pts=4;
+    if(/跳绳/.test(full)){
+      taskType="rope_jump";
+      emoji="🪢";
+      var minM=full.match(/(\d+)\s*(?:分钟|分)/);
+      var secM=full.match(/(\d+)\s*秒/);
+      if(secM) durSec=Math.max(10,Math.min(600,parseInt(secM[1],10)));
+      else if(minM) durSec=Math.max(10,Math.min(600,parseInt(minM[1],10)*60));
+      var cntM=full.match(/(\d+)\s*[个下次]/);
+      if(cntM) targetCount=Math.max(10,Math.min(500,parseInt(cntM[1],10)));
+      pts=5;
+    }else{
+      var isWriting=/写|抄|练字|作业|口算|练习|试卷|听写|默写|日记|作文|描红|生字|填表|做对|习题|应用题/.test(full);
+      var isTimed=/分钟|小时|min|朗读|背诵|阅读|看书|跟读|听读|音频|听力|练琴/i.test(full);
+      if(isWriting){
+        timerMode="countup";
+        reqPhoto=true;
+        pts=5;
+      }else if(isTimed){
+        timerMode="countdown";
+        var fm=full.match(/(\d+)\s*(?:分钟|min)/i);
+        var fh=full.match(/(\d+)\s*小时/);
+        if(fm&&parseInt(fm[1],10)>0) focusMin=Math.min(120,parseInt(fm[1],10));
+        else if(fh&&parseInt(fh[1],10)>0) focusMin=Math.min(120,parseInt(fh[1],10)*60);
+        pts=4;
+      }else{
+        pts=3;
+      }
+    }
+    var label=full.replace(/[。；;，,！!]+$/,"").trim();
+    if(label.length>40) label=label.slice(0,40);
+    return {emoji:emoji,label:label,pts:pts,task_type:taskType,duration_sec:durSec,target_count:targetCount,timer_mode:timerMode,focus_min:focusMin,require_photo:reqPhoto};
+  }
+
+  function parseHomeworkText(raw){
+    var norm=(raw||"").replace(/\r\n?/g,"\n")
+      .replace(/([^\n])(\s*(?:\d+[.、)）]|[①②③④⑤⑥⑦⑧⑨⑩]))/g,"$1\n$2");
+    var lines=norm.split("\n");
+    var items=[];
+    var noiseRe=/^(今日作业|本周作业|家庭作业|作业安排|作业清单|温馨提示|注意事项|各位家长|家长朋友们|\d{1,2}月\d{1,2}日|星期[一二三四五六日天]|周[一二三四五六日])$/;
+    var tailNoiseRe=/^(请家长|注意安全|注意休息|收到请回复|按时完成|记得打卡|加油|谢谢|辛苦家长)/;
+
+    lines.forEach(function(ln){
+      var s=ln.trim();
+      if(!s||s.length<2) return;
+      s=s.replace(/^[\d]+[、.)）]\s*/,"").replace(/^[①②③④⑤⑥⑦⑧⑨⑩•·\-*]+\s*/,"").trim();
+      s=s.replace(/^(?:\d{1,2}月\d{1,2}日)?(?:今日作业|本周作业|家庭作业)[:：]?\s*/,"").trim();
+      if(!s||s.length<2) return;
+      if(noiseRe.test(s.replace(/[:：]$/,""))||tailNoiseRe.test(s)) return;
+
+      var subj="";
+      var m=s.match(/^(语文|数学|英语|科学|体育|美术|音乐|道法|道德与法治|综合实践)[:：]\s*(.+)$/);
+      var body=s;
+      if(m){ subj=m[1]; body=m[2].trim(); }
+
+      // 若同一科内含多个用逗号/分号分隔且各自像独立动作的短句（如"写生字两行，朗读课文15分钟"），自动拆为两条
+      var subs=body.split(/[；;]+/);
+      if(subs.length===1 && /[，,]/.test(body)){
+        var commaParts=body.split(/[，,]+/).map(function(x){return x.trim();}).filter(Boolean);
+        if(commaParts.length>=2 && commaParts.every(function(p){return p.length>=4 && /写|抄|练|背|读|听|做|看|跳|算|预习|复习|打卡|分钟/.test(p);})){
+          subs=commaParts;
+        }
+      }
+      subs.forEach(function(part){
+        var clean=part.trim();
+        if(!clean||clean.length<2||tailNoiseRe.test(clean)) return;
+        items.push(inferHomeworkTask(clean,subj));
+      });
+    });
+    return items;
+  }
+
+  function renderHwPreview(){
+    var wrap=$id("hwPreviewWrap"), list=$id("hwPreviewList");
+    if(!parsedHwItems.length){
+      wrap.style.display="none";
+      return;
+    }
+    wrap.style.display="block";
+    $id("hwPreviewCount").textContent="已识别 "+parsedHwItems.length+" 条任务（发布前可微调）";
+    list.innerHTML="";
+    parsedHwItems.forEach(function(it,idx){
+      var card=document.createElement("div");
+      card.style.cssText="border:1px solid var(--hair-2);background:#fff;border-radius:12px;padding:10px";
+      var isRope=it.task_type==="rope_jump";
+      var extraCtrl=isRope
+        ?('<span style="font-size:12px;color:#275d9c">🪢 跳绳 '+it.duration_sec+'秒 / 目标'+it.target_count+'个</span>')
+        :('<select data-hw-tm="'+idx+'" style="width:auto;padding:4px 6px;font-size:12px">'
+            +'<option value="none"'+(it.timer_mode==="none"?" selected":"")+'>不计时</option>'
+            +'<option value="countup"'+(it.timer_mode==="countup"?" selected":"")+'>正计时</option>'
+            +'<option value="countdown"'+(it.timer_mode==="countdown"?" selected":"")+'>倒计时</option>'
+          +'</select>'
+          +(it.timer_mode==="countdown"?'<input type="number" min="1" max="120" data-hw-min="'+idx+'" value="'+(it.focus_min||15)+'" style="width:56px;padding:4px 6px;font-size:12px" title="倒计时分钟">分':"")
+          +'<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" data-hw-ph="'+idx+'"'+(it.require_photo?" checked":"")+'> 📷拍照</label>');
+      card.innerHTML='<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        +'<input type="text" data-hw-em="'+idx+'" value="'+GBArt.esc(it.emoji)+'" maxlength="4" style="width:42px;text-align:center;padding:5px;font-size:16px">'
+        +'<input type="text" data-hw-lb="'+idx+'" value="'+GBArt.esc(it.label)+'" maxlength="40" style="flex:1;padding:6px 8px;font-size:13.5px;font-weight:600">'
+        +'<button type="button" class="sm danger" data-hw-del="'+idx+'">删</button>'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +'<label style="font-size:12px;color:var(--muted)">分值+<input type="number" min="1" max="50" data-hw-pts="'+idx+'" value="'+it.pts+'" style="width:48px;padding:3px 5px;font-size:12px;margin-left:2px"></label>'
+        +extraCtrl
+        +'</div>';
+      card.querySelector("[data-hw-em]").addEventListener("input",function(){it.emoji=this.value.trim()||"✨";});
+      card.querySelector("[data-hw-lb]").addEventListener("input",function(){it.label=this.value;});
+      card.querySelector("[data-hw-pts]").addEventListener("input",function(){it.pts=parseInt(this.value,10)||3;});
+      var tmSel=card.querySelector("[data-hw-tm]");
+      if(tmSel) tmSel.addEventListener("change",function(){it.timer_mode=this.value;renderHwPreview();});
+      var minInp=card.querySelector("[data-hw-min]");
+      if(minInp) minInp.addEventListener("input",function(){it.focus_min=Math.max(1,parseInt(this.value,10)||15);});
+      var phChk=card.querySelector("[data-hw-ph]");
+      if(phChk) phChk.addEventListener("change",function(){it.require_photo=this.checked;});
+      card.querySelector("[data-hw-del]").addEventListener("click",function(){parsedHwItems.splice(idx,1);renderHwPreview();});
+      list.appendChild(card);
+    });
+  }
+
+  $id("btnParseHw").addEventListener("click",function(){
+    $id("hwMsg").textContent="";
+    parsedHwItems=parseHomeworkText($id("hwRawText").value);
+    if(!parsedHwItems.length){
+      $id("hwPreviewWrap").style.display="none";
+      note("hwMsg","未能识别出具体作业条目，可点击「填入示例」参考格式",true);
+      return;
+    }
+    renderHwPreview();
+  });
+  $id("btnAddBlankHw").addEventListener("click",function(){
+    parsedHwItems.push({emoji:"✨",label:"新作业任务",pts:4,task_type:"normal",duration_sec:60,target_count:60,timer_mode:"none",focus_min:15,require_photo:false});
+    renderHwPreview();
+  });
+  $id("btnBatchPublishHw").addEventListener("click",async function(){
+    try{
+      if(!parsedHwItems.length) throw new Error("请先拆解出至少一条作业");
+      var scope=$id("hwScope").value;
+      var cids=scope==="selected"?getCheckedChildIds("hwChildChecks"):[];
+      if(scope==="selected"&&!cids.length) throw new Error("请至少勾选一位孩子");
+      var due=$id("hwDueDate").value||today();
+      var payloadTasks=parsedHwItems.map(function(it){
+        var isRope=it.task_type==="rope_jump";
+        var tm=isRope?"none":it.timer_mode;
+        var dur=isRope?it.duration_sec:(tm==="countdown"?Math.max(1,it.focus_min||15)*60:60);
+        return {
+          emoji:it.emoji||"✨",
+          label:(it.label||"").trim(),
+          pts:it.pts||4,
+          scope:scope,
+          task_type:it.task_type||"normal",
+          duration_sec:dur,
+          target_count:it.target_count||60,
+          timer_mode:tm,
+          require_photo:(!isRope)&&!!it.require_photo,
+          repeat_mode:"once",
+          due_date:due,
+          childIds:cids
+        };
+      }).filter(function(t){return t.label!=="";});
+      var r=await api("/api/parent/tasks/batch",{method:"POST",body:JSON.stringify({tasks:payloadTasks})});
+      note("hwMsg","成功导入并发布 "+r.count+" 条打卡任务（已设 "+due+" 单次执行）！");
+      $id("hwRawText").value="";
+      parsedHwItems=[];
+      $id("hwPreviewWrap").style.display="none";
+      await loadOverview();
+    }catch(e){note("hwMsg",e.message,true);}
+  });
+
+  /* ==================== 家长信箱 ==================== */
+  function updateMailboxAndImportOptions(){
+    if(!data||!data.children) return;
+    renderChildCheckboxes("hwChildChecks",[]);
+    var toSel=$id("mailToChild"), curTo=toSel.value;
+    toSel.innerHTML='<option value="all">全体孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
+    if(curTo) toSel.value=curTo;
+    var fSel=$id("mailFilterChild"), curF=fSel.value;
+    fSel.innerHTML='<option value="">全部孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
+    if(curF) fSel.value=curF;
+    var unread=data.unread_child_letters||0;
+    var badge=$id("mailboxUnreadBadge");
+    if(unread>0){badge.style.display="inline-block";badge.textContent=unread;}
+    else{badge.style.display="none";}
+  }
+
+  document.querySelectorAll(".mail-tpl").forEach(function(b){
+    b.addEventListener("click",function(){
+      var cur=$id("mailContent").value.trim();
+      var tpl=b.getAttribute("data-tpl");
+      $id("mailContent").value=cur?(cur+"\n"+tpl):tpl;
+    });
+  });
+
+  async function loadParentMailbox(){
+    try{
+      var cid=$id("mailFilterChild").value||"";
+      var r=await api("/api/parent/letters?childId="+encodeURIComponent(cid));
+      var badge=$id("mailboxUnreadBadge");
+      if((r.unread_from_child||0)>0){badge.style.display="inline-block";badge.textContent=r.unread_from_child;}
+      else{badge.style.display="none";}
+      var box=$id("parentMailboxList");
+      var list=r.letters||[];
+      if(!list.length){
+        box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">信箱里还没有信件，快写第一封表扬信给孩子一个惊喜吧~</div>';
+        return;
+      }
+      box.innerHTML="";
+      list.forEach(function(l){
+        var isChild=(l.sender_role==="child");
+        var dt=new Date(l.created_at);
+        var tmStr=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+        var card=document.createElement("div");
+        card.style.cssText="border:1px solid "+(isChild?"#e8c89b":"#cfe2d4")+";background:"+(isChild?"#fffaf1":"#f6fbf7")+";border-radius:14px;padding:12px 14px;margin-bottom:10px";
+        var statusTag=isChild
+          ?(l.is_read?'<span class="tag-all">已读</span>':'<span style="background:#e11d48;color:#fff;font-size:11px;padding:2px 7px;border-radius:999px">新来信</span>')
+          :(l.is_read?'<span class="tag-all">孩子已拆阅</span>':'<span class="tag-sel">待孩子拆阅</span>');
+        var giftBadge=(l.bonus_xp>0)?('<span class="tag-sel" style="background:#fff4d6;color:#b8621b">🎁 +'+l.bonus_xp+' XP</span>'):"";
+        var whoLabel=isChild?("👧 "+GBArt.esc(l.sender_name)+" 写给爸妈"):("👨‍👩‍👧 "+GBArt.esc(l.sender_name)+" → "+GBArt.esc(l.child_name||"孩子"));
+        card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+          +'<div style="font-size:13px;font-weight:700">'+GBArt.esc(l.stamp||"💌")+' '+GBArt.esc(l.title)+' <span style="font-weight:400;color:var(--muted);font-size:12px">('+whoLabel+')</span></div>'
+          +'<div style="display:flex;gap:6px;align-items:center">'+giftBadge+statusTag+'</div>'
+          +'</div>'
+          +'<div style="font-size:13.5px;line-height:1.6;margin:8px 0;white-space:pre-wrap;color:var(--ink)">'+GBArt.esc(l.content)+'</div>'
+          +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+          +'<span style="font-size:11.5px;color:var(--muted)">'+tmStr+'</span>'
+          +'<div style="display:flex;gap:6px">'
+          +(isChild?'<button type="button" class="sm reply-l">↩ 回复</button>':"")
+          +(isChild&&!l.is_read?'<button type="button" class="sm read-l">✓ 标已读</button>':"")
+          +'<button type="button" class="sm danger del-l">删除</button>'
+          +'</div></div>';
+        var repBtn=card.querySelector(".reply-l");
+        if(repBtn) repBtn.addEventListener("click",function(){
+          $id("mailToChild").value=l.child_id;
+          $id("mailTitle").value="回复 "+l.sender_name+"："+l.title;
+          $id("mailContent").focus();
+        });
+        var rdBtn=card.querySelector(".read-l");
+        if(rdBtn) rdBtn.addEventListener("click",async function(){
+          await api("/api/parent/letters/read",{method:"POST",body:JSON.stringify({letterId:l.id})});
+          loadParentMailbox();
+        });
+        card.querySelector(".del-l").addEventListener("click",async function(){
+          await api("/api/parent/letters/"+l.id,{method:"DELETE"});
+          loadParentMailbox();
+        });
+        box.appendChild(card);
+      });
+    }catch(e){}
+  }
+
+  $id("mailFilterChild").addEventListener("change",loadParentMailbox);
+  $id("btnMarkAllMailRead").addEventListener("click",async function(){
+    try{
+      await api("/api/parent/letters/read",{method:"POST",body:JSON.stringify({childId:$id("mailFilterChild").value||""})});
+      loadParentMailbox();
+    }catch(e){}
+  });
+  $id("btnSendParentLetter").addEventListener("click",async function(){
+    try{
+      await api("/api/parent/letters",{
+        method:"POST",
+        body:JSON.stringify({
+          childId:$id("mailToChild").value,
+          stamp:$id("mailStamp").value,
+          title:$id("mailTitle").value.trim(),
+          content:$id("mailContent").value.trim(),
+          bonus_xp:parseInt($id("mailBonusXp").value,10)||0
+        })
+      });
+      $id("mailTitle").value="";
+      $id("mailContent").value="";
+      $id("mailBonusXp").value="0";
+      note("mailMsg","信件已投递到孩子信箱！");
+      loadParentMailbox();
+    }catch(e){note("mailMsg",e.message,true);}
   });
 
   if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); } else showAuth();

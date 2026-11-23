@@ -640,6 +640,44 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodGet && p == "/api/child/letters" {
+		list, unread := a.store.ListLettersForChild(auth.FamilyID, targetChildID)
+		writeJSON(w, 200, map[string]any{"letters": list, "unread_count": unread})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/letters" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		dto, err := a.store.SendChildLetter(
+			auth.FamilyID,
+			targetChildID,
+			mapStr(body, "stamp"),
+			mapStr(body, "title"),
+			mapStr(body, "content"),
+		)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"letter": dto})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/letters/read" {
+		body, _ := readJSONMap(r, 0)
+		claimedXP, newXP, err := a.store.MarkChildLetterReadAndClaim(auth.FamilyID, targetChildID, mapStr(body, "letterId"))
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "claimed_xp": claimedXP, "new_xp": newXP})
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/child/checkin" {
 		body, err := readJSONMap(r, 4*1024*1024)
 		if err != nil {
@@ -927,6 +965,46 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodPost && p == "/api/parent/tasks/batch" {
+		body, err := readJSONMap(r, 512*1024)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		rawTasks, _ := body["tasks"].([]any)
+		inputs := make([]TaskInput, 0, len(rawTasks))
+		for _, item := range rawTasks {
+			tm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			cids, hasCids := mapStrSlice(tm, "childIds")
+			inputs = append(inputs, TaskInput{
+				Emoji:        mapOptStr(tm, "emoji"),
+				Label:        mapOptStr(tm, "label"),
+				Pts:          mapOptInt(tm, "pts"),
+				Scope:        mapOptStr(tm, "scope"),
+				TaskType:     mapOptStr(tm, "task_type"),
+				DurationSec:  mapOptInt(tm, "duration_sec"),
+				TargetCount:  mapOptInt(tm, "target_count"),
+				TimerMode:    mapOptStr(tm, "timer_mode"),
+				RequirePhoto: mapOptBool(tm, "require_photo"),
+				RepeatMode:   mapOptStr(tm, "repeat_mode"),
+				RepeatDays:   mapOptStr(tm, "repeat_days"),
+				DueDate:      mapOptStr(tm, "due_date"),
+				ChildIDs:     cids,
+				HasChildIDs:  hasCids,
+			})
+		}
+		ids, err := a.store.BatchCreateTasks(fid, inputs)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"ids": ids, "count": len(ids)})
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/parent/tasks" {
 		body, err := readJSONMap(r, 0)
 		if err != nil {
@@ -1191,6 +1269,56 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(p, "/api/parent/questions/") && m == http.MethodDelete {
 		qid := strings.TrimPrefix(p, "/api/parent/questions/")
 		if err := a.store.DeleteFamilyQuestion(fid, qid); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/parent/letters" {
+		cid := strings.TrimSpace(r.URL.Query().Get("childId"))
+		list, unread := a.store.ListLettersForParent(fid, cid)
+		writeJSON(w, 200, map[string]any{"letters": list, "unread_from_child": unread})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/parent/letters" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		created, err := a.store.SendParentLetter(
+			fid,
+			auth.ParentID,
+			mapStr(body, "childId"),
+			mapStr(body, "stamp"),
+			mapStr(body, "title"),
+			mapStr(body, "content"),
+			mapInt(body, "bonus_xp", 0),
+		)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"letters": created, "count": len(created)})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/parent/letters/read" {
+		body, _ := readJSONMap(r, 0)
+		if err := a.store.MarkParentLettersRead(fid, mapStr(body, "letterId"), mapStr(body, "childId")); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if strings.HasPrefix(p, "/api/parent/letters/") && m == http.MethodDelete {
+		lid := strings.TrimPrefix(p, "/api/parent/letters/")
+		if err := a.store.DeleteFamilyLetter(fid, lid); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
