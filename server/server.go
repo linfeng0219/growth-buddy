@@ -599,7 +599,23 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		if rawDiff := strings.TrimSpace(r.URL.Query().Get("difficulty")); rawDiff != "" {
 			diff = NormalizeDifficulty(rawDiff)
 		}
-		list := QueryOnlineQuestions(age, diff, 24)
+		limit := 40
+		if rawLim := strings.TrimSpace(r.URL.Query().Get("limit")); rawLim != "" {
+			if parsedLim, err := strconv.Atoi(rawLim); err == nil && parsedLim > 0 {
+				limit = parsedLim
+			}
+		}
+		var excludeIDs map[string]bool
+		if rawEx := strings.TrimSpace(r.URL.Query().Get("exclude")); rawEx != "" {
+			excludeIDs = make(map[string]bool)
+			for _, id := range strings.Split(rawEx, ",") {
+				id = strings.TrimSpace(id)
+				if id != "" {
+					excludeIDs[id] = true
+				}
+			}
+		}
+		list := QueryOnlineQuestionsWithExclude(age, diff, limit, excludeIDs)
 		ageGroup, ageLabel := AgeGroupForAge(age)
 		writeJSON(w, 200, map[string]any{
 			"age":              age,
@@ -607,6 +623,7 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			"age_label":        ageLabel,
 			"difficulty":       diff,
 			"difficulty_label": DifficultyLabelZh(diff),
+			"total_curated":    len(onlineCuratedBank),
 			"questions":        list,
 		})
 		return

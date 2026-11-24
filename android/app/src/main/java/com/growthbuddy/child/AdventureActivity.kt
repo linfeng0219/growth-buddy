@@ -18,6 +18,7 @@ import com.growthbuddy.child.databinding.ActivityAdventureBinding
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -28,7 +29,8 @@ data class QuizItem(
     val question: String,
     val options: List<String>,
     val answerIdx: Int,
-    val difficulty: String = "normal"
+    val difficulty: String = "normal",
+    val id: String = ""
 )
 
 /**
@@ -52,6 +54,8 @@ class AdventureActivity : AppCompatActivity() {
     private val io = Executors.newSingleThreadExecutor()
 
     private val questions = mutableListOf<QuizItem>()
+    private val seenQuestionIds = LinkedHashSet<String>()
+    private val seenQuestionTexts = LinkedHashSet<String>()
     private var qIndex = 0
     private var monsterHp = 3
     private val maxHp = 3
@@ -210,16 +214,20 @@ class AdventureActivity : AppCompatActivity() {
         questions.addAll(pool.shuffled())
     }
 
-    private fun fetchOnlineQuestions() {
+    private fun fetchOnlineQuestions(appendMode: Boolean = false) {
         val baseUrl = ServerPrefs.getServerUrl(this).trimEnd('/')
         val token = ServerPrefs.getChildToken(this)
         if (baseUrl.isBlank() || token.isBlank()) return
 
         val reqAge = childAge
         val reqDiff = currentDiff
+        val excludeParam = synchronized(seenQuestionIds) {
+            seenQuestionIds.toList().takeLast(160).joinToString(",")
+        }
         io.execute {
             try {
-                val url = "$baseUrl/api/child/questions?age=$reqAge&difficulty=$reqDiff"
+                val encodedExclude = URLEncoder.encode(excludeParam, "UTF-8")
+                val url = "$baseUrl/api/child/questions?age=$reqAge&difficulty=$reqDiff&limit=40&exclude=$encodedExclude"
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     setRequestProperty("Authorization", "Bearer $token")
@@ -237,14 +245,16 @@ class AdventureActivity : AppCompatActivity() {
                             val o = arr.getJSONObject(i)
                             val optsArr = o.optJSONArray("options") ?: continue
                             val opts = (0 until optsArr.length()).map { optsArr.getString(it) }
-                            if (opts.size >= 2) {
+                            val qText = o.optString("question", "")
+                            if (opts.size >= 2 && qText.isNotBlank()) {
                                 loaded.add(
                                     QuizItem(
                                         category = o.optString("category", "综合"),
-                                        question = o.optString("question", ""),
+                                        question = qText,
                                         options = opts,
                                         answerIdx = o.optInt("answer_idx", 0),
-                                        difficulty = o.optString("difficulty", reqDiff)
+                                        difficulty = o.optString("difficulty", reqDiff),
+                                        id = o.optString("id", "")
                                     )
                                 )
                             }
@@ -253,15 +263,23 @@ class AdventureActivity : AppCompatActivity() {
                             loaded.shuffle()
                             runOnUiThread {
                                 if (currentDiff != reqDiff) return@runOnUiThread
-                                questions.clear()
-                                questions.addAll(loaded)
-                                qIndex = 0
                                 this@AdventureActivity.serverAgeLabel = fetchedAgeLabel.ifBlank { "${reqAge}岁" }
                                 updateDifficultyChips()
-                                if (monsterHp > 0) {
-                                    showCurrentQuestion()
-                                    val diffHint = if (reqDiff == "hard") "进阶挑战（含英语与数学拓展）" else "${diffLabel(reqDiff)}难度"
-                                    binding.tvAdvStatus.text = "在线题库已就绪（${diffHint}），答对充能击败怪兽！"
+                                val existingTexts = questions.map { it.question }.toSet()
+                                val unseen = loaded.filter {
+                                    !seenQuestionTexts.contains(it.question) && !existingTexts.contains(it.question)
+                                }
+                                if (appendMode) {
+                                    questions.addAll(if (unseen.isNotEmpty()) unseen else loaded)
+                                } else {
+                                    questions.clear()
+                                    questions.addAll(if (unseen.isNotEmpty()) unseen else loaded)
+                                    qIndex = 0
+                                    if (monsterHp > 0) {
+                                        showCurrentQuestion()
+                                        val diffHint = if (reqDiff == "hard") "进阶挑战（含英语与数学拓展）" else "${diffLabel(reqDiff)}难度"
+                                        binding.tvAdvStatus.text = "大题库已就绪（${diffHint}），答对充能击败怪兽！"
+                                    }
                                 }
                             }
                         }
@@ -325,6 +343,12 @@ class AdventureActivity : AppCompatActivity() {
     private fun showCurrentQuestion() {
         if (questions.isEmpty()) return
         val q = questions[qIndex % questions.size]
+        if (q.id.isNotBlank()) {
+            synchronized(seenQuestionIds) {
+                seenQuestionIds.add(q.id)
+            }
+        }
+        seenQuestionTexts.add(q.question)
         binding.tvQuizCat.text = "${q.category} · ${diffLabel(q.difficulty)}"
         binding.tvQuizQuestion.text = q.question
 
@@ -382,8 +406,7 @@ class AdventureActivity : AppCompatActivity() {
                         showVictoryDialog()
                     } else {
                         sound.playPat()
-                        qIndex++
-                        showCurrentQuestion()
+                        advanceToNextUnseenQuestion()
                         binding.tvAdvStatus.text = if (isFastCrit) {
                             "⚡ 闪电暴击命中！再答对 $monsterHp 题就能击败史莱姆！"
                         } else {
@@ -426,8 +449,7 @@ class AdventureActivity : AppCompatActivity() {
                     showDefeatDialog()
                 } else {
                     if (advanceQuestion) {
-                        qIndex++
-                        showCurrentQuestion()
+                        advanceToNextUnseenQuestion()
                     } else {
                         resetChargeClock()
                     }
@@ -642,6 +664,24 @@ class AdventureActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun advanceToNextUnseenQuestion() {
+        if (questions.isNotEmpty()) {
+            var nextIdx = (qIndex + 1) % questions.size
+            var checked = 0
+            while (checked < questions.size && seenQuestionTexts.contains(questions[nextIdx].question)) {
+                nextIdx = (nextIdx + 1) % questions.size
+                checked++
+            }
+            qIndex = nextIdx
+        }
+        showCurrentQuestion()
+        // 剩余未做题目不足 10 道时，静默续拉新一批去重后的在线+动态大题库追加到队尾
+        val remaining = questions.count { !seenQuestionTexts.contains(it.question) }
+        if (remaining < 10) {
+            fetchOnlineQuestions(appendMode = true)
+        }
+    }
+
     private fun resetRound() {
         monsterHp = maxHp
         petHp = maxPetHp
@@ -650,14 +690,8 @@ class AdventureActivity : AppCompatActivity() {
         binding.advBattleStage.setMonsterHp(maxHp, maxHp)
         binding.advBattleStage.setPetHp(maxPetHp, maxPetHp)
         updateHpUi()
-        qIndex++
-        questions.shuffle()
-        showCurrentQuestion()
+        advanceToNextUnseenQuestion()
         binding.tvAdvStatus.text = "新的史莱姆拖延怪跳出来啦！答题充能击败它！"
-        // 如当前题库快答完，后台再刷一批最新在线题
-        if (qIndex >= questions.size - 2) {
-            fetchOnlineQuestions()
-        }
     }
 
     override fun onDestroy() {

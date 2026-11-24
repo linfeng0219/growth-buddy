@@ -616,8 +616,8 @@ func TestChangelogLatestDate(t *testing.T) {
 		t.Fatalf("expected at least 2 changelog entries, got %+v", res["changelog"])
 	}
 	first, ok := arr[0].(map[string]any)
-	if !ok || first["date"] != "2026-11-23" {
-		t.Fatalf("expected newest changelog entry date 2026-11-23, got %+v", arr[0])
+	if !ok || first["date"] != "2026-11-24" {
+		t.Fatalf("expected newest changelog entry date 2026-11-24, got %+v", arr[0])
 	}
 }
 
@@ -644,8 +644,36 @@ func TestCuratedBankIntegrity(t *testing.T) {
 			optSet[o] = true
 		}
 	}
-	if len(onlineCuratedBank) < 140 {
-		t.Fatalf("expected expanded curated bank >= 140 questions, got %d", len(onlineCuratedBank))
+	if len(onlineCuratedBank) < 600 {
+		t.Fatalf("expected big curated bank >= 600 questions, got %d", len(onlineCuratedBank))
+	}
+}
+
+func TestQuizExcludeAndNoDuplicateBatch(t *testing.T) {
+	batch1 := QueryOnlineQuestionsWithExclude(7, "normal", 40, nil)
+	if len(batch1) != 40 {
+		t.Fatalf("expected 40 questions in batch1, got %d", len(batch1))
+	}
+	seenQ := map[string]bool{}
+	exIDs := map[string]bool{}
+	for _, q := range batch1 {
+		if seenQ[q.Question] {
+			t.Fatalf("duplicate question inside batch1: %q", q.Question)
+		}
+		seenQ[q.Question] = true
+		if q.ID != "" {
+			exIDs[q.ID] = true
+		}
+	}
+
+	batch2 := QueryOnlineQuestionsWithExclude(7, "normal", 40, exIDs)
+	if len(batch2) != 40 {
+		t.Fatalf("expected 40 questions in batch2, got %d", len(batch2))
+	}
+	for _, q := range batch2 {
+		if exIDs[q.ID] {
+			t.Fatalf("batch2 returned excluded static ID %s", q.ID)
+		}
 	}
 }
 

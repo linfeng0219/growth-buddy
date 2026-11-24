@@ -151,58 +151,137 @@ func loadRemoteQuestionsIfConfigured() []QuizQuestion {
 	return valid
 }
 
-// QueryOnlineQuestions 根据儿童年龄与难度返回在线分级题库 + 实时动态算术/逻辑题。
+func loadLocalExtraQuestions() []QuizQuestion {
+	candidates := []string{strings.TrimSpace(os.Getenv("QUIZ_EXTRA_FILE")), "quiz_extra.json"}
+	for _, p := range candidates {
+		if p == "" {
+			continue
+		}
+		raw, err := os.ReadFile(p)
+		if err != nil || len(raw) == 0 {
+			continue
+		}
+		var list []QuizQuestion
+		if err := json.Unmarshal(raw, &list); err != nil {
+			var wrapper struct {
+				Questions []QuizQuestion `json:"questions"`
+			}
+			if err2 := json.Unmarshal(raw, &wrapper); err2 != nil {
+				continue
+			}
+			list = wrapper.Questions
+		}
+		valid := make([]QuizQuestion, 0, len(list))
+		for _, q := range list {
+			if strings.TrimSpace(q.Question) == "" || len(q.Options) < 2 || q.AnswerIdx < 0 || q.AnswerIdx >= len(q.Options) {
+				continue
+			}
+			q.Difficulty = NormalizeDifficulty(q.Difficulty)
+			if q.AgeGroup == "" {
+				q.AgeGroup, _ = AgeGroupForAge(q.MinAge)
+			}
+			q.IsOnline = true
+			valid = append(valid, q)
+		}
+		if len(valid) > 0 {
+			return valid
+		}
+	}
+	return nil
+}
+
+// QueryOnlineQuestions 根据儿童年龄与难度返回在线分级题库 + 实时动态多学科题。
 func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion {
+	return QueryOnlineQuestionsWithExclude(age, difficulty, limit, nil)
+}
+
+// QueryOnlineQuestionsWithExclude 支持传入前端已答题目 ID 集合 excludeIDs，优先返回全新未做过的题目。
+func QueryOnlineQuestionsWithExclude(age int, difficulty string, limit int, excludeIDs map[string]bool) []QuizQuestion {
 	normAge := NormalizeAge(age)
 	ageGroup, _ := AgeGroupForAge(normAge)
 	diff := NormalizeDifficulty(difficulty)
-	if limit <= 0 || limit > 60 {
-		limit = 24
+	if limit <= 0 {
+		limit = 40
+	} else if limit > 80 {
+		limit = 80
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	allBank := make([]QuizQuestion, 0, len(onlineCuratedBank)+16)
+	remoteQs := loadRemoteQuestionsIfConfigured()
+	localExtraQs := loadLocalExtraQuestions()
+	allBank := make([]QuizQuestion, 0, len(onlineCuratedBank)+len(remoteQs)+len(localExtraQs))
 	allBank = append(allBank, onlineCuratedBank...)
-	allBank = append(allBank, loadRemoteQuestionsIfConfigured()...)
+	allBank = append(allBank, localExtraQs...)
+	allBank = append(allBank, remoteQs...)
 
-	var exact []QuizQuestion
-	var sameAgeNearbyDiff []QuizQuestion
-	var boostEnglish []QuizQuestion
-	var boostMath []QuizQuestion
+	var exactFresh, exactSeen []QuizQuestion
+	var nearbyFresh, nearbySeen []QuizQuestion
+	var boostEnglishFresh, boostEnglishSeen []QuizQuestion
+	var boostMathFresh, boostMathSeen []QuizQuestion
 	seenID := make(map[string]bool)
+	seenText := make(map[string]bool)
 
 	for _, q := range allBank {
 		q.IsOnline = true
+		isExcluded := q.ID != "" && excludeIDs != nil && excludeIDs[q.ID]
 		if q.AgeGroup == ageGroup {
 			if q.Difficulty == diff {
-				exact = append(exact, q)
-			} else if diff == "normal" && q.Difficulty == "easy" {
-				sameAgeNearbyDiff = append(sameAgeNearbyDiff, q)
-			} else if diff == "hard" && q.Difficulty == "normal" {
-				sameAgeNearbyDiff = append(sameAgeNearbyDiff, q)
-			} else if diff == "easy" && q.Difficulty == "normal" {
-				sameAgeNearbyDiff = append(sameAgeNearbyDiff, q)
+				if isExcluded {
+					exactSeen = append(exactSeen, q)
+				} else {
+					exactFresh = append(exactFresh, q)
+				}
+			} else if (diff == "normal" && q.Difficulty == "easy") ||
+				(diff == "hard" && q.Difficulty == "normal") ||
+				(diff == "easy" && q.Difficulty == "normal") {
+				if isExcluded {
+					nearbySeen = append(nearbySeen, q)
+				} else {
+					nearbyFresh = append(nearbyFresh, q)
+				}
 			}
 		} else if diff == "hard" && isHigherGradeChallengeCandidate(ageGroup, q) {
 			if q.Category == "英语" {
-				boostEnglish = append(boostEnglish, q)
+				if isExcluded {
+					boostEnglishSeen = append(boostEnglishSeen, q)
+				} else {
+					boostEnglishFresh = append(boostEnglishFresh, q)
+				}
 			} else if strings.Contains(q.Category, "数学") || q.Category == "趣味思维" || q.Category == "图形数数" {
-				boostMath = append(boostMath, q)
+				if isExcluded {
+					boostMathSeen = append(boostMathSeen, q)
+				} else {
+					boostMathFresh = append(boostMathFresh, q)
+				}
 			}
 		}
 	}
 
-	shuffleQuizSlice(rng, exact)
-	shuffleQuizSlice(rng, sameAgeNearbyDiff)
-	shuffleQuizSlice(rng, boostEnglish)
-	shuffleQuizSlice(rng, boostMath)
+	shuffleQuizSlice(rng, exactFresh)
+	shuffleQuizSlice(rng, exactSeen)
+	shuffleQuizSlice(rng, nearbyFresh)
+	shuffleQuizSlice(rng, nearbySeen)
+	shuffleQuizSlice(rng, boostEnglishFresh)
+	shuffleQuizSlice(rng, boostEnglishSeen)
+	shuffleQuizSlice(rng, boostMathFresh)
+	shuffleQuizSlice(rng, boostMathSeen)
 
-	dynCount := 8
-	dynamicQs := generateDynamicMathQuestions(rng, ageGroup, diff, dynCount)
+	dynMathCount := 8
+	dynVerbalCount := 6
+	if limit >= 32 {
+		dynMathCount = 10
+		dynVerbalCount = 8
+	}
+	dynamicQs := generateDynamicMathQuestions(rng, ageGroup, diff, dynMathCount)
+	dynamicQs = append(dynamicQs, generateDynamicVerbalAndScienceQuestions(rng, ageGroup, diff, dynVerbalCount)...)
+	shuffleQuizSlice(rng, dynamicQs)
 
 	selected := make([]QuizQuestion, 0, limit)
 	staticQuota := limit - len(dynamicQs)
+	if staticQuota < 1 {
+		staticQuota = limit / 2
+	}
 	addUnique := func(q QuizQuestion, forceDiff bool) bool {
 		if q.ID != "" {
 			if seenID[q.ID] {
@@ -210,6 +289,11 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 			}
 			seenID[q.ID] = true
 		}
+		qt := strings.TrimSpace(q.Question)
+		if qt == "" || seenText[qt] {
+			return false
+		}
+		seenText[qt] = true
 		if forceDiff {
 			q.Difficulty = diff
 		}
@@ -220,54 +304,61 @@ func QueryOnlineQuestions(age int, difficulty string, limit int) []QuizQuestion 
 	// 选择「进阶挑战」时，先确保混入适量英语与高年级拓展题（各最多 4 道）
 	if diff == "hard" {
 		enAdded := 0
-		for _, q := range exact {
-			if q.Category == "英语" && enAdded < 4 && len(selected) < staticQuota {
-				if addUnique(q, false) {
-					enAdded++
-				}
-			}
-		}
-		for _, q := range boostEnglish {
-			if enAdded < 4 && len(selected) < staticQuota {
-				if addUnique(q, true) {
-					enAdded++
+		for _, pool := range [][]QuizQuestion{exactFresh, boostEnglishFresh, exactSeen, boostEnglishSeen} {
+			for _, q := range pool {
+				if q.Category == "英语" && enAdded < 4 && len(selected) < staticQuota {
+					if addUnique(q, q.AgeGroup != ageGroup) {
+						enAdded++
+					}
 				}
 			}
 		}
 		mathAdded := 0
-		for _, q := range exact {
-			if (q.Category == "数学拓展" || q.Category == "数学") && mathAdded < 3 && len(selected) < staticQuota {
-				if addUnique(q, false) {
-					mathAdded++
-				}
-			}
-		}
-		for _, q := range boostMath {
-			if mathAdded < 4 && len(selected) < staticQuota {
-				if addUnique(q, true) {
-					mathAdded++
+		for _, pool := range [][]QuizQuestion{exactFresh, boostMathFresh, exactSeen, boostMathSeen} {
+			for _, q := range pool {
+				if (q.Category == "数学拓展" || q.Category == "数学") && mathAdded < 4 && len(selected) < staticQuota {
+					if addUnique(q, q.AgeGroup != ageGroup) {
+						mathAdded++
+					}
 				}
 			}
 		}
 	}
 
-	for _, q := range exact {
-		if len(selected) >= staticQuota {
-			break
+	// 优先抽选未做过的本档静态题 -> 未做过的同龄相邻难度题
+	for _, pool := range [][]QuizQuestion{exactFresh, nearbyFresh} {
+		for _, q := range pool {
+			if len(selected) >= staticQuota {
+				break
+			}
+			addUnique(q, false)
 		}
-		addUnique(q, false)
 	}
-	for _, q := range sameAgeNearbyDiff {
-		if len(selected) >= staticQuota {
-			break
-		}
-		addUnique(q, false)
-	}
+	// 混入本次新生成的跨学科动态题（无限变体不重样）
 	for _, dq := range dynamicQs {
 		if len(selected) >= limit {
 			break
 		}
-		selected = append(selected, shuffleQuestionOptions(rng, dq))
+		addUnique(dq, false)
+	}
+	// 若全库未做静态题已耗尽，先再多生成一批动态题补充，最后才回填旧题
+	if len(selected) < limit {
+		extraDyn := generateDynamicMathQuestions(rng, ageGroup, diff, limit-len(selected))
+		extraDyn = append(extraDyn, generateDynamicVerbalAndScienceQuestions(rng, ageGroup, diff, limit-len(selected))...)
+		for _, dq := range extraDyn {
+			if len(selected) >= limit {
+				break
+			}
+			addUnique(dq, false)
+		}
+	}
+	for _, pool := range [][]QuizQuestion{exactSeen, nearbySeen} {
+		for _, q := range pool {
+			if len(selected) >= limit {
+				break
+			}
+			addUnique(q, false)
+		}
 	}
 
 	shuffleQuizSlice(rng, selected)
@@ -697,6 +788,224 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 			AnswerIdx:  ansIdx,
 			IsOnline:   true,
 		})
+	}
+	return res
+}
+
+// generateDynamicVerbalAndScienceQuestions 跨学科动态组合生成器（古诗接龙、反义词、量词、地理百科及英语词库），每轮随机组合不重复。
+func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff string, count int) []QuizQuestion {
+	type poemPair struct{ upper, lower, poem string }
+	poemsEasy := []poemPair{
+		{"白毛浮绿水", "红掌拨清波", "《咏鹅》"},
+		{"床前明月光", "疑是地上霜", "《静夜思》"},
+		{"春眠不觉晓", "处处闻啼鸟", "《春晓》"},
+		{"锄禾日当午", "汗滴禾下土", "《悯农》"},
+		{"夜来风雨声", "花落知多少", "《春晓》"},
+		{"举头望明月", "低头思故乡", "《静夜思》"},
+		{"小时不识月", "呼作白玉盘", "《古朗月行》"},
+		{"远看山有色", "近听水无声", "《画》"},
+		{"谁知盘中餐", "粒粒皆辛苦", "《悯农》"},
+		{"一寸光阴一寸金", "寸金难买寸光阴", "《增广贤文》"},
+	}
+	poemsMid := []poemPair{
+		{"白日依山尽", "黄河入海流", "《登鹳雀楼》"},
+		{"欲穷千里目", "更上一层楼", "《登鹳雀楼》"},
+		{"飞流直下三千尺", "疑是银河落九天", "《望庐山瀑布》"},
+		{"两个黄鹂鸣翠柳", "一行白鹭上青天", "《绝句》"},
+		{"不知细叶谁裁出", "二月春风似剪刀", "《咏柳》"},
+		{"小荷才露尖尖角", "早有蜻蜓立上头", "《小池》"},
+		{"野火烧不尽", "春风吹又生", "《草》"},
+		{"春种一粒粟", "秋收万颗子", "《悯农》"},
+		{"孤舟蓑笠翁", "独钓寒江雪", "《江雪》"},
+		{"千山鸟飞绝", "万径人踪灭", "《江雪》"},
+		{"解落三秋叶", "能开二月花", "《风》"},
+		{"朝辞白帝彩云间", "千里江陵一日还", "《早发白帝城》"},
+	}
+	poemsHigh := []poemPair{
+		{"停车坐爱枫林晚", "霜叶红于二月花", "《山行》"},
+		{"接天莲叶无穷碧", "映日荷花别样红", "《晓出净慈寺送林子方》"},
+		{"横看成岭侧成峰", "远近高低各不同", "《题西林壁》"},
+		{"不识庐山真面目", "只缘身在此山中", "《题西林壁》"},
+		{"春风又绿江南岸", "明月何时照我还", "《泊船瓜洲》"},
+		{"莫愁前路无知己", "天下谁人不识君", "《别董大》"},
+		{"劝君更尽一杯酒", "西出阳关无故人", "《送元二使安西》"},
+		{"醉卧沙场君莫笑", "古来征战几人回", "《凉州词》"},
+		{"海内存知己", "天涯若比邻", "《送杜少府之任蜀州》"},
+		{"山重水复疑无路", "柳暗花明又一村", "《游山西村》"},
+		{"天生我材必有用", "千金散尽还复来", "《将进酒》"},
+		{"落霞与孤鹜齐飞", "秋水共长天一色", "《滕王阁序》"},
+	}
+
+	antonyms := [][2]string{
+		{"高大", "矮小"}, {"炎热", "寒冷"}, {"光明", "黑暗"}, {"快速", "缓慢"}, {"柔软", "坚硬"},
+		{"仔细", "粗心"}, {"谦虚", "骄傲"}, {"宽阔", "狭窄"}, {"安静", "喧闹"}, {"清晰", "模糊"},
+		{"强壮", "虚弱"}, {"勤劳", "懒惰"}, {"安全", "危险"}, {"轻松", "沉重"}, {"热情", "冷漠"},
+		{"笔直", "弯曲"}, {"诚实", "虚伪"}, {"干燥", "潮湿"},
+	}
+	measurers := [][2]string{
+		{"马", "匹"}, {"汽车", "辆"}, {"轮船", "艘"}, {"飞机", "架"}, {"书本", "本"},
+		{"铅笔", "支"}, {"大树", "棵"}, {"花朵", "朵"}, {"小鱼", "条"}, {"彩虹", "道"},
+		{"古诗", "首"}, {"星星", "颗"}, {"图画", "幅"}, {"大象", "头"}, {"桌子", "张"},
+	}
+	enWords := [][2]string{
+		{"apple", "苹果"}, {"banana", "香蕉"}, {"orange", "橙子"}, {"watermelon", "西瓜"}, {"grape", "葡萄"},
+		{"cat", "小猫"}, {"dog", "小狗"}, {"rabbit", "兔子"}, {"panda", "熊猫"}, {"tiger", "老虎"},
+		{"elephant", "大象"}, {"monkey", "猴子"}, {"bird", "小鸟"}, {"fish", "鱼"}, {"duck", "鸭子"},
+		{"red", "红色"}, {"blue", "蓝色"}, {"green", "绿色"}, {"yellow", "黄色"}, {"orange/橙色", "橙色"},
+		{"morning", "早上"}, {"library", "图书馆"}, {"teacher", "老师"}, {"student", "学生"}, {"friend", "朋友"},
+		{"family", "家庭"}, {"water", "水"}, {"milk", "牛奶"}, {"bread", "面包"}, {"breakfast", "早餐"},
+		{"Sunday", "星期日"}, {"Monday", "星期一"}, {"Tuesday", "星期二"}, {"Wednesday", "星期三"}, {"Friday", "星期五"},
+		{"spring", "春天"}, {"summer", "夏天"}, {"autumn", "秋天"}, {"winter", "冬天"}, {"science", "科学"},
+	}
+	capitals := [][2]string{
+		{"江苏", "南京"}, {"浙江", "杭州"}, {"四川", "成都"}, {"广东", "广州"}, {"湖北", "武汉"},
+		{"陕西", "西安"}, {"山东", "济南"}, {"湖南", "长沙"}, {"安徽", "合肥"}, {"河南", "郑州"},
+		{"辽宁", "沈阳"}, {"云南", "昆明"}, {"福建", "福州"}, {"贵州", "贵阳"},
+	}
+
+	allowEnglish := ageGroup == "9-10" || ageGroup == "11-14" || diff == "hard"
+	minA, maxA := ageBoundsForGroup(ageGroup)
+	res := make([]QuizQuestion, 0, count)
+	seedBase := time.Now().UnixNano() % 100000
+
+	pickDistractors := func(pool []string, ans string) []string {
+		idxList := rng.Perm(len(pool))
+		opts := []string{ans}
+		seen := map[string]bool{ans: true}
+		for _, idx := range idxList {
+			v := pool[idx]
+			if !seen[v] {
+				seen[v] = true
+				opts = append(opts, v)
+				if len(opts) >= 3 {
+					break
+				}
+			}
+		}
+		return opts
+	}
+
+	for i := 0; i < count; i++ {
+		var cat, text string
+		var opts []string
+		mode := i % 4
+		if !allowEnglish && mode == 3 {
+			mode = i % 3
+		}
+
+		switch mode {
+		case 0: // 古诗上下句接龙
+			cat = "语文"
+			var pPool []poemPair
+			switch ageGroup {
+			case "3-5":
+				pPool = poemsEasy
+			case "6-7":
+				pPool = poemsEasy
+				if diff == "hard" {
+					pPool = append(append([]poemPair(nil), poemsEasy...), poemsMid...)
+				}
+			case "8":
+				pPool = poemsMid
+			default:
+				pPool = poemsHigh
+			}
+			item := pPool[rng.Intn(len(pPool))]
+			lowers := make([]string, len(pPool))
+			for k, p := range pPool {
+				lowers[k] = p.lower
+			}
+			text = fmt.Sprintf("诗句“%s”选自%s，它的下一句是？", item.upper, item.poem)
+			opts = pickDistractors(lowers, item.lower)
+		case 1: // 反义词 / 量词组合
+			cat = "语文"
+			if ageGroup == "3-5" || (ageGroup == "6-7" && i%2 == 0) {
+				m := measurers[rng.Intn(len(measurers))]
+				allM := []string{"匹", "辆", "艘", "架", "本", "支", "棵", "朵", "条", "道", "首", "颗", "幅", "头", "张"}
+				text = fmt.Sprintf("量词搭配：一（  ）%s，括号里最准确的是哪个？", m[0])
+				opts = pickDistractors(allM, m[1])
+			} else {
+				a := antonyms[rng.Intn(len(antonyms))]
+				askLeft := rng.Intn(2) == 0
+				pool := make([]string, len(antonyms))
+				var ans, qWord string
+				if askLeft {
+					qWord = a[0]
+					ans = a[1]
+					for k, p := range antonyms {
+						pool[k] = p[1]
+					}
+				} else {
+					qWord = a[1]
+					ans = a[0]
+					for k, p := range antonyms {
+						pool[k] = p[0]
+					}
+				}
+				text = fmt.Sprintf("词语“%s”的反义词是下面哪一个？", qWord)
+				opts = pickDistractors(pool, ans)
+			}
+		case 2: // 百科与地理省会组合
+			cat = "科学百科"
+			if ageGroup == "3-5" || ageGroup == "6-7" {
+				// 幼儿与一年级保持浅显生活自然科普
+				facts := [][2]string{
+					{"火警报警电话", "119"},
+					{"急救中心救护车电话", "120"},
+					{"报警求助电话", "110"},
+					{"交通安全故障电话", "122"},
+				}
+				f := facts[rng.Intn(len(facts))]
+				text = fmt.Sprintf("当遇到紧急情况需要拨打「%s」时，正确的号码是？", f[0])
+				opts = pickDistractors([]string{"110", "119", "120", "122", "114"}, f[1])
+			} else {
+				c := capitals[rng.Intn(len(capitals))]
+				capList := make([]string, len(capitals))
+				for k, p := range capitals {
+					capList[k] = p[1]
+				}
+				text = fmt.Sprintf("中国地理小百科：%s省的省会城市是哪一座？", c[0])
+				opts = pickDistractors(capList, c[1])
+			}
+		default: // 英语词汇双向随机组题（仅 9-14岁 或 hard）
+			cat = "英语"
+			idx := rng.Intn(len(enWords))
+			w := enWords[idx]
+			if w[0] == "orange/橙色" {
+				w[0] = "orange"
+			}
+			enToZh := rng.Intn(2) == 0
+			if enToZh {
+				zhPool := make([]string, len(enWords))
+				for k, e := range enWords {
+					zhPool[k] = e[1]
+				}
+				text = fmt.Sprintf("英语单词 “%s” 对应的正确中文意思是？", w[0])
+				opts = pickDistractors(zhPool, w[1])
+			} else {
+				enPool := make([]string, len(enWords))
+				for k, e := range enWords {
+					enPool[k] = strings.TrimSuffix(e[0], "/橙色")
+				}
+				text = fmt.Sprintf("中文“%s”用下面哪个英语单词表示最准确？", w[1])
+				opts = pickDistractors(enPool, w[0])
+			}
+		}
+
+		if len(opts) >= 2 && text != "" {
+			res = append(res, QuizQuestion{
+				ID:         fmt.Sprintf("dynv_%s_%s_%d_%d", ageGroup, diff, seedBase, i),
+				Category:   cat,
+				AgeGroup:   ageGroup,
+				MinAge:     minA,
+				MaxAge:     maxA,
+				Difficulty: diff,
+				Question:   text,
+				Options:    opts,
+				AnswerIdx:  0,
+				IsOnline:   true,
+			})
+		}
 	}
 	return res
 }
