@@ -77,6 +77,7 @@ var (
 	pCreateBitmap           = gdi32.NewProc("CreateBitmap")
 	pSelectObject           = gdi32.NewProc("SelectObject")
 	pBitBlt                 = gdi32.NewProc("BitBlt")
+	pGetDIBits              = gdi32.NewProc("GetDIBits")
 	pGetPixel               = gdi32.NewProc("GetPixel")
 	pSetTextColor           = gdi32.NewProc("SetTextColor")
 	pSetBkColor             = gdi32.NewProc("SetBkColor")

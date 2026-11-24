@@ -72,3 +72,10 @@ func TestSelfReplaceUpdaterWaitAndUnicodePath(t *testing.T) {
 		t.Fatalf("expected staged src file to be removed after update")
 	}
 }
+
+func TestCaptureScreenRectBGRA(t *testing.T) {
+	pix, ok := captureScreenRectBGRA(0, 0, 32, 24)
+	if !ok || len(pix) != 32*24 {
+		t.Fatalf("expected 32x24 screen capture buffer, ok=%v len=%d", ok, len(pix))
+	}
+}

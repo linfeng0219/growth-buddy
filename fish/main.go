@@ -18,9 +18,10 @@ const (
 	wmAppTray         = WM_APP + 3
 	wmAppUpdateResult = WM_APP + 4
 
-	idTimerPoll  = 1
-	idHotkeyBoss = 1
-	idTrayIcon   = 1
+	idTimerPoll     = 1
+	idTimerContrast = 2
+	idHotkeyBoss    = 1
+	idTrayIcon      = 1
 
 	idBtnLogin = 101
 	idBtnSend  = 104
@@ -30,6 +31,7 @@ const (
 
 	idMenuToggle            = 201
 	idMenuPickFontColor     = 202
+	idMenuToggleInvert      = 217
 	idMenuFont12            = 203
 	idMenuFont14            = 204
 	idMenuFont15            = 205
@@ -45,8 +47,6 @@ const (
 	idMenuLogout            = 215
 	idMenuQuit              = 216
 )
-
-const chromaKeyRef uint32 = 0x00030201 // RGB(1, 2, 3)
 
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
 
@@ -86,6 +86,13 @@ type appState struct {
 	pendingUpdateErr string
 	pendingUpdateMan bool
 
+	backdropBuf  []uint32
+	backdropW    int32
+	backdropH    int32
+	backdropSig  uint64
+	autoHeaderFg uint32
+	altDarkFill  bool
+
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
 }
@@ -100,6 +107,19 @@ func (a *appState) dpiScale(px int32) int32 {
 		}
 	}
 	return int32(int64(px) * int64(dpi) / 96)
+}
+
+func (a *appState) effectiveTextColor() uint32 {
+	if !a.cfg.AutoInvertText {
+		return hexToCOLORREF(a.cfg.FontColor, 0x00283123)
+	}
+	if !a.cfg.BgTransparent {
+		return invertTextColorForBg(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
+	}
+	if a.autoHeaderFg != 0 {
+		return a.autoHeaderFg
+	}
+	return invertTextColorForBg(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
 }
 
 func (a *appState) refreshResources() {
@@ -132,8 +152,10 @@ func (a *appState) refreshResources() {
 		a.bgBrush, _, _ = pCreateSolidBrush.Call(uintptr(chromaKeyRef))
 		// Subtle non-chroma surface so child inputs remain visible & clickable in transparent mode
 		altRef := uint32(0x0024201E)
-		if !isDarkColor(hexToCOLORREF(a.cfg.FontColor, 0)) {
+		a.altDarkFill = true
+		if isDarkColor(a.effectiveTextColor()) {
 			altRef = 0x00F4EFE6
+			a.altDarkFill = false
 		}
 		a.altBrush, _, _ = pCreateSolidBrush.Call(uintptr(altRef))
 	} else {
@@ -161,11 +183,55 @@ func (a *appState) refreshResources() {
 	}
 }
 
-func isDarkColor(c uint32) bool {
-	r := int(c & 0xFF)
-	g := int((c >> 8) & 0xFF)
-	b := int((c >> 16) & 0xFF)
-	return (r*299 + g*587 + b*114) < 128000
+func (a *appState) sampleUnderWindow(force bool) {
+	if a.hwnd == 0 || !a.cfg.BgTransparent || !a.cfg.AutoInvertText {
+		return
+	}
+	vis, _, _ := pIsWindowVisible.Call(a.hwnd)
+	if vis == 0 {
+		return
+	}
+	var wr, rc RECT
+	pGetWindowRect.Call(a.hwnd, uintptr(unsafe.Pointer(&wr)))
+	pGetClientRect.Call(a.hwnd, uintptr(unsafe.Pointer(&rc)))
+	cw := rc.Right - rc.Left
+	ch := rc.Bottom - rc.Top
+	if cw <= 0 || ch <= 0 {
+		return
+	}
+	buf, ok := captureScreenRectBGRA(wr.Left, wr.Top, cw, ch)
+	if !ok {
+		return
+	}
+	sig := computeBackdropSignature(buf, cw, ch)
+	hdrEnd := a.dpiScale(36)
+	if hdrEnd > ch {
+		hdrEnd = ch
+	}
+	var newHdrFg uint32
+	if hdrBg, ok := averageBGRAStripColor(buf, cw, ch, 4, hdrEnd); ok {
+		newHdrFg = invertTextColorForBg(hdrBg)
+	} else {
+		newHdrFg = invertTextColorForBg(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
+	}
+	hdrChanged := newHdrFg != a.autoHeaderFg
+	sigChanged := sig != a.backdropSig || a.backdropW != cw || a.backdropH != ch
+	a.backdropBuf = buf
+	a.backdropW = cw
+	a.backdropH = ch
+	a.backdropSig = sig
+	a.autoHeaderFg = newHdrFg
+	if hdrChanged {
+		if a.hLblGroup != 0 {
+			pInvalidateRect.Call(a.hLblGroup, 0, 1)
+		}
+		if !a.loggedIn {
+			pInvalidateRect.Call(a.hwnd, 0, 1)
+		}
+	}
+	if force || sigChanged || hdrChanged {
+		a.triggerRepaint()
+	}
 }
 
 func (a *appState) createAllControls() {
@@ -341,8 +407,8 @@ func (a *appState) paintWindow() {
 		if viewW > 20 && viewH > 20 {
 			oldFont, _, _ := pSelectObject.Call(memDC, a.chatFont)
 			pSetBkMode.Call(memDC, TRANSPARENT)
-			fg := hexToCOLORREF(a.cfg.FontColor, 0x00283123)
-			pSetTextColor.Call(memDC, uintptr(fg))
+			baseFg := a.effectiveTextColor()
+			pSetTextColor.Call(memDC, uintptr(baseFg))
 
 			gapY := a.dpiScale(8)
 			type measured struct {
@@ -399,6 +465,13 @@ func (a *appState) paintWindow() {
 						dr.Bottom = cr.Bottom
 					}
 					if dr.Bottom > dr.Top {
+						lineFg := baseFg
+						if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
+							if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, dr.Top, dr.Bottom); ok {
+								lineFg = invertTextColorForBg(stripBg)
+							}
+						}
+						pSetTextColor.Call(memDC, uintptr(lineFg))
 						drawRc := RECT{Left: cr.Left, Top: y, Right: cr.Right - a.dpiScale(4), Bottom: y + it.h}
 						pDrawTextW.Call(memDC, uintptr(unsafe.Pointer(u16(it.text))), ^uintptr(0), uintptr(unsafe.Pointer(&drawRc)), DT_LEFT|DT_WORDBREAK|DT_NOPREFIX|DT_EDITCONTROL)
 					}
@@ -644,7 +717,12 @@ func (a *appState) showTrayMenu() {
 	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16(toggleLabel))))
 	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
 
-	pAppendMenuW.Call(menu, MF_STRING, idMenuPickFontColor, uintptr(unsafe.Pointer(u16("字体颜色（屏幕吸管） ["+a.cfg.FontColor+"]"))))
+	fontLabel := "字体颜色（屏幕吸管） [" + a.cfg.FontColor + "]"
+	if a.cfg.AutoInvertText {
+		fontLabel = "字体颜色（屏幕吸管） [已开反显]"
+	}
+	pAppendMenuW.Call(menu, MF_STRING, idMenuPickFontColor, uintptr(unsafe.Pointer(u16(fontLabel))))
+	pAppendMenuW.Call(menu, menuFlags(a.cfg.AutoInvertText), idMenuToggleInvert, uintptr(unsafe.Pointer(u16("文字反显（随背景自动取反）"))))
 
 	fontMenu, _, _ := pCreatePopupMenu.Call()
 	if fontMenu != 0 {
@@ -722,6 +800,7 @@ func (a *appState) toggleBossHide() {
 		if a.loggedIn && a.hEditMsg != 0 {
 			pSetFocus.Call(a.hEditMsg)
 		}
+		a.sampleUnderWindow(true)
 	}
 }
 
@@ -743,8 +822,15 @@ func (a *appState) handleCommand(id int) {
 	case idMenuPickFontColor:
 		if c, ok := a.pickScreenColor("字体"); ok {
 			a.cfg.FontColor = colorrefToHex(c)
+			a.cfg.AutoInvertText = false
 			a.updateAppearance()
 		}
+	case idMenuToggleInvert:
+		a.cfg.AutoInvertText = !a.cfg.AutoInvertText
+		if a.cfg.AutoInvertText && a.cfg.BgTransparent {
+			a.sampleUnderWindow(true)
+		}
+		a.updateAppearance()
 	case idMenuPickBgColor:
 		if c, ok := a.pickScreenColor("背景"); ok {
 			a.cfg.BgColor = colorrefToHex(c)
@@ -753,6 +839,9 @@ func (a *appState) handleCommand(id int) {
 		}
 	case idMenuToggleTransparent:
 		a.cfg.BgTransparent = !a.cfg.BgTransparent
+		if a.cfg.BgTransparent && a.cfg.AutoInvertText {
+			a.sampleUnderWindow(true)
+		}
 		a.updateAppearance()
 	case idMenuFont12:
 		a.cfg.FontSize = 12
@@ -816,6 +905,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.addTrayIcon()
 		a.layoutControls()
 		pSetTimer.Call(hwnd, idTimerPoll, 2500, 0)
+		pSetTimer.Call(hwnd, idTimerContrast, 260, 0)
 		a.checkUpdateAsync(false)
 		if a.loggedIn {
 			a.pollMessagesAsync()
@@ -845,6 +935,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			a.cfg.Width = int(wr.Right - wr.Left)
 			a.cfg.Height = int(wr.Bottom - wr.Top)
 		}
+		a.sampleUnderWindow(true)
 		a.triggerRepaint()
 		return 0
 
@@ -897,6 +988,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			a.cfg.Y = int(wr.Top)
 			a.cfg.HasPos = true
 		}
+		a.sampleUnderWindow(true)
 		return 0
 
 	case WM_ERASEBKGND:
@@ -931,6 +1023,8 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_TIMER:
 		if wParam == idTimerPoll && a.loggedIn {
 			a.pollMessagesAsync()
+		} else if wParam == idTimerContrast && a.cfg.BgTransparent && a.cfg.AutoInvertText {
+			a.sampleUnderWindow(false)
 		}
 		return 0
 
@@ -962,7 +1056,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_CTLCOLORSTATIC, WM_CTLCOLORBTN:
 		hdc := wParam
-		pSetTextColor.Call(hdc, uintptr(hexToCOLORREF(a.cfg.FontColor, 0x00283123)))
+		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
 		if a.cfg.BgTransparent {
 			pSetBkColor.Call(hdc, uintptr(chromaKeyRef))
 			return a.bgBrush
@@ -973,8 +1067,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_CTLCOLOREDIT:
 		hdc := wParam
 		if a.cfg.BgTransparent {
-			isDark := !isDarkColor(hexToCOLORREF(a.cfg.FontColor, 0))
-			if isDark {
+			if a.altDarkFill {
 				pSetTextColor.Call(hdc, 0x00FFFFFF)
 				pSetBkColor.Call(hdc, 0x0024201E)
 			} else {
@@ -983,7 +1076,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			}
 			return a.altBrush
 		}
-		pSetTextColor.Call(hdc, uintptr(hexToCOLORREF(a.cfg.FontColor, 0x00283123)))
+		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
 		pSetBkColor.Call(hdc, uintptr(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)))
 		return a.bgBrush
 
@@ -999,6 +1092,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if a.loggedIn && a.hEditMsg != 0 {
 			pSetFocus.Call(a.hEditMsg)
 		}
+		a.sampleUnderWindow(true)
 		return 0
 
 	case WM_CLOSE:
@@ -1015,6 +1109,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.removeTrayIcon()
 		pUnregisterHotKey.Call(hwnd, idHotkeyBoss)
 		pKillTimer.Call(hwnd, idTimerPoll)
+		pKillTimer.Call(hwnd, idTimerContrast)
 		pDestroyWindow.Call(hwnd)
 		if a.hIcon != 0 {
 			pDestroyIcon.Call(a.hIcon)
@@ -1189,6 +1284,7 @@ func main() {
 	}
 
 	pShowWindow.Call(hwnd, SW_SHOW)
+	gApp.sampleUnderWindow(true)
 	pUpdateWindow.Call(hwnd)
 
 	var m MSG

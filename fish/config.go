@@ -11,35 +11,37 @@ import (
 const defaultServerURL = "https://linuu.xyz"
 
 type FishConfig struct {
-	ServerURL     string `json:"server_url"`
-	Token         string `json:"token"`
-	Role          string `json:"role"`
-	DisplayName   string `json:"display_name"`
-	ActorID       string `json:"actor_id"`
-	GroupID       string `json:"group_id"`
-	GroupName     string `json:"group_name"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	X             int    `json:"x"`
-	Y             int    `json:"y"`
-	HasPos        bool   `json:"has_pos"`
-	BgColor       string `json:"bg_color"`
-	BgTransparent bool   `json:"bg_transparent"`
-	FontColor     string `json:"font_color"`
-	FontSize      int    `json:"font_size"`
-	Hotkey        string `json:"hotkey"`
+	ServerURL      string `json:"server_url"`
+	Token          string `json:"token"`
+	Role           string `json:"role"`
+	DisplayName    string `json:"display_name"`
+	ActorID        string `json:"actor_id"`
+	GroupID        string `json:"group_id"`
+	GroupName      string `json:"group_name"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	X              int    `json:"x"`
+	Y              int    `json:"y"`
+	HasPos         bool   `json:"has_pos"`
+	BgColor        string `json:"bg_color"`
+	BgTransparent  bool   `json:"bg_transparent"`
+	AutoInvertText bool   `json:"auto_invert_text"`
+	FontColor      string `json:"font_color"`
+	FontSize       int    `json:"font_size"`
+	Hotkey         string `json:"hotkey"`
 }
 
 func defaultConfig() FishConfig {
 	return FishConfig{
-		ServerURL:     defaultServerURL,
-		Width:         380,
-		Height:        520,
-		BgColor:       "#FAF6EE",
-		BgTransparent: false,
-		FontColor:     "#233128",
-		FontSize:      15,
-		Hotkey:        "Alt+H",
+		ServerURL:      defaultServerURL,
+		Width:          380,
+		Height:         520,
+		BgColor:        "#FAF6EE",
+		BgTransparent:  false,
+		AutoInvertText: false,
+		FontColor:      "#233128",
+		FontSize:       15,
+		Hotkey:         "Alt+H",
 	}
 }
 

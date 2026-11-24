@@ -92,6 +92,46 @@ func TestColorAndConfigHelpers(t *testing.T) {
 	}
 }
 
+func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
+	if got := invertTextColorForBg(0x00000000); got != 0x00FFFFFF {
+		t.Fatalf("expected white on black, got 0x%08x", got)
+	}
+	if got := invertTextColorForBg(0x00FFFFFF); got != 0x00000000 {
+		t.Fatalf("expected black on white, got 0x%08x", got)
+	}
+	// Mid-gray (#808080) should avoid gray-on-gray and produce high contrast
+	grayInv := invertTextColorForBg(0x00808080)
+	if absInt(colorLuminance(0x00808080)-colorLuminance(grayInv)) < 85 {
+		t.Fatalf("expected high contrast on mid-gray, got 0x%08x", grayInv)
+	}
+	// Inversion should never produce exact chromaKeyRef
+	almostChromaBg := uint32(0x00FCFDFE) // 255-254=1(R), 255-253=2(G), 255-252=3(B) -> chromaKeyRef
+	if got := invertTextColorForBg(almostChromaBg); got == chromaKeyRef {
+		t.Fatalf("invertTextColorForBg must avoid chromaKeyRef")
+	}
+
+	// Build 10x10 top-down BGRA image: top half pure red (0x00FF0000), bottom half dark navy (0x00001020)
+	pix := make([]uint32, 10*10)
+	for y := 0; y < 5; y++ {
+		for x := 0; x < 10; x++ {
+			pix[y*10+x] = 0xFFFF0000
+		}
+	}
+	for y := 5; y < 10; y++ {
+		for x := 0; x < 10; x++ {
+			pix[y*10+x] = 0xFF001020
+		}
+	}
+	topCol, ok := averageBGRAStripColor(pix, 10, 10, 0, 5)
+	if !ok || topCol != 0x000000FF { // COLORREF 0x00BBGGRR for R=255
+		t.Fatalf("unexpected top strip color: %v 0x%08x", ok, topCol)
+	}
+	botCol, ok := averageBGRAStripColor(pix, 10, 10, 5, 10)
+	if !ok || botCol != 0x00201000 { // R=0,G=16,B=32 -> 0x00201000
+		t.Fatalf("unexpected bottom strip color: %v 0x%08x", ok, botCol)
+	}
+}
+
 func TestFishAPIFlow(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
