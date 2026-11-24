@@ -388,7 +388,7 @@ func (s *Store) listActorChatGroupsLocked(tx *Tx, actorType, actorID string) ([]
 		var dur int
 		var ts int64
 		if err := tx.QueryRow(
-			"SELECT sender_type, sender_id, msg_type, text_content, duration_sec, created_at FROM chat_messages WHERE conv_key = ? ORDER BY created_at DESC LIMIT 1",
+			"SELECT sender_type, sender_id, msg_type, text_content, duration_sec, created_at FROM chat_messages WHERE conv_key = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
 			func(r SQLiteRow) error {
 				sType = r.String(0)
 				sID = r.String(1)
@@ -466,7 +466,7 @@ func (s *Store) fillChatSummariesLocked(tx *Tx, viewerType, viewerID string, ite
 		var dur int
 		var ts int64
 		if err := tx.QueryRow(
-			"SELECT msg_type, text_content, duration_sec, created_at FROM chat_messages WHERE conv_key = ? ORDER BY created_at DESC LIMIT 1",
+			"SELECT msg_type, text_content, duration_sec, created_at FROM chat_messages WHERE conv_key = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
 			func(r SQLiteRow) error {
 				msgType = r.String(0)
 				txt = r.String(1)
@@ -1058,17 +1058,17 @@ func (s *Store) fetchChatMessagesLocked(tx *Tx, selfType, selfID, convKey string
 		q = `SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
 			 FROM chat_messages
 			 WHERE conv_key = ? AND created_at > ?
-			 ORDER BY created_at ASC LIMIT 200`
+			 ORDER BY created_at ASC, rowid ASC LIMIT 200`
 		args = []any{convKey, afterMs}
 	} else {
 		q = `SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
 			 FROM (
-				SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
+				SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at, rowid AS _rid
 				FROM chat_messages
 				WHERE conv_key = ?
-				ORDER BY created_at DESC LIMIT 120
+				ORDER BY created_at DESC, rowid DESC LIMIT 120
 			 ) sub
-			 ORDER BY created_at ASC`
+			 ORDER BY created_at ASC, _rid ASC`
 		args = []any{convKey}
 	}
 
