@@ -41,7 +41,7 @@ func TestSocialFriendsAndMultimediaChatFlow(t *testing.T) {
 		t.Fatalf("login dabao failed: %d", st)
 	}
 	tokDa := loginDa["token"].(string)
-	idDa := loginDa["child"].(map[string]any)["id"].(string)
+	idDa := loginDa["childId"].(string)
 
 	st, loginEr := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{"username": "erbao_a", "password": "pass1234"})
 	if st != 200 {
@@ -54,7 +54,7 @@ func TestSocialFriendsAndMultimediaChatFlow(t *testing.T) {
 		t.Fatalf("login xiaoming failed: %d", st)
 	}
 	tokXiao := loginXiao["token"].(string)
-	idXiao := loginXiao["child"].(map[string]any)["id"].(string)
+	idXiao := loginXiao["childId"].(string)
 
 	// 2. 验证同家庭自动成为「家庭」分组好友，默认也有「朋友」分组
 	st, ovDa := doJSON(t, ts, "GET", "/api/child/friends", tokDa, nil)
