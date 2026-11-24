@@ -72,7 +72,6 @@ type appState struct {
 	boldFont uintptr
 	chatFont uintptr
 	bgBrush  uintptr
-	altBrush uintptr
 
 	// Login controls
 	hLblTitle, hBtnLoginQuit, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
@@ -134,9 +133,6 @@ func (a *appState) refreshResources() {
 	if a.bgBrush != 0 {
 		pDeleteObject.Call(a.bgBrush)
 	}
-	if a.altBrush != 0 && a.altBrush != a.bgBrush {
-		pDeleteObject.Call(a.altBrush)
-	}
 
 	qual := uint32(CLEARTYPE_QUALITY)
 	if a.cfg.BgTransparent {
@@ -149,19 +145,8 @@ func (a *appState) refreshResources() {
 	bgRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 	if a.cfg.BgTransparent {
 		a.bgBrush, _, _ = pCreateSolidBrush.Call(uintptr(chromaKeyRef))
-		// Default initial fill to bgRef (never chromaKeyRef so input stays clickable) until backdrop sample refreshes it
-		initBoxBg := a.inputBgColor
-		if initBoxBg == 0 || initBoxBg == chromaKeyRef {
-			initBoxBg = bgRef
-			if initBoxBg == chromaKeyRef {
-				initBoxBg = 0x001E1E1E
-			}
-		}
-		a.inputBgColor = initBoxBg
-		a.altBrush, _, _ = pCreateSolidBrush.Call(uintptr(initBoxBg))
 	} else {
 		a.bgBrush, _, _ = pCreateSolidBrush.Call(uintptr(bgRef))
-		a.altBrush = a.bgBrush
 		a.inputBgColor = bgRef
 	}
 
@@ -238,19 +223,15 @@ func (a *appState) sampleUnderWindow(force bool) {
 
 	if boxChanged {
 		a.inputBgColor = newBoxBg
-		if newBr, _, _ := pCreateSolidBrush.Call(uintptr(newBoxBg)); newBr != 0 {
-			if a.altBrush != 0 && a.altBrush != a.bgBrush {
-				pDeleteObject.Call(a.altBrush)
+		if a.cfg.AutoInvertText {
+			if a.hEditMsg != 0 {
+				pInvalidateRect.Call(a.hEditMsg, 0, 1)
 			}
-			a.altBrush = newBr
-		}
-		if a.hEditMsg != 0 {
-			pInvalidateRect.Call(a.hEditMsg, 0, 1)
-		}
-		if !a.loggedIn {
-			for _, h := range []uintptr{a.hEditUser, a.hEditPass} {
-				if h != 0 {
-					pInvalidateRect.Call(h, 0, 1)
+			if !a.loggedIn {
+				for _, h := range []uintptr{a.hEditUser, a.hEditPass} {
+					if h != 0 {
+						pInvalidateRect.Call(h, 0, 1)
+					}
 				}
 			}
 		}
@@ -543,9 +524,9 @@ func (a *appState) paintWindow() {
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&topClip)), a.bgBrush)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
 
-		// Draw custom chat input box filled with input surface and a slightly brighter border
+		// Draw custom chat input box (transparent in transparent mode; matches background color when opaque) with a slightly brighter border
 		bx := a.inputBoxRect(rc)
-		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), a.altBrush)
+		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), a.bgBrush)
 		surfaceRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 		if a.cfg.BgTransparent && a.inputBgColor != 0 {
 			surfaceRef = a.inputBgColor
@@ -897,6 +878,28 @@ func (a *appState) registerBossHotkey() {
 	_, _, _ = pRegisterHotKey.Call(a.hwnd, idHotkeyBoss, uintptr(mods|MOD_NOREPEAT), uintptr(vk))
 }
 
+func (a *appState) showAndBringToFront(focusInput bool) {
+	if a.hwnd == 0 {
+		return
+	}
+	pShowWindow.Call(a.hwnd, SW_SHOW)
+	pSetWindowPos.Call(a.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
+	pSetWindowPos.Call(a.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
+	pSetForegroundWindow.Call(a.hwnd)
+	if focusInput && a.loggedIn && a.hEditMsg != 0 {
+		pSetFocus.Call(a.hEditMsg)
+	}
+	a.sampleUnderWindow(true)
+	a.triggerRepaint()
+	if a.hLblGroup != 0 {
+		pInvalidateRect.Call(a.hLblGroup, 0, 1)
+	}
+	if a.hEditMsg != 0 {
+		pInvalidateRect.Call(a.hEditMsg, 0, 1)
+	}
+	pUpdateWindow.Call(a.hwnd)
+}
+
 func (a *appState) toggleBossHide() {
 	if a.hwnd == 0 {
 		return
@@ -905,12 +908,7 @@ func (a *appState) toggleBossHide() {
 	if vis != 0 {
 		pShowWindow.Call(a.hwnd, SW_HIDE)
 	} else {
-		pShowWindow.Call(a.hwnd, SW_SHOW)
-		pSetForegroundWindow.Call(a.hwnd)
-		if a.loggedIn && a.hEditMsg != 0 {
-			pSetFocus.Call(a.hEditMsg)
-		}
-		a.sampleUnderWindow(true)
+		a.showAndBringToFront(true)
 	}
 }
 
@@ -918,7 +916,7 @@ func (a *appState) updateAppearance() {
 	saveConfig(a.cfg)
 	a.refreshResources()
 	a.layoutControls()
-	a.triggerRepaint()
+	a.showAndBringToFront(true)
 }
 
 func (a *appState) handleCommand(id int) {
@@ -932,25 +930,23 @@ func (a *appState) handleCommand(id int) {
 			a.cfg.FontColor = colorrefToHex(c)
 			a.cfg.AutoInvertText = false
 			a.updateAppearance()
+		} else {
+			a.showAndBringToFront(false)
 		}
 	case idMenuToggleInvert:
 		a.cfg.AutoInvertText = !a.cfg.AutoInvertText
-		if a.cfg.AutoInvertText && a.cfg.BgTransparent {
-			a.sampleUnderWindow(true)
-		}
 		a.updateAppearance()
 	case idMenuPickBgColor:
 		if c, ok := a.pickScreenColor("背景"); ok {
 			a.cfg.BgColor = colorrefToHex(c)
 			a.cfg.BgTransparent = false
 			a.updateAppearance()
+		} else {
+			a.showAndBringToFront(false)
 		}
 	case idMenuToggleTransparent:
 		a.cfg.BgTransparent = !a.cfg.BgTransparent
 		a.updateAppearance()
-		if a.cfg.BgTransparent {
-			a.sampleUnderWindow(true)
-		}
 	case idMenuFont12:
 		a.cfg.FontSize = 12
 		a.updateAppearance()
@@ -1083,7 +1079,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case wmAppTray:
 		ev := uint32(lParam & 0xFFFF)
 		if ev == WM_LBUTTONUP || ev == WM_LBUTTONDBLCLK {
-			a.toggleBossHide()
+			a.showAndBringToFront(true)
 		} else if ev == WM_RBUTTONUP {
 			a.showTrayMenu()
 		}
@@ -1198,11 +1194,15 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if a.cfg.BgTransparent {
 			txtCol := hexToCOLORREF(a.cfg.FontColor, 0x00283123)
 			if a.cfg.AutoInvertText {
-				txtCol = invertTextColorForBg(a.inputBgColor)
+				baseBg := a.inputBgColor
+				if baseBg == 0 {
+					baseBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+				}
+				txtCol = invertTextColorForBg(baseBg)
 			}
 			pSetTextColor.Call(hdc, uintptr(txtCol))
-			pSetBkColor.Call(hdc, uintptr(a.inputBgColor))
-			return a.altBrush
+			pSetBkColor.Call(hdc, uintptr(chromaKeyRef))
+			return a.bgBrush
 		}
 		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
 		pSetBkColor.Call(hdc, uintptr(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)))
@@ -1215,12 +1215,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case wmAppShow:
-		pShowWindow.Call(hwnd, SW_SHOW)
-		pSetForegroundWindow.Call(hwnd)
-		if a.loggedIn && a.hEditMsg != 0 {
-			pSetFocus.Call(a.hEditMsg)
-		}
-		a.sampleUnderWindow(true)
+		a.showAndBringToFront(true)
 		return 0
 
 	case WM_CLOSE:
