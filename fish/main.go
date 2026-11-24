@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,23 +14,17 @@ import (
 const (
 	wmAppRefresh = WM_APP + 1
 	wmAppShow    = WM_APP + 2
+	wmAppTray    = WM_APP + 3
 
 	idTimerPoll  = 1
 	idHotkeyBoss = 1
+	idTrayIcon   = 1
 
 	idBtnLogin        = 101
 	idBtnSettings     = 102
 	idBtnLogout       = 103
 	idBtnSend         = 104
-	idBtnApplySize    = 105
-	idBtnSizeSmall    = 106
-	idBtnSizeMed      = 107
-	idBtnSizeLarge    = 108
 	idBtnPickBg       = 109
-	idBtnBgWarm       = 110
-	idBtnBgWhite      = 111
-	idBtnBgGreen      = 112
-	idBtnBgDark       = 113
 	idChkBgTrans      = 114
 	idBtnAlpha25      = 115
 	idBtnAlpha50      = 116
@@ -39,10 +32,6 @@ const (
 	idBtnAlpha90      = 118
 	idBtnAlpha100     = 119
 	idBtnPickFont     = 120
-	idBtnFontInk      = 121
-	idBtnFontBlack    = 122
-	idBtnFontWhite    = 123
-	idBtnFontGray     = 124
 	idBtnFontSize13   = 125
 	idBtnFontSize15   = 126
 	idBtnFontSize18   = 127
@@ -54,6 +43,11 @@ const (
 	idBtnHKAltQ       = 133
 	idBtnHKCtrlAltH   = 134
 	idBtnHKF9         = 135
+	idBtnQuit         = 136
+
+	idMenuToggle   = 201
+	idMenuSettings = 202
+	idMenuQuit     = 203
 )
 
 const chromaKeyRef uint32 = 0x00030201 // RGB(1, 2, 3)
@@ -64,6 +58,8 @@ type appState struct {
 	mu           sync.Mutex
 	hwnd         uintptr
 	hInst        uintptr
+	hIcon        uintptr
+	trayAdded    bool
 	cfg          FishConfig
 	custColors   [16]uint32
 	loggedIn     bool
@@ -86,22 +82,24 @@ type appState struct {
 	altBrush uintptr
 
 	// Login controls
-	hLblTitle, hLblSrv, hEditSrv, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
+	hLblTitle, hBtnLoginQuit, hLblSrv, hEditSrv, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
 
 	// Chat controls
 	hLblGroup, hBtnHide, hBtnSettings, hBtnLogout, hEditMsg, hBtnSend uintptr
 
 	// Settings controls
-	hLblSetHead                                                                                       uintptr
-	hLblSize, hEditW, hLblX, hEditH, hBtnApplySize, hBtnSzS, hBtnSzM, hBtnSzL                         uintptr
-	hLblBg, hBtnPickBg, hBtnBgWarm, hBtnBgWhite, hBtnBgGreen, hBtnBgDark, hChkBgTrans                 uintptr
-	hLblAlpha, hBtnA25, hBtnA50, hBtnA75, hBtnA90, hBtnA100                                           uintptr
-	hLblFont, hBtnPickFont, hBtnFInk, hBtnFBlack, hBtnFWhite, hBtnFGray, hBtnFS13, hBtnFS15, hBtnFS18 uintptr
-	hLblHotkey, hBtnHKAltH, hBtnHKAltQ, hBtnHKCtrlAltH, hBtnHKF9, hLblHKStatus                        uintptr
-	hBtnCloseSet                                                                                      uintptr
+	hLblSetHead                                                  uintptr
+	hLblSizeHint                                                 uintptr
+	hLblBg, hBtnPickBg, hChkBgTrans                              uintptr
+	hLblAlpha, hBtnA25, hBtnA50, hBtnA75, hBtnA90, hBtnA100      uintptr
+	hLblFont, hBtnPickFont, hBtnFS13, hBtnFS15, hBtnFS18         uintptr
+	hLblHotkey, hBtnHKAltH, hBtnHKAltQ, hBtnHKCtrlAltH, hBtnHKF9 uintptr
+	hLblHKStatus                                                 uintptr
+	hBtnCloseSet, hBtnQuit                                       uintptr
 
-	hotkeyStatus string
-
+	hotkeyStatus     string
+	bgSwatchRc       RECT
+	fgSwatchRc       RECT
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
 }
@@ -158,14 +156,14 @@ func (a *appState) refreshResources() {
 	}
 
 	allCtrls := []uintptr{
-		a.hLblTitle, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
+		a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
 		a.hLblGroup, a.hBtnHide, a.hBtnSettings, a.hBtnLogout, a.hEditMsg, a.hBtnSend,
-		a.hLblSetHead, a.hLblSize, a.hEditW, a.hLblX, a.hEditH, a.hBtnApplySize, a.hBtnSzS, a.hBtnSzM, a.hBtnSzL,
-		a.hLblBg, a.hBtnPickBg, a.hBtnBgWarm, a.hBtnBgWhite, a.hBtnBgGreen, a.hBtnBgDark, a.hChkBgTrans,
+		a.hLblSetHead, a.hLblSizeHint,
+		a.hLblBg, a.hBtnPickBg, a.hChkBgTrans,
 		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
-		a.hLblFont, a.hBtnPickFont, a.hBtnFInk, a.hBtnFBlack, a.hBtnFWhite, a.hBtnFGray, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
+		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
 		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
-		a.hBtnCloseSet,
+		a.hBtnCloseSet, a.hBtnQuit,
 	}
 	for _, h := range allCtrls {
 		setFont(h, a.uiFont)
@@ -202,6 +200,7 @@ func (a *appState) createAllControls() {
 
 	// Login UI
 	a.hLblTitle = createCtrl("STATIC", "🐟 fish", stLbl, 0, 0, 0, 100, 24, h, 0, inst)
+	a.hBtnLoginQuit = createCtrl("BUTTON", "×", stBtn, 0, 0, 0, 26, 24, h, idBtnQuit, inst)
 	a.hLblSrv = createCtrl("STATIC", "服务器", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
 	a.hEditSrv = createCtrl("EDIT", a.cfg.ServerURL, stEdit, 0, 0, 0, 200, 26, h, 0, inst)
 	a.hLblUser = createCtrl("STATIC", "账号", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
@@ -215,27 +214,16 @@ func (a *appState) createAllControls() {
 	a.hLblGroup = createCtrl("STATIC", "🐟 家庭群", stLbl, 0, 0, 0, 180, 22, h, 0, inst)
 	a.hBtnHide = createCtrl("BUTTON", "隐藏", stBtn, 0, 0, 0, 44, 24, h, idBtnHide, inst)
 	a.hBtnSettings = createCtrl("BUTTON", "设置", stBtn, 0, 0, 0, 44, 24, h, idBtnSettings, inst)
-	a.hBtnLogout = createCtrl("BUTTON", "退出", stBtn, 0, 0, 0, 44, 24, h, idBtnLogout, inst)
+	a.hBtnLogout = createCtrl("BUTTON", "注销", stBtn, 0, 0, 0, 44, 24, h, idBtnLogout, inst)
 	a.hEditMsg = createCtrl("EDIT", "", stEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
 	a.hBtnSend = createCtrl("BUTTON", "发送", stBtn, 0, 0, 0, 56, 28, h, idBtnSend, inst)
 
 	// Settings UI
-	a.hLblSetHead = createCtrl("STATIC", "外观与窗口设置", stLbl, 0, 0, 0, 180, 22, h, 0, inst)
-	a.hLblSize = createCtrl("STATIC", "窗口大小：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
-	a.hEditW = createCtrl("EDIT", strconv.Itoa(a.cfg.Width), stEdit|ES_NUMBER, 0, 0, 0, 56, 24, h, 0, inst)
-	a.hLblX = createCtrl("STATIC", "×", stLbl, 0, 0, 0, 14, 22, h, 0, inst)
-	a.hEditH = createCtrl("EDIT", strconv.Itoa(a.cfg.Height), stEdit|ES_NUMBER, 0, 0, 0, 56, 24, h, 0, inst)
-	a.hBtnApplySize = createCtrl("BUTTON", "应用", stBtn, 0, 0, 0, 48, 24, h, idBtnApplySize, inst)
-	a.hBtnSzS = createCtrl("BUTTON", "小 300×380", stBtn, 0, 0, 0, 78, 24, h, idBtnSizeSmall, inst)
-	a.hBtnSzM = createCtrl("BUTTON", "中 380×520", stBtn, 0, 0, 0, 78, 24, h, idBtnSizeMed, inst)
-	a.hBtnSzL = createCtrl("BUTTON", "大 480×620", stBtn, 0, 0, 0, 78, 24, h, idBtnSizeLarge, inst)
+	a.hLblSetHead = createCtrl("STATIC", "外观与热键设置", stLbl, 0, 0, 0, 180, 22, h, 0, inst)
+	a.hLblSizeHint = createCtrl("STATIC", "窗口大小：鼠标拖动窗口四边或四角缩放", stLbl, 0, 0, 0, 260, 20, h, 0, inst)
 
 	a.hLblBg = createCtrl("STATIC", "背景颜色：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
-	a.hBtnPickBg = createCtrl("BUTTON", "选色...", stBtn, 0, 0, 0, 58, 24, h, idBtnPickBg, inst)
-	a.hBtnBgWarm = createCtrl("BUTTON", "暖米", stBtn, 0, 0, 0, 44, 24, h, idBtnBgWarm, inst)
-	a.hBtnBgWhite = createCtrl("BUTTON", "纯白", stBtn, 0, 0, 0, 44, 24, h, idBtnBgWhite, inst)
-	a.hBtnBgGreen = createCtrl("BUTTON", "浅绿", stBtn, 0, 0, 0, 44, 24, h, idBtnBgGreen, inst)
-	a.hBtnBgDark = createCtrl("BUTTON", "暗夜", stBtn, 0, 0, 0, 44, 24, h, idBtnBgDark, inst)
+	a.hBtnPickBg = createCtrl("BUTTON", "打开取色器...", stBtn, 0, 0, 0, 110, 24, h, idBtnPickBg, inst)
 	a.hChkBgTrans = createCtrl("BUTTON", "背景全透明（仅保留文字）", stChk, 0, 0, 0, 210, 22, h, idChkBgTrans, inst)
 
 	a.hLblAlpha = createCtrl("STATIC", "透明度：", stLbl, 0, 0, 0, 64, 22, h, 0, inst)
@@ -245,12 +233,8 @@ func (a *appState) createAllControls() {
 	a.hBtnA90 = createCtrl("BUTTON", "90%", stBtn, 0, 0, 0, 40, 24, h, idBtnAlpha90, inst)
 	a.hBtnA100 = createCtrl("BUTTON", "100%", stBtn, 0, 0, 0, 46, 24, h, idBtnAlpha100, inst)
 
-	a.hLblFont = createCtrl("STATIC", "字体设置：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
-	a.hBtnPickFont = createCtrl("BUTTON", "选色...", stBtn, 0, 0, 0, 58, 24, h, idBtnPickFont, inst)
-	a.hBtnFInk = createCtrl("BUTTON", "深墨", stBtn, 0, 0, 0, 44, 24, h, idBtnFontInk, inst)
-	a.hBtnFBlack = createCtrl("BUTTON", "纯黑", stBtn, 0, 0, 0, 44, 24, h, idBtnFontBlack, inst)
-	a.hBtnFWhite = createCtrl("BUTTON", "纯白", stBtn, 0, 0, 0, 44, 24, h, idBtnFontWhite, inst)
-	a.hBtnFGray = createCtrl("BUTTON", "柔灰", stBtn, 0, 0, 0, 44, 24, h, idBtnFontGray, inst)
+	a.hLblFont = createCtrl("STATIC", "字体颜色：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
+	a.hBtnPickFont = createCtrl("BUTTON", "打开取色器...", stBtn, 0, 0, 0, 110, 24, h, idBtnPickFont, inst)
 	a.hBtnFS13 = createCtrl("BUTTON", "小字", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize13, inst)
 	a.hBtnFS15 = createCtrl("BUTTON", "标准", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize15, inst)
 	a.hBtnFS18 = createCtrl("BUTTON", "大字", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize18, inst)
@@ -262,7 +246,8 @@ func (a *appState) createAllControls() {
 	a.hBtnHKF9 = createCtrl("BUTTON", "F9", stBtn, 0, 0, 0, 34, 24, h, idBtnHKF9, inst)
 	a.hLblHKStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 260, 18, h, 0, inst)
 
-	a.hBtnCloseSet = createCtrl("BUTTON", "完成设置，返回群聊", stBtn, 0, 0, 0, 160, 28, h, idBtnCloseSetting, inst)
+	a.hBtnCloseSet = createCtrl("BUTTON", "返回群聊", stBtn, 0, 0, 0, 120, 28, h, idBtnCloseSetting, inst)
+	a.hBtnQuit = createCtrl("BUTTON", "退出程序", stBtn, 0, 0, 0, 90, 28, h, idBtnQuit, inst)
 
 	// Subclass Enter key on message & password inputs
 	msgCb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -307,7 +292,7 @@ func (a *appState) layoutControls() {
 	showChat := a.loggedIn && !a.showSettings
 	showSet := a.loggedIn && a.showSettings
 
-	for _, h := range []uintptr{a.hLblTitle, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
+	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
 		showCtrl(h, showLogin)
 	}
 	for _, h := range []uintptr{a.hLblGroup, a.hBtnHide, a.hBtnSettings, a.hBtnLogout} {
@@ -317,24 +302,25 @@ func (a *appState) layoutControls() {
 		showCtrl(h, showChat)
 	}
 	for _, h := range []uintptr{
-		a.hLblSetHead, a.hLblSize, a.hEditW, a.hLblX, a.hEditH, a.hBtnApplySize, a.hBtnSzS, a.hBtnSzM, a.hBtnSzL,
-		a.hLblBg, a.hBtnPickBg, a.hBtnBgWarm, a.hBtnBgWhite, a.hBtnBgGreen, a.hBtnBgDark, a.hChkBgTrans,
+		a.hLblSetHead, a.hLblSizeHint,
+		a.hLblBg, a.hBtnPickBg, a.hChkBgTrans,
 		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
-		a.hLblFont, a.hBtnPickFont, a.hBtnFInk, a.hBtnFBlack, a.hBtnFWhite, a.hBtnFGray, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
+		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
 		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
-		a.hBtnCloseSet,
+		a.hBtnCloseSet, a.hBtnQuit,
 	} {
 		showCtrl(h, showSet)
 	}
 
 	if showLogin {
+		moveCtrl(a.hBtnLoginQuit, cw-pad-s(26), s(8), s(26), s(24))
 		fw := cw - pad*2
 		if fw > s(280) {
 			fw = s(280)
 		}
 		lx := (cw - fw) / 2
 		y := s(28)
-		moveCtrl(a.hLblTitle, lx, y, fw, s(26))
+		moveCtrl(a.hLblTitle, lx, y, fw-s(32), s(26))
 		y += s(36)
 		moveCtrl(a.hLblSrv, lx, y, fw, s(18))
 		y += s(20)
@@ -382,33 +368,21 @@ func (a *appState) layoutControls() {
 		moveCtrl(a.hLblSetHead, x, y, cw-pad*2, s(20))
 		y += s(24)
 
-		moveCtrl(a.hLblSize, x, y+s(2), s(64), s(18))
-		moveCtrl(a.hEditW, x+s(66), y, s(48), s(22))
-		moveCtrl(a.hLblX, x+s(117), y+s(2), s(12), s(18))
-		moveCtrl(a.hEditH, x+s(130), y, s(48), s(22))
-		moveCtrl(a.hBtnApplySize, x+s(184), y, s(46), s(22))
+		moveCtrl(a.hLblSizeHint, x, y, cw-pad*2, s(20))
 		y += s(26)
 
-		moveCtrl(a.hBtnSzS, x, y, s(74), s(22))
-		moveCtrl(a.hBtnSzM, x+s(78), y, s(74), s(22))
-		moveCtrl(a.hBtnSzL, x+s(156), y, s(74), s(22))
+		moveCtrl(a.hLblBg, x, y+s(3), s(66), s(18))
+		moveCtrl(a.hBtnPickBg, x+s(68), y, s(104), s(24))
+		a.bgSwatchRc = RECT{Left: x + s(178), Top: y + s(2), Right: x + s(206), Bottom: y + s(22)}
 		y += s(28)
 
-		moveCtrl(a.hLblBg, x, y+s(2), s(64), s(18))
-		moveCtrl(a.hBtnPickBg, x+s(66), y, s(52), s(22))
-		moveCtrl(a.hBtnBgWarm, x+s(122), y, s(40), s(22))
-		moveCtrl(a.hBtnBgWhite, x+s(166), y, s(40), s(22))
-		y += s(25)
-		moveCtrl(a.hBtnBgGreen, x+s(66), y, s(40), s(22))
-		moveCtrl(a.hBtnBgDark, x+s(110), y, s(40), s(22))
-		y += s(25)
 		moveCtrl(a.hChkBgTrans, x, y, cw-pad*2, s(20))
 		checked := uintptr(0)
 		if a.cfg.BgTransparent {
 			checked = 1
 		}
 		pSendMessageW.Call(a.hChkBgTrans, BM_SETCHECK, checked, 0)
-		y += s(25)
+		y += s(26)
 
 		moveCtrl(a.hLblAlpha, x, y+s(2), s(58), s(18))
 		moveCtrl(a.hBtnA25, x+s(60), y, s(36), s(22))
@@ -418,17 +392,14 @@ func (a *appState) layoutControls() {
 		moveCtrl(a.hBtnA100, x+s(216), y, s(42), s(22))
 		y += s(28)
 
-		moveCtrl(a.hLblFont, x, y+s(2), s(64), s(18))
-		moveCtrl(a.hBtnPickFont, x+s(66), y, s(52), s(22))
-		moveCtrl(a.hBtnFInk, x+s(122), y, s(40), s(22))
-		moveCtrl(a.hBtnFBlack, x+s(166), y, s(40), s(22))
-		y += s(25)
-		moveCtrl(a.hBtnFWhite, x+s(66), y, s(40), s(22))
-		moveCtrl(a.hBtnFGray, x+s(110), y, s(40), s(22))
-		y += s(25)
-		moveCtrl(a.hBtnFS13, x+s(66), y, s(46), s(22))
-		moveCtrl(a.hBtnFS15, x+s(116), y, s(46), s(22))
-		moveCtrl(a.hBtnFS18, x+s(166), y, s(46), s(22))
+		moveCtrl(a.hLblFont, x, y+s(3), s(66), s(18))
+		moveCtrl(a.hBtnPickFont, x+s(68), y, s(104), s(24))
+		a.fgSwatchRc = RECT{Left: x + s(178), Top: y + s(2), Right: x + s(206), Bottom: y + s(22)}
+		y += s(28)
+
+		moveCtrl(a.hBtnFS13, x+s(68), y, s(48), s(22))
+		moveCtrl(a.hBtnFS15, x+s(120), y, s(48), s(22))
+		moveCtrl(a.hBtnFS18, x+s(172), y, s(48), s(22))
 		y += s(28)
 
 		moveCtrl(a.hLblHotkey, x, y+s(2), s(64), s(18))
@@ -439,9 +410,11 @@ func (a *appState) layoutControls() {
 		y += s(24)
 		moveCtrl(a.hLblHKStatus, x, y, cw-pad*2, s(18))
 		setCtrlText(a.hLblHKStatus, a.hotkeyStatus)
-		y += s(22)
+		y += s(24)
 
-		moveCtrl(a.hBtnCloseSet, x, y, cw-pad*2, s(28))
+		quitW := s(84)
+		moveCtrl(a.hBtnCloseSet, x, y, cw-pad*2-quitW-s(8), s(28))
+		moveCtrl(a.hBtnQuit, cw-pad-quitW, y, quitW, s(28))
 	}
 }
 
@@ -585,6 +558,40 @@ func (a *appState) paintWindow() {
 		botClip := RECT{Left: 0, Top: cr.Bottom, Right: cw, Bottom: ch}
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&topClip)), a.bgBrush)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
+	}
+
+	// Draw live color swatches in Settings view
+	if loggedIn && showSettings {
+		drawSwatch := func(swRc RECT, ref uint32) {
+			if swRc.Right <= swRc.Left {
+				return
+			}
+			br, _, _ := pCreateSolidBrush.Call(uintptr(ref))
+			if br != 0 {
+				pFillRect.Call(memDC, uintptr(unsafe.Pointer(&swRc)), br)
+				pDeleteObject.Call(br)
+			}
+			borderBr, _, _ := pCreateSolidBrush.Call(0x00888888)
+			if borderBr != 0 {
+				pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&swRc)), borderBr)
+				pDeleteObject.Call(borderBr)
+			}
+		}
+		drawSwatch(a.bgSwatchRc, hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
+		drawSwatch(a.fgSwatchRc, hexToCOLORREF(a.cfg.FontColor, 0x00283123))
+	}
+
+	// Draw crisp 1px outer frame when background is not chroma-keyed transparent
+	if !a.cfg.BgTransparent {
+		frameColor := uint32(0x00B8C2BA)
+		if isDarkColor(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)) {
+			frameColor = 0x00485058
+		}
+		frBr, _, _ := pCreateSolidBrush.Call(uintptr(frameColor))
+		if frBr != 0 {
+			pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&rc)), frBr)
+			pDeleteObject.Call(frBr)
+		}
 	}
 
 	pBitBlt.Call(hdc, 0, 0, uintptr(cw), uintptr(ch), memDC, 0, 0, SRCCOPY)
@@ -765,27 +772,53 @@ func (a *appState) handleSendMessage() {
 	}()
 }
 
-func (a *appState) applyWindowSize(w, h int) {
-	if w < 260 {
-		w = 260
+func (a *appState) addTrayIcon() {
+	if a.hwnd == 0 || a.trayAdded {
+		return
 	}
-	if h < 240 {
-		h = 240
+	var nid NOTIFYICONDATAW
+	nid.CbSize = uint32(unsafe.Sizeof(nid))
+	nid.Hwnd = a.hwnd
+	nid.UID = idTrayIcon
+	nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
+	nid.UCallbackMessage = wmAppTray
+	nid.HIcon = a.hIcon
+	tip, _ := syscall.UTF16FromString("fish · 家庭群聊")
+	copy(nid.SzTip[:], tip)
+	r, _, _ := pShellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
+	if r != 0 {
+		a.trayAdded = true
 	}
-	sw, _, _ := pGetSystemMetrics.Call(SM_CXSCREEN)
-	sh, _, _ := pGetSystemMetrics.Call(SM_CYSCREEN)
-	if int32(sw) > 0 && w > int(sw) {
-		w = int(sw)
+}
+
+func (a *appState) removeTrayIcon() {
+	if !a.trayAdded || a.hwnd == 0 {
+		return
 	}
-	if int32(sh) > 0 && h > int(sh) {
-		h = int(sh)
+	var nid NOTIFYICONDATAW
+	nid.CbSize = uint32(unsafe.Sizeof(nid))
+	nid.Hwnd = a.hwnd
+	nid.UID = idTrayIcon
+	pShellNotifyIconW.Call(NIM_DELETE, uintptr(unsafe.Pointer(&nid)))
+	a.trayAdded = false
+}
+
+func (a *appState) showTrayMenu() {
+	menu, _, _ := pCreatePopupMenu.Call()
+	if menu == 0 {
+		return
 	}
-	a.cfg.Width = w
-	a.cfg.Height = h
-	saveConfig(a.cfg)
-	setCtrlText(a.hEditW, strconv.Itoa(w))
-	setCtrlText(a.hEditH, strconv.Itoa(h))
-	pSetWindowPos.Call(a.hwnd, 0, 0, 0, uintptr(w), uintptr(h), SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)
+	defer pDestroyMenu.Call(menu)
+	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16("显示 / 隐藏 ("+a.cfg.Hotkey+")"))))
+	if a.loggedIn {
+		pAppendMenuW.Call(menu, MF_STRING, idMenuSettings, uintptr(unsafe.Pointer(u16("外观设置"))))
+	}
+	pAppendMenuW.Call(menu, MF_STRING, idMenuQuit, uintptr(unsafe.Pointer(u16("退出程序"))))
+
+	var pt POINT
+	pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	pSetForegroundWindow.Call(a.hwnd)
+	pTrackPopupMenu.Call(menu, TPM_LEFTALIGN|TPM_BOTTOMALIGN, uintptr(pt.X), uintptr(pt.Y), 0, a.hwnd, 0)
 }
 
 func (a *appState) registerBossHotkey() {
@@ -859,38 +892,12 @@ func (a *appState) handleCommand(id int) {
 		a.triggerRepaint()
 	case idBtnSend:
 		a.handleSendMessage()
-	case idBtnApplySize:
-		w, _ := strconv.Atoi(strings.TrimSpace(getCtrlText(a.hEditW)))
-		h, _ := strconv.Atoi(strings.TrimSpace(getCtrlText(a.hEditH)))
-		a.applyWindowSize(w, h)
-	case idBtnSizeSmall:
-		a.applyWindowSize(300, 380)
-	case idBtnSizeMed:
-		a.applyWindowSize(380, 520)
-	case idBtnSizeLarge:
-		a.applyWindowSize(480, 620)
 	case idBtnPickBg:
 		if c, ok := pickColorDialog(a.hwnd, hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6), &a.custColors); ok {
 			a.cfg.BgColor = colorrefToHex(c)
 			a.cfg.BgTransparent = false
 			a.updateAppearance()
 		}
-	case idBtnBgWarm:
-		a.cfg.BgColor = "#FAF6EE"
-		a.cfg.BgTransparent = false
-		a.updateAppearance()
-	case idBtnBgWhite:
-		a.cfg.BgColor = "#FFFFFF"
-		a.cfg.BgTransparent = false
-		a.updateAppearance()
-	case idBtnBgGreen:
-		a.cfg.BgColor = "#E7EFE9"
-		a.cfg.BgTransparent = false
-		a.updateAppearance()
-	case idBtnBgDark:
-		a.cfg.BgColor = "#1E2226"
-		a.cfg.BgTransparent = false
-		a.updateAppearance()
 	case idChkBgTrans:
 		chk, _, _ := pSendMessageW.Call(a.hChkBgTrans, BM_GETCHECK, 0, 0)
 		a.cfg.BgTransparent = chk != 0
@@ -915,18 +922,6 @@ func (a *appState) handleCommand(id int) {
 			a.cfg.FontColor = colorrefToHex(c)
 			a.updateAppearance()
 		}
-	case idBtnFontInk:
-		a.cfg.FontColor = "#233128"
-		a.updateAppearance()
-	case idBtnFontBlack:
-		a.cfg.FontColor = "#111111"
-		a.updateAppearance()
-	case idBtnFontWhite:
-		a.cfg.FontColor = "#FFFFFF"
-		a.updateAppearance()
-	case idBtnFontGray:
-		a.cfg.FontColor = "#CCCCCC"
-		a.updateAppearance()
 	case idBtnFontSize13:
 		a.cfg.FontSize = 13
 		a.updateAppearance()
@@ -952,6 +947,18 @@ func (a *appState) handleCommand(id int) {
 		a.cfg.Hotkey = "F9"
 		saveConfig(a.cfg)
 		a.registerBossHotkey()
+	case idBtnQuit, idMenuQuit:
+		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
+	case idMenuToggle:
+		a.toggleBossHide()
+	case idMenuSettings:
+		pShowWindow.Call(a.hwnd, SW_SHOW)
+		pSetForegroundWindow.Call(a.hwnd)
+		if a.loggedIn {
+			a.showSettings = true
+			a.layoutControls()
+			a.triggerRepaint()
+		}
 	}
 }
 
@@ -963,6 +970,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.createAllControls()
 		a.refreshResources()
 		a.registerBossHotkey()
+		a.addTrayIcon()
 		a.layoutControls()
 		pSetTimer.Call(hwnd, idTimerPoll, 2500, 0)
 		if a.loggedIn {
@@ -992,12 +1000,50 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&wr))); wr.Right > wr.Left && wr.Bottom > wr.Top {
 			a.cfg.Width = int(wr.Right - wr.Left)
 			a.cfg.Height = int(wr.Bottom - wr.Top)
-			if a.showSettings {
-				setCtrlText(a.hEditW, strconv.Itoa(a.cfg.Width))
-				setCtrlText(a.hEditH, strconv.Itoa(a.cfg.Height))
-			}
 		}
 		a.triggerRepaint()
+		return 0
+
+	case WM_NCHITTEST:
+		var wr RECT
+		pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&wr)))
+		sx := int32(int16(lParam & 0xFFFF))
+		sy := int32(int16((lParam >> 16) & 0xFFFF))
+		b := a.dpiScale(7)
+		onLeft := sx >= wr.Left && sx < wr.Left+b
+		onRight := sx <= wr.Right && sx >= wr.Right-b
+		onTop := sy >= wr.Top && sy < wr.Top+b
+		onBottom := sy <= wr.Bottom && sy >= wr.Bottom-b
+		switch {
+		case onTop && onLeft:
+			return HTTOPLEFT
+		case onTop && onRight:
+			return HTTOPRIGHT
+		case onBottom && onLeft:
+			return HTBOTTOMLEFT
+		case onBottom && onRight:
+			return HTBOTTOMRIGHT
+		case onLeft:
+			return HTLEFT
+		case onRight:
+			return HTRIGHT
+		case onTop:
+			return HTTOP
+		case onBottom:
+			return HTBOTTOM
+		}
+		if sy-wr.Top < a.dpiScale(38) || !a.loggedIn || a.showSettings {
+			return HTCAPTION
+		}
+		return 1 // HTCLIENT
+
+	case wmAppTray:
+		ev := uint32(lParam & 0xFFFF)
+		if ev == WM_LBUTTONUP || ev == WM_LBUTTONDBLCLK {
+			a.toggleBossHide()
+		} else if ev == WM_RBUTTONUP {
+			a.showTrayMenu()
+		}
 		return 0
 
 	case WM_MOVE:
@@ -1118,9 +1164,14 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			a.cfg.HasPos = true
 		}
 		saveConfig(a.cfg)
+		a.removeTrayIcon()
 		pUnregisterHotKey.Call(hwnd, idHotkeyBoss)
 		pKillTimer.Call(hwnd, idTimerPoll)
 		pDestroyWindow.Call(hwnd)
+		if a.hIcon != 0 {
+			pDestroyIcon.Call(a.hIcon)
+			a.hIcon = 0
+		}
 		return 0
 
 	case WM_DESTROY:
@@ -1154,10 +1205,13 @@ func main() {
 		return
 	}
 	cur, _, _ := pLoadCursorW.Call(0, IDC_ARROW)
+	gApp.hIcon = createFishTrayIcon()
 	wc := WNDCLASSEXW{
 		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
 		LpfnWndProc:   syscall.NewCallback(mainWndProc),
 		HInstance:     gApp.hInst,
+		HIcon:         gApp.hIcon,
+		HIconSm:       gApp.hIcon,
 		HCursor:       cur,
 		LpszClassName: clsName,
 	}
@@ -1173,10 +1227,10 @@ func main() {
 		posX, posY = int32(cfg.X), int32(cfg.Y)
 	}
 	hwnd, _, err := pCreateWindowExW.Call(
-		WS_EX_LAYERED,
+		WS_EX_LAYERED|WS_EX_TOOLWINDOW,
 		uintptr(unsafe.Pointer(clsName)),
 		uintptr(unsafe.Pointer(u16("fish"))),
-		WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+		WS_POPUP|WS_CLIPCHILDREN,
 		uintptr(posX), uintptr(posY),
 		uintptr(cfg.Width), uintptr(cfg.Height),
 		0, 0, gApp.hInst, 0,

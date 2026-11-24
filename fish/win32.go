@@ -11,6 +11,7 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
+	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 	pGetModuleHandleW       = kernel32.NewProc("GetModuleHandleW")
@@ -41,7 +42,16 @@ var (
 	pBeginPaint             = user32.NewProc("BeginPaint")
 	pEndPaint               = user32.NewProc("EndPaint")
 	pFillRect               = user32.NewProc("FillRect")
+	pFrameRect              = user32.NewProc("FrameRect")
 	pSetLayeredWindowAttrs  = user32.NewProc("SetLayeredWindowAttributes")
+	pCreatePopupMenu        = user32.NewProc("CreatePopupMenu")
+	pAppendMenuW            = user32.NewProc("AppendMenuW")
+	pTrackPopupMenu         = user32.NewProc("TrackPopupMenu")
+	pDestroyMenu            = user32.NewProc("DestroyMenu")
+	pGetCursorPos           = user32.NewProc("GetCursorPos")
+	pCreateIconIndirect     = user32.NewProc("CreateIconIndirect")
+	pDestroyIcon            = user32.NewProc("DestroyIcon")
+	pShellNotifyIconW       = shell32.NewProc("Shell_NotifyIconW")
 	pSetWindowTextW         = user32.NewProc("SetWindowTextW")
 	pGetWindowTextW         = user32.NewProc("GetWindowTextW")
 	pGetWindowTextLengthW   = user32.NewProc("GetWindowTextLengthW")
@@ -60,6 +70,7 @@ var (
 	pCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	pDeleteDC               = gdi32.NewProc("DeleteDC")
 	pCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
+	pCreateBitmap           = gdi32.NewProc("CreateBitmap")
 	pSelectObject           = gdi32.NewProc("SelectObject")
 	pBitBlt                 = gdi32.NewProc("BitBlt")
 	pSetTextColor           = gdi32.NewProc("SetTextColor")
@@ -70,12 +81,14 @@ var (
 
 const (
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
+	WS_POPUP            = 0x80000000
 	WS_CHILD            = 0x40000000
 	WS_VISIBLE          = 0x10000000
 	WS_TABSTOP          = 0x00010000
 	WS_BORDER           = 0x00800000
 	WS_VSCROLL          = 0x00200000
 	WS_CLIPCHILDREN     = 0x02000000
+	WS_EX_TOOLWINDOW    = 0x00000080
 	WS_EX_LAYERED       = 0x00080000
 
 	ES_LEFT         = 0x0000
@@ -108,8 +121,33 @@ const (
 	WM_CTLCOLORBTN    = 0x0135
 	WM_CTLCOLORSTATIC = 0x0138
 	WM_MOUSEWHEEL     = 0x020A
+	WM_NCHITTEST      = 0x0084
+	WM_LBUTTONUP      = 0x0202
+	WM_LBUTTONDBLCLK  = 0x0203
+	WM_RBUTTONUP      = 0x0205
 	WM_HOTKEY         = 0x0312
 	WM_APP            = 0x8000
+
+	HTCAPTION     = 2
+	HTLEFT        = 10
+	HTRIGHT       = 11
+	HTTOP         = 12
+	HTTOPLEFT     = 13
+	HTTOPRIGHT    = 14
+	HTBOTTOM      = 15
+	HTBOTTOMLEFT  = 16
+	HTBOTTOMRIGHT = 17
+
+	NIM_ADD     = 0x00000000
+	NIM_MODIFY  = 0x00000001
+	NIM_DELETE  = 0x00000002
+	NIF_MESSAGE = 0x00000001
+	NIF_ICON    = 0x00000002
+	NIF_TIP     = 0x00000004
+
+	MF_STRING       = 0x00000000
+	TPM_LEFTALIGN   = 0x0000
+	TPM_BOTTOMALIGN = 0x0020
 
 	MOD_NOREPEAT = 0x4000
 
@@ -209,6 +247,80 @@ type CHOOSECOLORW struct {
 	LCustData      uintptr
 	LpfnHook       uintptr
 	LpTemplateName *uint16
+}
+
+type NOTIFYICONDATAW struct {
+	CbSize           uint32
+	Hwnd             uintptr
+	UID              uint32
+	UFlags           uint32
+	UCallbackMessage uint32
+	HIcon            uintptr
+	SzTip            [128]uint16
+	DwState          uint32
+	DwStateMask      uint32
+	SzInfo           [256]uint16
+	UVersion         uint32
+	SzInfoTitle      [64]uint16
+	DwInfoFlags      uint32
+	GuidItem         [16]byte
+	HBalloonIcon     uintptr
+}
+
+type ICONINFO struct {
+	FIcon    int32
+	XHotspot uint32
+	YHotspot uint32
+	HbmMask  uintptr
+	HbmColor uintptr
+}
+
+func createFishTrayIcon() uintptr {
+	const sz = 16
+	pixels := make([]uint32, sz*sz)
+	// Cute teal-green badge (#2F6B4F) with a crisp white fish silhouette (BGRA byte order in uint32 little-endian: 0xAARRGGBB)
+	const bg uint32 = 0xFF2F6B4F
+	const fg uint32 = 0xFFFFFFFF
+	const eye uint32 = 0xFF2F6B4F
+	for y := 0; y < sz; y++ {
+		for x := 0; x < sz; x++ {
+			dx := float64(x) - 7.5
+			dy := float64(y) - 7.5
+			if dx*dx+dy*dy <= 7.5*7.5 {
+				pixels[y*sz+x] = bg
+			}
+		}
+	}
+	// Fish body ellipse centered at (6.5, 7.5) + tail at right (x=11..13)
+	for y := 4; y <= 11; y++ {
+		for x := 2; x <= 13; x++ {
+			dx := (float64(x) - 6.5) / 4.0
+			dy := (float64(y) - 7.5) / 3.0
+			inBody := dx*dx+dy*dy <= 1.0
+			inTail := x >= 11 && x <= 13 && (y >= 7-(x-10) && y <= 8+(x-10))
+			if inBody || inTail {
+				pixels[y*sz+x] = fg
+			}
+		}
+	}
+	pixels[7*sz+4] = eye
+	mask := make([]byte, (sz/8)*sz)
+	hColor, _, _ := pCreateBitmap.Call(sz, sz, 1, 32, uintptr(unsafe.Pointer(&pixels[0])))
+	hMask, _, _ := pCreateBitmap.Call(sz, sz, 1, 1, uintptr(unsafe.Pointer(&mask[0])))
+	if hColor == 0 || hMask == 0 {
+		if hColor != 0 {
+			pDeleteObject.Call(hColor)
+		}
+		if hMask != 0 {
+			pDeleteObject.Call(hMask)
+		}
+		return 0
+	}
+	ii := ICONINFO{FIcon: 1, HbmMask: hMask, HbmColor: hColor}
+	icon, _, _ := pCreateIconIndirect.Call(uintptr(unsafe.Pointer(&ii)))
+	pDeleteObject.Call(hColor)
+	pDeleteObject.Call(hMask)
+	return icon
 }
 
 func u16(s string) *uint16 {
