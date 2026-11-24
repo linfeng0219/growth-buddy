@@ -576,6 +576,21 @@ func TestAppOTAReleaseLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(relDir, relID+".apk")); !os.IsNotExist(err) {
 		t.Fatalf("expected local APK file to be deleted")
 	}
+
+	// Blank releaseNotes auto-fills from changelog.json matching version date
+	st, autoRel := doJSON(t, ts, "POST", "/api/admin/releases", adminTok, map[string]any{
+		"versionName":  "2026.11.24-1115",
+		"releaseNotes": "",
+		"forceUpdate":  false,
+		"downloadUrl":  "https://example.com/auto.apk",
+	})
+	if st != 201 {
+		t.Fatalf("auto release notes create failed: %d %+v", st, autoRel)
+	}
+	notes, _ := autoRel["release_notes"].(string)
+	if !strings.Contains(notes, "成语") || !strings.Contains(notes, "• ") {
+		t.Fatalf("expected auto-filled release_notes from 2026-11-24 changelog, got %q", notes)
+	}
 }
 
 func TestChangelogLatestDate(t *testing.T) {

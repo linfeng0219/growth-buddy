@@ -115,9 +115,10 @@
           <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.20-1710">
         </div>
         <div class="field">
-          <label>更新日志（会直接展示在 App 升级弹窗中）</label>
-          <textarea id="relNotes" rows="2" placeholder="例如：优化跳绳防漏计与界面流畅度"></textarea>
+          <label>更新日志（打开页面或选完 APK 时已自动填入最新系统日志，可自行修改）</label>
+          <textarea id="relNotes" rows="4" placeholder="自动读取系统更新日志，或手动输入新版说明"></textarea>
           <div class="quick-chips">
+            <button type="button" class="qchip" id="btnFillLatestChangelog">✨ 填入最新系统日志</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="常规体验优化与已知问题修复">常规优化与修复</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="新增在线趣味题库与战斗动画升级">题库与战斗升级</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="界面交互优化与稳定性提升">交互与稳定性提升</button>
@@ -306,11 +307,16 @@
 <script src="/shared/changelog-modal.js"></script>
 <script>
 (function(){
+  var $id=function(id){return document.getElementById(id);};
+  var cachedChangelog=[];
+  var relNotesManualEdited=false;
   if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("adminVerBadge"),"");
   fetch("/api/changelog").then(function(r){return r.json();}).then(function(d){
     var tag=$id("adminSysVerTag"), body=$id("adminChangelogBody");
     if(tag) tag.textContent="当前系统版本 v"+(d.version||"—");
     var list=d.changelog||[];
+    cachedChangelog=list;
+    autoFillReleaseNotes(false);
     if(!list.length){if(body)body.textContent="暂无更新日志";return;}
     if(body){
       body.innerHTML=list.slice(0,5).map(function(entry){
@@ -319,7 +325,6 @@
       }).join("");
     }
   }).catch(function(){});
-  var $id=function(id){return document.getElementById(id);};
   var data=null;
   var parentCtx=null; // { mode: 'create'|'edit', familyId, parent }
   var childCtx=null;  // { mode: 'create'|'edit', familyId, child }
@@ -540,7 +545,10 @@
     var b=e.target&&e.target.closest?e.target.closest(".qchip"):null;
     if(!b) return;
     var tId=b.getAttribute("data-qtarget");
-    if(tId&&$id(tId)) $id(tId).value=b.getAttribute("data-qval")||"";
+    if(tId&&$id(tId)){
+      $id(tId).value=b.getAttribute("data-qval")||"";
+      if(tId==="relNotes") relNotesManualEdited=true;
+    }
   });
 
   /* 新建家庭 */
@@ -703,6 +711,7 @@
   $id("tabReleases").addEventListener("click",function(){
     this.classList.add("on");$id("tabFamilies").classList.remove("on");
     $id("secReleases").style.display="";$id("secFamilies").style.display="none";
+    autoFillReleaseNotes(false);
     loadReleases();
   });
 
@@ -763,9 +772,50 @@
     }
     return fmtTimeVer(f&&f.lastModified?new Date(f.lastModified):new Date());
   }
+  function formatChangelogForVersion(vName){
+    if(!cachedChangelog||!cachedChangelog.length) return "";
+    var picked=cachedChangelog[0];
+    var m=(vName||"").match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
+    if(m){
+      var dStr=m[1]+"-"+m[2]+"-"+m[3];
+      var found=cachedChangelog.find(function(x){return (x.date||"").trim()===dStr;});
+      if(found) picked=found;
+    }
+    var lines=[];
+    if(picked.title) lines.push(String(picked.title).trim());
+    (picked.items||[]).slice(0,4).forEach(function(it){
+      var s=String(it||"").trim();
+      if(s) lines.push("• "+s);
+    });
+    return lines.join("\n");
+  }
+  function autoFillReleaseNotes(force){
+    var ta=$id("relNotes");
+    if(!ta) return;
+    if(!force&&relNotesManualEdited&&ta.value.trim()!=="") return;
+    if(!force&&ta.value.trim()!==""&&!relNotesManualEdited) return;
+    var vName=$id("relVerName")?$id("relVerName").value.trim():"";
+    var txt=formatChangelogForVersion(vName);
+    if(txt){
+      ta.value=txt;
+      relNotesManualEdited=false;
+    }
+  }
+  $id("relNotes").addEventListener("input",function(){
+    relNotesManualEdited=this.value.trim()!=="";
+  });
+  $id("btnFillLatestChangelog").addEventListener("click",function(){
+    relNotesManualEdited=false;
+    autoFillReleaseNotes(true);
+  });
   $id("relApkFile").addEventListener("change",function(){
     var f=this.files&&this.files[0];
-    if(f) $id("relVerName").value=parseVerFromFile(f);
+    if(f){
+      $id("relVerName").value=parseVerFromFile(f);
+      if(!relNotesManualEdited||$id("relNotes").value.trim()===""){
+        autoFillReleaseNotes(true);
+      }
+    }
   });
   $id("btnPublishRelease").addEventListener("click",async function(){
     var fileInput=$id("relApkFile");
@@ -816,8 +866,9 @@
       }else{
         throw new Error("请选择要上传的 .apk 文件，或填写外部直链");
       }
-      $id("relVerName").value="";$id("relNotes").value="";
+      $id("relVerName").value="";$id("relNotes").value="";relNotesManualEdited=false;
       $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=true;
+      autoFillReleaseNotes(true);
       note("relMsg","🎉 新版本 "+vName+" 发布成功！App 启动后即可检测到远程升级。");
       await loadReleases();
     }catch(e){

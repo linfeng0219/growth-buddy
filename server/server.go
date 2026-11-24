@@ -76,6 +76,65 @@ func NewAppServer(store *Store, publicDir string) *AppServer {
 	}
 }
 
+type changelogEntry struct {
+	Date  string   `json:"date"`
+	Title string   `json:"title"`
+	Items []string `json:"items"`
+}
+
+func (a *AppServer) loadChangelogEntries() []changelogEntry {
+	var raw []byte
+	var err error
+	if a.publicDir != "" {
+		raw, err = os.ReadFile(filepath.Join(a.publicDir, "shared", "changelog.json"))
+	}
+	if err != nil || len(raw) == 0 {
+		raw, err = fs.ReadFile(embeddedPublicFS, "public/shared/changelog.json")
+	}
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	var list []changelogEntry
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil
+	}
+	return list
+}
+
+var verDateRegexp = regexp.MustCompile(`(\d{4})[.\-](\d{2})[.\-](\d{2})`)
+
+func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
+	entries := a.loadChangelogEntries()
+	if len(entries) == 0 {
+		return ""
+	}
+	picked := entries[0]
+	if m := verDateRegexp.FindStringSubmatch(strings.TrimSpace(vName)); len(m) == 4 {
+		targetDate := m[1] + "-" + m[2] + "-" + m[3]
+		for _, e := range entries {
+			if strings.TrimSpace(e.Date) == targetDate {
+				picked = e
+				break
+			}
+		}
+	}
+	var lines []string
+	if t := strings.TrimSpace(picked.Title); t != "" {
+		lines = append(lines, t)
+	}
+	limit := len(picked.Items)
+	if limit > 4 {
+		limit = 4
+	}
+	for _, it := range picked.Items[:limit] {
+		s := strings.TrimSpace(it)
+		if s != "" {
+			lines = append(lines, "• "+s)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func serverToday() string {
 	loc := time.FixedZone("CST", 8*3600)
 	return time.Now().In(loc).Format("2006-01-02")
@@ -315,21 +374,11 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m == http.MethodGet && p == "/api/changelog" {
-		var raw []byte
-		var err error
-		if a.publicDir != "" {
-			raw, err = os.ReadFile(filepath.Join(a.publicDir, "shared", "changelog.json"))
+		entries := a.loadChangelogEntries()
+		if entries == nil {
+			entries = []changelogEntry{}
 		}
-		if err != nil || len(raw) == 0 {
-			raw, err = fs.ReadFile(embeddedPublicFS, "public/shared/changelog.json")
-		}
-		if err != nil {
-			writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": []any{}})
-			return
-		}
-		var list []any
-		_ = json.Unmarshal(raw, &list)
-		writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": list})
+		writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": entries})
 		return
 	}
 
@@ -1846,6 +1895,9 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			loc := time.FixedZone("CST", 8*3600)
 			vName = time.Now().In(loc).Format("2006.01.02-1504")
 		}
+		if notes == "" {
+			notes = a.defaultReleaseNotesForVersion(vName)
+		}
 		if vCode <= 0 {
 			vCode = autoVersionCodeFromName(vName)
 		}
@@ -1923,11 +1975,15 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 	if vCode <= 0 {
 		vCode = autoVersionCodeFromName(vName)
 	}
+	notes := strings.TrimSpace(mapStr(body, "releaseNotes"))
+	if notes == "" {
+		notes = a.defaultReleaseNotesForVersion(vName)
+	}
 	created, err := a.store.CreateRelease(AppReleaseDTO{
 		Platform:     "android",
 		VersionCode:  vCode,
 		VersionName:  vName,
-		ReleaseNotes: mapStr(body, "releaseNotes"),
+		ReleaseNotes: notes,
 		ForceUpdate:  mapBool(body, "forceUpdate"),
 		FileSize:     int64(mapInt(body, "fileSize", 0)),
 		SHA256:       strings.ToLower(strings.TrimSpace(mapStr(body, "sha256"))),
