@@ -76,7 +76,7 @@ type appState struct {
 	altBrush uintptr
 
 	// Login controls
-	hLblTitle, hBtnLoginQuit, hLblSrv, hEditSrv, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
+	hLblTitle, hBtnLoginQuit, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
 
 	// Chat controls (minimal: no hide/settings/logout buttons in window)
 	hLblGroup, hEditMsg, hBtnSend uintptr
@@ -142,7 +142,7 @@ func (a *appState) refreshResources() {
 	}
 
 	allCtrls := []uintptr{
-		a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
+		a.hLblTitle, a.hBtnLoginQuit, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
 		a.hLblGroup, a.hEditMsg, a.hBtnSend,
 	}
 	for _, h := range allCtrls {
@@ -179,8 +179,6 @@ func (a *appState) createAllControls() {
 	// Login UI
 	a.hLblTitle = createCtrl("STATIC", "🐟 fish", stLbl, 0, 0, 0, 100, 24, h, 0, inst)
 	a.hBtnLoginQuit = createCtrl("BUTTON", "×", stBtn, 0, 0, 0, 26, 24, h, idBtnQuit, inst)
-	a.hLblSrv = createCtrl("STATIC", "服务器", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
-	a.hEditSrv = createCtrl("EDIT", a.cfg.ServerURL, stEdit, 0, 0, 0, 200, 26, h, 0, inst)
 	a.hLblUser = createCtrl("STATIC", "账号", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
 	a.hEditUser = createCtrl("EDIT", "", stEdit, 0, 0, 0, 200, 26, h, 0, inst)
 	a.hLblPass = createCtrl("STATIC", "密码", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
@@ -235,7 +233,7 @@ func (a *appState) layoutControls() {
 	showLogin := !a.loggedIn
 	showChat := a.loggedIn
 
-	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
+	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
 		showCtrl(h, showLogin)
 	}
 	for _, h := range []uintptr{a.hLblGroup, a.hEditMsg, a.hBtnSend} {
@@ -249,13 +247,9 @@ func (a *appState) layoutControls() {
 			fw = s(280)
 		}
 		lx := (cw - fw) / 2
-		y := s(28)
+		y := s(44)
 		moveCtrl(a.hLblTitle, lx, y, fw-s(32), s(26))
-		y += s(36)
-		moveCtrl(a.hLblSrv, lx, y, fw, s(18))
-		y += s(20)
-		moveCtrl(a.hEditSrv, lx, y, fw, s(28))
-		y += s(36)
+		y += s(44)
 		moveCtrl(a.hLblUser, lx, y, fw, s(18))
 		y += s(20)
 		moveCtrl(a.hEditUser, lx, y, fw, s(28))
@@ -424,19 +418,6 @@ func (a *appState) paintWindow() {
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
 	}
 
-	// Draw crisp 1px outer frame when background is not chroma-keyed transparent
-	if !a.cfg.BgTransparent {
-		frameColor := uint32(0x00B8C2BA)
-		if isDarkColor(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)) {
-			frameColor = 0x00485058
-		}
-		frBr, _, _ := pCreateSolidBrush.Call(uintptr(frameColor))
-		if frBr != 0 {
-			pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&rc)), frBr)
-			pDeleteObject.Call(frBr)
-		}
-	}
-
 	pBitBlt.Call(hdc, 0, 0, uintptr(cw), uintptr(ch), memDC, 0, 0, SRCCOPY)
 	pSelectObject.Call(memDC, oldBmp)
 	pDeleteObject.Call(bmp)
@@ -458,10 +439,7 @@ func (a *appState) handleLoginClick() {
 	a.loggingIn = true
 	a.mu.Unlock()
 
-	srv := strings.TrimSpace(getCtrlText(a.hEditSrv))
-	if srv == "" {
-		srv = defaultServerURL
-	}
+	srv := defaultServerURL
 	usr := strings.TrimSpace(getCtrlText(a.hEditUser))
 	pwd := getCtrlText(a.hEditPass)
 	if usr == "" || pwd == "" {
@@ -1060,12 +1038,7 @@ func (a *appState) checkUpdateAsync(manual bool) {
 		return
 	}
 	a.checkingUpdate = true
-	srv := a.cfg.ServerURL
-	if !a.loggedIn && a.hEditSrv != 0 {
-		if s := strings.TrimSpace(getCtrlText(a.hEditSrv)); s != "" {
-			srv = s
-		}
-	}
+	srv := defaultServerURL
 	a.mu.Unlock()
 
 	_, verCode := currentFishVersion()

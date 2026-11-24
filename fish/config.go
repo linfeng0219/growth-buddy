@@ -58,9 +58,7 @@ func loadConfig() FishConfig {
 		return cfg
 	}
 	_ = json.Unmarshal(raw, &cfg)
-	if strings.TrimSpace(cfg.ServerURL) == "" {
-		cfg.ServerURL = defaultServerURL
-	}
+	cfg.ServerURL = defaultServerURL
 	if cfg.Width < 260 {
 		cfg.Width = 380
 	}
