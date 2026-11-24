@@ -78,13 +78,18 @@ func loadConfig() FishConfig {
 	if !isHexColor(cfg.FontColor) {
 		cfg.FontColor = "#233128"
 	}
-	switch cfg.MaxMessages {
-	case 0, 100, 500:
-	default:
-		cfg.MaxMessages = 100
-	}
+	cfg.MaxMessages = normalizeMaxMessages(cfg.MaxMessages)
 	_, _, cfg.Hotkey = parseHotkey(cfg.Hotkey)
 	return cfg
+}
+
+func normalizeMaxMessages(v int) int {
+	switch v {
+	case 0, 100, 500:
+		return v
+	default:
+		return 100
+	}
 }
 
 func parseHotkey(raw string) (mods uint32, vk uint32, canonical string) {

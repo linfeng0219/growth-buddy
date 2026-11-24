@@ -122,6 +122,14 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if pressedBg := darkenColorForButton(0x00EEFAF6, true); colorLuminance(pressedBg) > colorLuminance(btnBg) {
 		t.Fatalf("expected pressed button color darker or equal, got %d > %d", colorLuminance(pressedBg), colorLuminance(btnBg))
 	}
+	for _, validLim := range []int{0, 100, 500} {
+		if cfg := normalizeMaxMessages(validLim); cfg != validLim {
+			t.Fatalf("expected %d preserved, got %d", validLim, cfg)
+		}
+	}
+	if cfg := normalizeMaxMessages(999); cfg != 100 {
+		t.Fatalf("expected invalid maxMessages normalized to 100, got %d", cfg)
+	}
 
 	// Build 10x10 top-down BGRA image: top half pure red (0x00FF0000), bottom half dark navy (0x00001020)
 	pix := make([]uint32, 10*10)
