@@ -21,6 +21,11 @@ var (
 	pDestroyWindow          = user32.NewProc("DestroyWindow")
 	pShowWindow             = user32.NewProc("ShowWindow")
 	pUpdateWindow           = user32.NewProc("UpdateWindow")
+	pIsWindowVisible        = user32.NewProc("IsWindowVisible")
+	pSetForegroundWindow    = user32.NewProc("SetForegroundWindow")
+	pFindWindowW            = user32.NewProc("FindWindowW")
+	pRegisterHotKey         = user32.NewProc("RegisterHotKey")
+	pUnregisterHotKey       = user32.NewProc("UnregisterHotKey")
 	pGetMessageW            = user32.NewProc("GetMessageW")
 	pIsDialogMessageW       = user32.NewProc("IsDialogMessageW")
 	pTranslateMessage       = user32.NewProc("TranslateMessage")
@@ -103,7 +108,10 @@ const (
 	WM_CTLCOLORBTN    = 0x0135
 	WM_CTLCOLORSTATIC = 0x0138
 	WM_MOUSEWHEEL     = 0x020A
+	WM_HOTKEY         = 0x0312
 	WM_APP            = 0x8000
+
+	MOD_NOREPEAT = 0x4000
 
 	EM_SETSEL   = 0x00B1
 	BM_GETCHECK = 0x00F0

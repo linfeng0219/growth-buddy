@@ -28,6 +28,7 @@ type FishConfig struct {
 	Alpha         int    `json:"alpha"` // 40..255
 	FontColor     string `json:"font_color"`
 	FontSize      int    `json:"font_size"`
+	Hotkey        string `json:"hotkey"`
 }
 
 func defaultConfig() FishConfig {
@@ -40,6 +41,7 @@ func defaultConfig() FishConfig {
 		Alpha:         245,
 		FontColor:     "#233128",
 		FontSize:      15,
+		Hotkey:        "Alt+H",
 	}
 }
 
@@ -82,7 +84,23 @@ func loadConfig() FishConfig {
 	if !isHexColor(cfg.FontColor) {
 		cfg.FontColor = "#233128"
 	}
+	_, _, cfg.Hotkey = parseHotkey(cfg.Hotkey)
 	return cfg
+}
+
+func parseHotkey(raw string) (mods uint32, vk uint32, canonical string) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "ALT+Q":
+		return 0x0001, 0x51, "Alt+Q"
+	case "CTRL+ALT+H":
+		return 0x0001 | 0x0002, 0x48, "Ctrl+Alt+H"
+	case "CTRL+SHIFT+H":
+		return 0x0002 | 0x0004, 0x48, "Ctrl+Shift+H"
+	case "F9":
+		return 0, 0x78, "F9"
+	default:
+		return 0x0001, 0x48, "Alt+H"
+	}
 }
 
 func saveConfig(cfg FishConfig) {

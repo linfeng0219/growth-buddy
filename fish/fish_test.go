@@ -17,6 +17,12 @@ func TestColorAndConfigHelpers(t *testing.T) {
 	if !isHexColor("#FAF6EE") || isHexColor("#ZZZZZZ") || isHexColor("123456") {
 		t.Fatalf("hex validation mismatch")
 	}
+	if m, v, c := parseHotkey("ctrl+alt+h"); m != 0x0003 || v != 0x48 || c != "Ctrl+Alt+H" {
+		t.Fatalf("parseHotkey ctrl+alt+h mismatch: %x %x %s", m, v, c)
+	}
+	if m, v, c := parseHotkey("unknown"); m != 0x0001 || v != 0x48 || c != "Alt+H" {
+		t.Fatalf("parseHotkey default mismatch: %x %x %s", m, v, c)
+	}
 }
 
 func TestFishAPIFlow(t *testing.T) {
