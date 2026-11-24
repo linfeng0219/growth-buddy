@@ -52,6 +52,30 @@ func invertTextColorForBg(bg uint32) uint32 {
 	return inv
 }
 
+// brightenColor 返回比指定 COLORREF (0x00BBGGRR) 稍亮一点的颜色（用于输入框外框）。
+func brightenColor(c uint32, delta int) uint32 {
+	if delta < 0 {
+		delta = 0
+	}
+	clamp := func(v int) int {
+		if v > 255 {
+			return 255
+		}
+		if v < 0 {
+			return 0
+		}
+		return v
+	}
+	r := clamp(int(c&0xFF) + delta)
+	g := clamp(int((c>>8)&0xFF) + delta)
+	b := clamp(int((c>>16)&0xFF) + delta)
+	out := uint32((b << 16) | (g << 8) | r)
+	if out == chromaKeyRef {
+		return 0x001E1E1E
+	}
+	return out
+}
+
 // averageBGRAStripColor 计算 top-down 32bpp BGRA 像素缓冲区指定行区间的平均色（返回 COLORREF 0x00BBGGRR）。
 func averageBGRAStripColor(bgra []uint32, w, h, yStart, yEnd int32) (uint32, bool) {
 	if w <= 0 || h <= 0 || len(bgra) < int(w*h) {

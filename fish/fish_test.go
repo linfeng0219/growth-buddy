@@ -109,6 +109,12 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if got := invertTextColorForBg(almostChromaBg); got == chromaKeyRef {
 		t.Fatalf("invertTextColorForBg must avoid chromaKeyRef")
 	}
+	if got := brightenColor(0x001E1E1E, 28); got != 0x003A3A3A {
+		t.Fatalf("expected brightened dark color 0x003A3A3A, got 0x%08x", got)
+	}
+	if got := brightenColor(0x00FFFFFF, 28); got != 0x00FFFFFF {
+		t.Fatalf("expected white clamped to white, got 0x%08x", got)
+	}
 
 	// Build 10x10 top-down BGRA image: top half pure red (0x00FF0000), bottom half dark navy (0x00001020)
 	pix := make([]uint32, 10*10)

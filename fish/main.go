@@ -24,7 +24,6 @@ const (
 	idTrayIcon      = 1
 
 	idBtnLogin = 101
-	idBtnSend  = 104
 	idEditMsg  = 129
 	idEditPass = 130
 	idBtnQuit  = 136
@@ -78,8 +77,8 @@ type appState struct {
 	// Login controls
 	hLblTitle, hBtnLoginQuit, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
 
-	// Chat controls (minimal: no hide/settings/logout buttons in window)
-	hLblGroup, hEditMsg, hBtnSend uintptr
+	// Chat controls (minimal: no buttons in window, Enter to send)
+	hLblGroup, hEditMsg uintptr
 
 	checkingUpdate   bool
 	pendingUpdateRes *FishVersionResponse
@@ -165,7 +164,7 @@ func (a *appState) refreshResources() {
 
 	allCtrls := []uintptr{
 		a.hLblTitle, a.hBtnLoginQuit, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
-		a.hLblGroup, a.hEditMsg, a.hBtnSend,
+		a.hLblGroup, a.hEditMsg,
 	}
 	for _, h := range allCtrls {
 		setFont(h, a.uiFont)
@@ -252,10 +251,10 @@ func (a *appState) createAllControls() {
 	a.hBtnLogin = createCtrl("BUTTON", "登录家庭群", stBtn, 0, 0, 0, 120, 32, h, idBtnLogin, inst)
 	a.hLblLoginStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 240, 36, h, 0, inst)
 
-	// Chat UI (no Hide/Settings/Logout buttons on page)
+	// Chat UI (no Send/Hide/Settings/Logout buttons on page; Enter sends message)
 	a.hLblGroup = createCtrl("STATIC", "🐟 家庭群", stLbl, 0, 0, 0, 220, 22, h, 0, inst)
-	a.hEditMsg = createCtrl("EDIT", "", stEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
-	a.hBtnSend = createCtrl("BUTTON", "发送", stBtn, 0, 0, 0, 56, 28, h, idBtnSend, inst)
+	stMsgEdit := uint32(WS_CHILD | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL)
+	a.hEditMsg = createCtrl("EDIT", "", stMsgEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
 
 	// Subclass Enter key on message & password inputs
 	msgCb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -292,7 +291,6 @@ func (a *appState) layoutControls() {
 	var rc RECT
 	pGetClientRect.Call(a.hwnd, uintptr(unsafe.Pointer(&rc)))
 	cw := rc.Right - rc.Left
-	ch := rc.Bottom - rc.Top
 	s := a.dpiScale
 	pad := s(12)
 
@@ -302,7 +300,7 @@ func (a *appState) layoutControls() {
 	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
 		showCtrl(h, showLogin)
 	}
-	for _, h := range []uintptr{a.hLblGroup, a.hEditMsg, a.hBtnSend} {
+	for _, h := range []uintptr{a.hLblGroup, a.hEditMsg} {
 		showCtrl(h, showChat)
 	}
 
@@ -335,22 +333,39 @@ func (a *appState) layoutControls() {
 		setCtrlText(a.hLblGroup, "🐟 "+a.cfg.GroupName)
 	}
 
-	sendW := s(58)
-	inH := s(30)
-	inY := ch - pad - inH
-	gap := s(5)
-	moveCtrl(a.hEditMsg, pad, inY, cw-pad*2-sendW-gap, inH)
-	moveCtrl(a.hBtnSend, cw-pad-sendW, inY, sendW, inH)
+	bx := a.inputBoxRect(rc)
+	insetX := s(6)
+	insetY := s(5)
+	if bx.Right-bx.Left > insetX*2+10 && bx.Bottom-bx.Top > insetY*2+6 {
+		moveCtrl(a.hEditMsg, bx.Left+insetX, bx.Top+insetY, (bx.Right-bx.Left)-insetX*2, (bx.Bottom-bx.Top)-insetY*2)
+	}
+}
+
+func (a *appState) inputBoxRect(rc RECT) RECT {
+	s := a.dpiScale
+	pad := s(12)
+	inH := s(int32(a.cfg.FontSize) + 15)
+	minH := s(30)
+	if inH < minH {
+		inH = minH
+	}
+	return RECT{
+		Left:   pad,
+		Top:    rc.Bottom - pad - inH,
+		Right:  rc.Right - pad,
+		Bottom: rc.Bottom - pad,
+	}
 }
 
 func (a *appState) chatRect(rc RECT) RECT {
 	s := a.dpiScale
 	pad := s(12)
+	bx := a.inputBoxRect(rc)
 	return RECT{
 		Left:   pad,
 		Top:    s(42),
 		Right:  rc.Right - pad,
-		Bottom: rc.Bottom - pad - s(38),
+		Bottom: bx.Top - s(8),
 	}
 }
 
@@ -489,6 +504,23 @@ func (a *appState) paintWindow() {
 		botClip := RECT{Left: 0, Top: cr.Bottom, Right: cw, Bottom: ch}
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&topClip)), a.bgBrush)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
+
+		// Draw custom chat input box filled with input surface and a slightly brighter border
+		bx := a.inputBoxRect(rc)
+		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), a.altBrush)
+		surfaceRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+		if a.cfg.BgTransparent {
+			if a.altDarkFill {
+				surfaceRef = 0x0024201E
+			} else {
+				surfaceRef = 0x00F4EFE6
+			}
+		}
+		borderRef := brightenColor(surfaceRef, 28)
+		if borderBr, _, _ := pCreateSolidBrush.Call(uintptr(borderRef)); borderBr != 0 {
+			pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), borderBr)
+			pDeleteObject.Call(borderBr)
+		}
 	}
 
 	pBitBlt.Call(hdc, 0, 0, uintptr(cw), uintptr(ch), memDC, 0, 0, SRCCOPY)
@@ -815,8 +847,6 @@ func (a *appState) handleCommand(id int) {
 	switch id {
 	case idBtnLogin:
 		a.handleLoginClick()
-	case idBtnSend:
-		a.handleSendMessage()
 	case idMenuToggle:
 		a.toggleBossHide()
 	case idMenuPickFontColor:
@@ -993,6 +1023,19 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_ERASEBKGND:
 		return 1
+
+	case WM_LBUTTONDOWN:
+		if a.loggedIn && a.hEditMsg != 0 {
+			var rc RECT
+			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			bx := a.inputBoxRect(rc)
+			cx := int32(int16(lParam & 0xFFFF))
+			cy := int32(int16((lParam >> 16) & 0xFFFF))
+			if cx >= bx.Left && cx <= bx.Right && cy >= bx.Top && cy <= bx.Bottom {
+				pSetFocus.Call(a.hEditMsg)
+				return 0
+			}
+		}
 
 	case WM_PAINT:
 		a.paintWindow()
