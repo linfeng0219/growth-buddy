@@ -101,6 +101,7 @@ class FriendsActivity : AppCompatActivity() {
     private fun applyResponsiveLayout() {
         val m = ResponsiveUi.metrics(this)
         val maxW = if (m.isDesktopSplit) 1140 else if (m.isTablet) 740 else 1200
+        binding.tvFriendsTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (m.isTablet) 18f else 15.5f)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsTopBar, maxW, horizontalReserveDp = 28)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsScroll, maxW, horizontalReserveDp = 28)
 
