@@ -65,6 +65,18 @@ class ParentPortalActivity : AppCompatActivity() {
         fileChooserCallback = null
     }
 
+    private val qrScanLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == RESULT_OK) {
+            val raw = res.data?.getStringExtra(QrScanActivity.EXTRA_QR_RESULT)?.trim().orEmpty()
+            if (raw.isNotEmpty()) {
+                val quoted = JSONObject.quote(raw)
+                binding.webParentPortal.evaluateJavascript("window.onParentQrScanned && window.onParentQrScanned($quoted);", null)
+            }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +121,13 @@ class ParentPortalActivity : AppCompatActivity() {
             @JavascriptInterface
             fun onWebLogout() {
                 runOnUiThread { switchBackToLogin() }
+            }
+
+            @JavascriptInterface
+            fun scanQrCode() {
+                runOnUiThread {
+                    qrScanLauncher.launch(Intent(this@ParentPortalActivity, QrScanActivity::class.java))
+                }
             }
         }, "AndroidBridge")
 

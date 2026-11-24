@@ -24,8 +24,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -156,9 +158,18 @@ class ChatActivity : AppCompatActivity() {
         }
 
         binding.tvChatPeerName.text = peerName
-        val roleTag = if (peerRole.isNotBlank()) " · $peerRole" else ""
-        binding.tvChatPeerMeta.text = "$peerGroup 分组$roleTag · 文字 / 语音 / 图片"
-        binding.ivChatPeerAvatar.loadAvatar(api, avIdx, avUrl)
+        if (peerType == "group") {
+            binding.ivChatPeerAvatar.visibility = View.GONE
+            binding.tvChatGroupBadge.visibility = View.VISIBLE
+            binding.tvChatGroupBadge.text = if (peerGroup == "家庭群") "👨‍👩‍👧‍👦" else "👥"
+            binding.btnChatGroupInfo.visibility = View.VISIBLE
+            binding.btnChatGroupInfo.setOnClickListener { showGroupInfoDialog() }
+            binding.tvChatPeerMeta.text = "$peerGroup · $peerRole · 文字 / 语音 / 图片"
+        } else {
+            val roleTag = if (peerRole.isNotBlank()) " · $peerRole" else ""
+            binding.tvChatPeerMeta.text = "$peerGroup 分组$roleTag · 文字 / 语音 / 图片"
+            binding.ivChatPeerAvatar.loadAvatar(api, avIdx, avUrl)
+        }
 
         binding.btnChatBack.setOnClickListener { finish() }
         binding.btnChatSend.setOnClickListener { sendTextMessage() }
@@ -267,6 +278,27 @@ class ChatActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(10) }
+        }
+
+        if (peerType == "group" && !msg.isSelf) {
+            val senderRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(2), 0, dp(2), dp(4))
+            }
+            val senderAv = SpeciesThumbView(this).apply {
+                loadAvatar(api, msg.senderAvatarIdx, msg.senderAvatarUrl)
+                layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(5) }
+            }
+            val senderTv = TextView(this).apply {
+                text = msg.senderName.ifBlank { "群成员" }
+                textSize = 11.5f
+                setTextColor(Color.parseColor("#6B6052"))
+                setTypeface(null, Typeface.BOLD)
+            }
+            senderRow.addView(senderAv)
+            senderRow.addView(senderTv)
+            wrap.addView(senderRow)
         }
 
         val bubble = LinearLayout(this).apply {
@@ -631,5 +663,159 @@ class ChatActivity : AppCompatActivity() {
                 Toast.makeText(this, res.error ?: "语音发送失败", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun showGroupInfoDialog() {
+        api.request("GET", "/api/child/groups/$peerId") { res ->
+            if (!res.ok || res.json == null) {
+                Toast.makeText(this, res.error ?: "读取群聊详情失败", Toast.LENGTH_SHORT).show()
+                return@request
+            }
+            val gObj = res.json.optJSONObject("group") ?: return@request
+            val grp = SocialParser.parseGroupItem(gObj)
+            binding.tvChatPeerName.text = grp.name
+            binding.tvChatPeerMeta.text = (if (grp.isFamilyDefault) "家庭群" else "群聊") + " · ${grp.memberCount}位成员 · 文字 / 语音 / 图片"
+
+            val wrap = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(12), dp(18), dp(6))
+            }
+            val subTip = TextView(this).apply {
+                text = if (grp.isFamilyDefault) {
+                    "👨‍👩‍👧‍👦 默认家庭群（群名与家庭名保持同步，家庭成员自动入群）"
+                } else {
+                    "👥 好友群聊（共 ${grp.memberCount} 位成员）"
+                }
+                textSize = 12.5f
+                setTextColor(Color.parseColor("#6B6052"))
+                setPadding(0, 0, 0, dp(10))
+            }
+            wrap.addView(subTip)
+
+            val listCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            grp.members.forEach { m ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(6), 0, dp(6))
+                }
+                val av = SpeciesThumbView(this).apply {
+                    loadAvatar(api, m.avatarIdx, m.avatarUrl)
+                    layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(10) }
+                }
+                val nm = TextView(this).apply {
+                    val ownerTag = if (m.role == "owner" && !grp.isFamilyDefault) " · 群主" else ""
+                    text = "${m.name}（${m.roleLabel}$ownerTag）"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#233128"))
+                }
+                row.addView(av)
+                row.addView(nm)
+                listCol.addView(row)
+            }
+            val sv = ScrollView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(220)
+                )
+                addView(listCol)
+            }
+            wrap.addView(sv)
+
+            val builder = AlertDialog.Builder(this)
+                .setTitle("群聊详情 · ${grp.name}")
+                .setView(wrap)
+                .setPositiveButton("关闭", null)
+            if (!grp.isFamilyDefault) {
+                builder.setNeutralButton("➕ 邀请好友") { _, _ ->
+                    showInviteGroupMembersDialog(grp)
+                }
+                builder.setNegativeButton("退出群聊") { _, _ ->
+                    confirmLeaveGroup(grp)
+                }
+            }
+            builder.show()
+        }
+    }
+
+    private fun showInviteGroupMembersDialog(grp: ChatGroupItem) {
+        api.request("GET", "/api/child/friends") { res ->
+            if (!res.ok || res.json == null) {
+                Toast.makeText(this, res.error ?: "读取好友列表失败", Toast.LENGTH_SHORT).show()
+                return@request
+            }
+            val ov = SocialParser.parseOverview(res.json)
+            val existingKeys = grp.members.map { "${it.memberType}:${it.memberId}" }.toSet()
+            val candidates = ov.friends.filter { "${it.peerType}:${it.peerId}" !in existingKeys }
+            if (candidates.isEmpty()) {
+                Toast.makeText(this, "所有好友和家人都已在群里啦~", Toast.LENGTH_SHORT).show()
+                return@request
+            }
+
+            val checksWrap = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(12), dp(18), dp(6))
+            }
+            val picks = mutableListOf<Pair<FriendItem, CheckBox>>()
+            candidates.forEach { f ->
+                val cb = CheckBox(this).apply {
+                    text = "${f.name}（${f.roleLabel.ifBlank { f.groupName }}）"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#233128"))
+                }
+                checksWrap.addView(cb)
+                picks.add(f to cb)
+            }
+            val sv = ScrollView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(220))
+                addView(checksWrap)
+            }
+            AlertDialog.Builder(this)
+                .setTitle("邀请好友加入「${grp.name}」")
+                .setView(sv)
+                .setPositiveButton("确定邀请") { _, _ ->
+                    val arr = JSONArray()
+                    picks.forEach { (f, cb) ->
+                        if (cb.isChecked) {
+                            arr.put(JSONObject().put("memberType", f.peerType).put("memberId", f.peerId))
+                        }
+                    }
+                    if (arr.length() == 0) return@setPositiveButton
+                    api.request(
+                        "POST",
+                        "/api/child/groups/${grp.id}/members",
+                        JSONObject().put("members", arr)
+                    ) { invRes ->
+                        if (invRes.ok) {
+                            sound.playWin()
+                            Toast.makeText(this, "已邀请好友加入群聊！", Toast.LENGTH_SHORT).show()
+                            showGroupInfoDialog()
+                        } else {
+                            sound.playError()
+                            Toast.makeText(this, invRes.error ?: "邀请失败", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun confirmLeaveGroup(grp: ChatGroupItem) {
+        AlertDialog.Builder(this)
+            .setTitle("退出群聊")
+            .setMessage("确定要退出群聊「${grp.name}」吗？")
+            .setPositiveButton("确定退出") { _, _ ->
+                api.request("POST", "/api/child/groups/${grp.id}/leave", JSONObject()) { res ->
+                    if (res.ok) {
+                        Toast.makeText(this, "已退出群聊", Toast.LENGTH_SHORT).show()
+                        finish()
+                    } else {
+                        Toast.makeText(this, res.error ?: "退出失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 }

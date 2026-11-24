@@ -349,6 +349,27 @@ func (s *Store) initSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_friendships_child ON friendships(child_id, group_name);
 
+		CREATE TABLE IF NOT EXISTS parent_friend_requests (
+			id TEXT PRIMARY KEY,
+			from_parent_id TEXT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+			to_parent_id TEXT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+			message TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_pfreq_to ON parent_friend_requests(to_parent_id, status, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_pfreq_from ON parent_friend_requests(from_parent_id, status);
+
+		CREATE TABLE IF NOT EXISTS parent_friendships (
+			parent_id TEXT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+			friend_parent_id TEXT NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+			group_name TEXT NOT NULL DEFAULT '朋友',
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY (parent_id, friend_parent_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_pfriends_pid ON parent_friendships(parent_id, group_name);
+
 		CREATE TABLE IF NOT EXISTS chat_media (
 			id TEXT PRIMARY KEY,
 			conv_key TEXT NOT NULL,
@@ -375,6 +396,28 @@ func (s *Store) initSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_chat_conv ON chat_messages(conv_key, created_at ASC);
 		CREATE INDEX IF NOT EXISTS idx_chat_unread ON chat_messages(receiver_type, receiver_id, is_read);
+
+		CREATE TABLE IF NOT EXISTS chat_groups (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			family_id TEXT NOT NULL DEFAULT '',
+			is_family_default INTEGER NOT NULL DEFAULT 0,
+			creator_type TEXT NOT NULL DEFAULT 'system',
+			creator_id TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_groups_family ON chat_groups(family_id) WHERE is_family_default = 1;
+
+		CREATE TABLE IF NOT EXISTS chat_group_members (
+			group_id TEXT NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+			member_type TEXT NOT NULL,
+			member_id TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'member',
+			last_read_at INTEGER NOT NULL DEFAULT 0,
+			joined_at INTEGER NOT NULL,
+			PRIMARY KEY (group_id, member_type, member_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_cgm_member ON chat_group_members(member_type, member_id);
 	`
 	if err := s.db.ExecRaw(ddl); err != nil {
 		return err
@@ -385,6 +428,7 @@ func (s *Store) initSchema() error {
 		{"parents", "avatar_idx", "avatar_idx INTEGER NOT NULL DEFAULT 0"},
 		{"parents", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"parents", "avatar_updated_at", "avatar_updated_at INTEGER NOT NULL DEFAULT 0"},
+		{"parents", "friend_code", "friend_code TEXT NOT NULL DEFAULT ''"},
 		{"children", "username", "username TEXT NOT NULL DEFAULT ''"},
 		{"children", "password_hash", "password_hash TEXT NOT NULL DEFAULT ''"},
 		{"children", "password_plain", "password_plain TEXT NOT NULL DEFAULT ''"},
@@ -423,6 +467,9 @@ func (s *Store) initSchema() error {
 	if err := s.db.ExecRaw("CREATE UNIQUE INDEX IF NOT EXISTS idx_children_friend_code ON children(friend_code) WHERE friend_code != ''"); err != nil {
 		return err
 	}
+	if err := s.db.ExecRaw("CREATE UNIQUE INDEX IF NOT EXISTS idx_parents_friend_code ON parents(friend_code) WHERE friend_code != ''"); err != nil {
+		return err
+	}
 
 	return s.db.WithLock(func(tx *Tx) error {
 		var emptyIDs []string
@@ -433,6 +480,23 @@ func (s *Store) initSchema() error {
 		for _, cid := range emptyIDs {
 			code := s.uniqueFriendCodeLocked(tx)
 			_, _ = tx.Exec("UPDATE children SET friend_code = ? WHERE id = ?", code, cid)
+		}
+		var emptyParentIDs []string
+		_ = tx.Query("SELECT id FROM parents WHERE friend_code = ''", func(r SQLiteRow) error {
+			emptyParentIDs = append(emptyParentIDs, r.String(0))
+			return nil
+		})
+		for _, pid := range emptyParentIDs {
+			code := s.uniqueFriendCodeLocked(tx)
+			_, _ = tx.Exec("UPDATE parents SET friend_code = ? WHERE id = ?", code, pid)
+		}
+		var famIDs []string
+		_ = tx.Query("SELECT id FROM families", func(r SQLiteRow) error {
+			famIDs = append(famIDs, r.String(0))
+			return nil
+		})
+		for _, fid := range famIDs {
+			_ = s.syncFamilyGroupLocked(tx, fid)
 		}
 		var count int
 		_ = tx.QueryRow("SELECT COUNT(*) FROM admins", func(r SQLiteRow) error {
@@ -755,8 +819,8 @@ func (s *Store) RegisterFamily(in RegisterFamilyInput) (*RegisterFamilyResult, e
 			return err
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			parentID, familyID, cleanUser, displayName, HashPassword(in.Password), in.Password, now,
+			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			parentID, familyID, cleanUser, displayName, HashPassword(in.Password), in.Password, s.uniqueFriendCodeLocked(tx), now,
 		); err != nil {
 			return err
 		}
@@ -1046,7 +1110,9 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	)
 	child.UnreadLetters = unreadLetters
 
-	var unreadChat, pendingFriends int
+	_ = s.syncFamilyGroupLocked(tx, familyID)
+
+	var unreadChat, unreadGroupChat, pendingFriends int
 	_ = tx.QueryRow(
 		"SELECT COUNT(*) FROM chat_messages WHERE receiver_type = 'child' AND receiver_id = ? AND is_read = 0",
 		func(r SQLiteRow) error {
@@ -1055,13 +1121,24 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 		}, childID,
 	)
 	_ = tx.QueryRow(
+		`SELECT COUNT(*) FROM chat_messages cm
+		 JOIN chat_group_members gm ON cm.receiver_type = 'group' AND cm.receiver_id = gm.group_id
+		 WHERE gm.member_type = 'child' AND gm.member_id = ?
+		   AND cm.created_at > gm.last_read_at
+		   AND NOT (cm.sender_type = 'child' AND cm.sender_id = ?)`,
+		func(r SQLiteRow) error {
+			unreadGroupChat = r.Int(0)
+			return nil
+		}, childID, childID,
+	)
+	_ = tx.QueryRow(
 		"SELECT COUNT(*) FROM friend_requests WHERE to_child_id = ? AND status = 'pending'",
 		func(r SQLiteRow) error {
 			pendingFriends = r.Int(0)
 			return nil
 		}, childID,
 	)
-	child.UnreadChat = unreadChat
+	child.UnreadChat = unreadChat + unreadGroupChat
 	child.PendingFriends = pendingFriends
 
 	var fam FamilyDTO
@@ -2173,8 +2250,8 @@ func (s *Store) AddParent(familyID, username, displayName, password string, avat
 		id := GenID("par_")
 		ts := nowMs()
 		if _, err := tx.Exec(
-			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, avatar_idx, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			id, familyID, cleanUser, disp, HashPassword(password), password, avIdx, ts,
+			"INSERT INTO parents (id, family_id, username, display_name, password_hash, password_plain, avatar_idx, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			id, familyID, cleanUser, disp, HashPassword(password), password, avIdx, s.uniqueFriendCodeLocked(tx), ts,
 		); err != nil {
 			return err
 		}

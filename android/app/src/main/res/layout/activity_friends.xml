@@ -239,62 +239,85 @@
                 android:layout_marginTop="10dp"
                 android:orientation="vertical">
 
-                <!-- 分组筛选胶囊：全部 / 家庭 / 朋友 -->
-                <LinearLayout
+                <!-- 分组筛选胶囊：全部 / 群聊 / 家庭 / 朋友 -->
+                <HorizontalScrollView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                    android:scrollbars="none">
 
-                    <Button
-                        android:id="@+id/btnGroupAll"
-                        style="@style/Widget.Material3.Button.TonalButton"
+                    <LinearLayout
                         android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingHorizontal="14dp"
-                        android:paddingVertical="0dp"
-                        android:singleLine="true"
-                        android:text="全部好友"
-                        android:textColor="#2F6B4F"
-                        android:textSize="12.5sp" />
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
 
-                    <Button
-                        android:id="@+id/btnGroupFamily"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="8dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingHorizontal="14dp"
-                        android:paddingVertical="0dp"
-                        android:singleLine="true"
-                        android:text="👨‍👩‍👧 家庭"
-                        android:textColor="#5C5347"
-                        android:textSize="12.5sp" />
+                        <Button
+                            android:id="@+id/btnGroupAll"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:singleLine="true"
+                            android:text="全部"
+                            android:textColor="#2F6B4F"
+                            android:textSize="12.5sp" />
 
-                    <Button
-                        android:id="@+id/btnGroupFriends"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:layout_marginStart="8dp"
-                        android:insetTop="0dp"
-                        android:insetBottom="0dp"
-                        android:minWidth="0dp"
-                        android:minHeight="0dp"
-                        android:paddingHorizontal="14dp"
-                        android:paddingVertical="0dp"
-                        android:singleLine="true"
-                        android:text="🧒 朋友"
-                        android:textColor="#5C5347"
-                        android:textSize="12.5sp" />
-                </LinearLayout>
+                        <Button
+                            android:id="@+id/btnGroupChats"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:singleLine="true"
+                            android:text="👥 群聊"
+                            android:textColor="#5C5347"
+                            android:textSize="12.5sp" />
+
+                        <Button
+                            android:id="@+id/btnGroupFamily"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:singleLine="true"
+                            android:text="👨‍👩‍👧 家庭"
+                            android:textColor="#5C5347"
+                            android:textSize="12.5sp" />
+
+                        <Button
+                            android:id="@+id/btnGroupFriends"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="8dp"
+                            android:insetTop="0dp"
+                            android:insetBottom="0dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="0dp"
+                            android:singleLine="true"
+                            android:text="🧒 朋友"
+                            android:textColor="#5C5347"
+                            android:textSize="12.5sp" />
+                    </LinearLayout>
+                </HorizontalScrollView>
 
                 <LinearLayout
                     android:id="@+id/friendsListContainer"

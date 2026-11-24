@@ -14,15 +14,18 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.growthbuddy.child.databinding.ActivityFriendsBinding
+import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,6 +82,7 @@ class FriendsActivity : AppCompatActivity() {
         }
 
         binding.btnGroupAll.setOnClickListener { selectGroup("all") }
+        binding.btnGroupChats.setOnClickListener { selectGroup("群聊") }
         binding.btnGroupFamily.setOnClickListener { selectGroup("家庭") }
         binding.btnGroupFriends.setOnClickListener { selectGroup("朋友") }
 
@@ -133,6 +137,7 @@ class FriendsActivity : AppCompatActivity() {
         val green = Color.parseColor("#2F6B4F")
         val muted = Color.parseColor("#5C5347")
         binding.btnGroupAll.setTextColor(if (g == "all") green else muted)
+        binding.btnGroupChats.setTextColor(if (g == "群聊") green else muted)
         binding.btnGroupFamily.setTextColor(if (g == "家庭") green else muted)
         binding.btnGroupFriends.setTextColor(if (g == "朋友") green else muted)
         overview?.let { renderFriendsList(it) }
@@ -274,13 +279,187 @@ class FriendsActivity : AppCompatActivity() {
 
     private fun renderFriendsList(ov: SocialOverview) {
         binding.friendsListContainer.removeAllViews()
+        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        if (groupFilter == "all" || groupFilter == "群聊") {
+            val chatHeaderRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(2), dp(6), dp(2), dp(6))
+            }
+            val chatHeader = TextView(this).apply {
+                text = "👥 群聊（${ov.chatGroups.size}） · 同家庭默认成群"
+                textSize = 13.5f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#4B4339"))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val btnNewGroup = Button(this).apply {
+                text = "➕ 建群"
+                textSize = 11.5f
+                setAllCaps(false)
+                setTextColor(Color.parseColor("#2F6B4F"))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(99).toFloat()
+                    setColor(Color.parseColor("#E3F2E8"))
+                }
+                setPadding(dp(10), 0, dp(10), 0)
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = 0
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28))
+                setOnClickListener { showCreateGroupDialog() }
+            }
+            chatHeaderRow.addView(chatHeader)
+            chatHeaderRow.addView(btnNewGroup)
+            binding.friendsListContainer.addView(chatHeaderRow)
+
+            if (ov.chatGroups.isEmpty()) {
+                val emptyGrp = TextView(this).apply {
+                    text = "暂无群聊，点击右上角「➕ 建群」拉上小伙伴一起聊！"
+                    textSize = 12.5f
+                    setTextColor(Color.parseColor("#8A7E6E"))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(Color.WHITE)
+                        setStroke(dp(1), Color.parseColor("#EAE2D3"))
+                    }
+                    setPadding(dp(14), dp(14), dp(14), dp(14))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(8) }
+                }
+                binding.friendsListContainer.addView(emptyGrp)
+            } else {
+                ov.chatGroups.forEach { g ->
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(12), dp(11), dp(12), dp(11))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(Color.WHITE)
+                            setStroke(
+                                dp(if (g.unreadCount > 0) 2 else 1),
+                                Color.parseColor(if (g.unreadCount > 0) "#E8913A" else "#E5DCCB")
+                            )
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(8) }
+                    }
+
+                    val iconTv = TextView(this).apply {
+                        text = if (g.isFamilyDefault) "👨‍👩‍👧‍👦" else "👥"
+                        textSize = 20f
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(23).toFloat()
+                            setColor(Color.parseColor(if (g.isFamilyDefault) "#E3F2E8" else "#F3E8FF"))
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(12) }
+                    }
+
+                    val centerCol = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    val nameRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                    val nameTv = TextView(this).apply {
+                        text = g.name
+                        textSize = 15.5f
+                        setTypeface(null, Typeface.BOLD)
+                        setTextColor(Color.parseColor("#233128"))
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    }
+                    val tagTv = TextView(this).apply {
+                        text = (if (g.isFamilyDefault) "家庭群" else "群聊") + " · ${g.memberCount}人"
+                        textSize = 10.5f
+                        setTextColor(Color.parseColor(if (g.isFamilyDefault) "#2F6B4F" else "#6D28D9"))
+                        setPadding(dp(6), dp(2), dp(6), dp(2))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(99).toFloat()
+                            setColor(Color.parseColor(if (g.isFamilyDefault) "#E3F2E8" else "#F3E8FF"))
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginStart = dp(6) }
+                    }
+                    nameRow.addView(nameTv)
+                    nameRow.addView(tagTv)
+
+                    val subTv = TextView(this).apply {
+                        val fallbackSub = if (g.membersPreview.isNotBlank()) "成员：${g.membersPreview}" else "点击进入群聊~"
+                        text = g.lastMessage.ifBlank { fallbackSub }
+                        textSize = 12.5f
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setTextColor(Color.parseColor("#7D7263"))
+                        setPadding(0, dp(3), 0, 0)
+                    }
+                    centerCol.addView(nameRow)
+                    centerCol.addView(subTv)
+
+                    val rightCol = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginStart = dp(8) }
+                    }
+                    if (g.lastMessageAt > 0) {
+                        val timeTv = TextView(this).apply {
+                            text = fmt.format(Date(g.lastMessageAt))
+                            textSize = 11f
+                            setTextColor(Color.parseColor("#9A8E7D"))
+                        }
+                        rightCol.addView(timeTv)
+                    }
+                    if (g.unreadCount > 0) {
+                        val badge = TextView(this).apply {
+                            text = g.unreadCount.toString()
+                            textSize = 11f
+                            setTypeface(null, Typeface.BOLD)
+                            setTextColor(Color.WHITE)
+                            gravity = Gravity.CENTER
+                            setPadding(dp(7), dp(2), dp(7), dp(2))
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(99).toFloat()
+                                setColor(Color.parseColor("#E11D48"))
+                            }
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply { topMargin = dp(4) }
+                        }
+                        rightCol.addView(badge)
+                    }
+
+                    row.addView(iconTv)
+                    row.addView(centerCol)
+                    row.addView(rightCol)
+                    row.setOnClickListener { openGroupChat(g) }
+                    binding.friendsListContainer.addView(row)
+                }
+            }
+        }
+
+        if (groupFilter == "群聊") return
+
         val groupsToShow = when (groupFilter) {
             "家庭" -> listOf("家庭")
             "朋友" -> listOf("朋友")
             else -> listOf("家庭", "朋友")
         }
-
-        val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
         for (grp in groupsToShow) {
             val list = ov.friends.filter { it.groupName == grp }
             val header = TextView(this).apply {
@@ -454,6 +633,18 @@ class FriendsActivity : AppCompatActivity() {
         }
     }
 
+    private fun openGroupChat(g: ChatGroupItem) {
+        hasChangedState = true
+        val it = Intent(this, ChatActivity::class.java).apply {
+            putExtra(ChatActivity.EXTRA_PEER_TYPE, "group")
+            putExtra(ChatActivity.EXTRA_PEER_ID, g.id)
+            putExtra(ChatActivity.EXTRA_PEER_NAME, g.name)
+            putExtra(ChatActivity.EXTRA_PEER_GROUP, if (g.isFamilyDefault) "家庭群" else "群聊")
+            putExtra(ChatActivity.EXTRA_PEER_ROLE, "${g.memberCount}位成员")
+        }
+        startActivity(it)
+    }
+
     private fun openChat(f: FriendItem) {
         hasChangedState = true
         val it = Intent(this, ChatActivity::class.java).apply {
@@ -473,14 +664,105 @@ class FriendsActivity : AppCompatActivity() {
     }
 
     private fun showAddFriendChoiceDialog() {
-        val options = arrayOf("📷 扫一扫好友二维码", "🔎 输入好友分享码或账号", "🪪 亮出我的好友二维码名片")
+        val options = arrayOf(
+            "📷 扫一扫好友二维码",
+            "🔎 输入好友分享码或账号",
+            "👥 发起群聊（选好友/家人）",
+            "🪪 亮出我的好友二维码名片"
+        )
         AlertDialog.Builder(this)
-            .setTitle("添加新朋友")
+            .setTitle("添加好友与群聊")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> launchQrScanner()
                     1 -> showSearchAccountOrCodeDialog()
-                    2 -> showMyQrCardDialog()
+                    2 -> showCreateGroupDialog()
+                    3 -> showMyQrCardDialog()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showCreateGroupDialog() {
+        val candidates = overview?.friends.orEmpty()
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, "先添加至少一位好友或家人才能建群哦~", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(6))
+        }
+        val etName = EditText(this).apply {
+            hint = "起个群名，例如：跳绳小分队"
+            maxLines = 1
+        }
+        val tipTv = TextView(this).apply {
+            text = "选择一起加入群聊的家人或小伙伴："
+            textSize = 13f
+            setTextColor(Color.parseColor("#5C5347"))
+            setPadding(0, dp(12), 0, dp(6))
+        }
+        val checksWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val selected = mutableListOf<Pair<FriendItem, CheckBox>>()
+        candidates.forEach { f ->
+            val cb = CheckBox(this).apply {
+                text = "${f.name}（${f.roleLabel.ifBlank { f.groupName }}）"
+                textSize = 14f
+                setTextColor(Color.parseColor("#233128"))
+            }
+            checksWrap.addView(cb)
+            selected.add(f to cb)
+        }
+        val sv = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(210)
+            )
+            addView(checksWrap)
+        }
+        box.addView(etName)
+        box.addView(tipTv)
+        box.addView(sv)
+
+        AlertDialog.Builder(this)
+            .setTitle("👥 发起新群聊")
+            .setView(box)
+            .setPositiveButton("创建群聊") { _, _ ->
+                val gName = etName.text.toString().trim()
+                val membersArr = JSONArray()
+                selected.forEach { (f, cb) ->
+                    if (cb.isChecked) {
+                        membersArr.put(JSONObject().put("memberType", f.peerType).put("memberId", f.peerId))
+                    }
+                }
+                if (gName.isEmpty()) {
+                    Toast.makeText(this, "请输入群名称", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (membersArr.length() == 0) {
+                    Toast.makeText(this, "请至少选择一位好友或家人", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val payload = JSONObject()
+                    .put("name", gName)
+                    .put("members", membersArr)
+                api.request("POST", "/api/child/groups", payload) { res ->
+                    if (res.ok && res.json != null) {
+                        sound.playWin()
+                        hasChangedState = true
+                        val gObj = res.json.optJSONObject("group")
+                        loadOverview()
+                        if (gObj != null) {
+                            openGroupChat(SocialParser.parseGroupItem(gObj))
+                        }
+                    } else {
+                        sound.playError()
+                        Toast.makeText(this, res.error ?: "创建群聊失败", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
             .setNegativeButton("取消", null)

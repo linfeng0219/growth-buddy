@@ -90,6 +90,41 @@
   }
   .gb-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .gb-toast.err{background:#c0392b}
+  .social-shell{display:grid;grid-template-columns:300px 1fr;gap:14px;align-items:start}
+  .social-back-btn{display:none;flex:none;padding:4px 9px;font-size:12px}
+  @media(max-width:780px){
+    .social-shell{grid-template-columns:1fr}
+    .social-shell:not(.chat-open) .social-pane-chat{display:none}
+    .social-shell.chat-open .social-pane-list{display:none}
+    .social-shell.chat-open .social-back-btn{display:inline-flex}
+  }
+  .social-list{display:flex;flex-direction:column;gap:6px;max-height:470px;overflow-y:auto;padding-right:2px}
+  .social-sec-title{font-size:12px;font-weight:700;color:var(--muted);margin:8px 2px 2px;display:flex;align-items:center;justify-content:space-between}
+  .social-row{
+    display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--hair);
+    border-radius:12px;background:#fff;cursor:pointer;text-align:left;width:100%;transition:border-color .15s,background .15s;
+  }
+  .social-row:hover{border-color:#b8d2c3;background:#f8fcf9}
+  .social-row.on{border-color:var(--accent);background:#eaf5ee;box-shadow:0 0 0 2px rgba(47,107,79,.1)}
+  .social-row .sr-mid{flex:1;min-width:0}
+  .social-row .sr-top{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+  .social-row .sr-name{font-weight:700;font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;min-width:0}
+  .social-row .sr-tag{font-size:10.5px;padding:1px 6px;border-radius:999px;font-weight:600;background:#e3f2e8;color:#2f6b4f;flex:none;white-space:nowrap}
+  .social-row .sr-tag.friend{background:#f3e8ff;color:#6d28d9}
+  .social-row .sr-sub{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+  .social-row .sr-right{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none}
+  .social-row .sr-time{font-size:10.5px;color:var(--muted)}
+  .social-row .sr-badge{background:#e11d48;color:#fff;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px}
+  .grp-icon-badge{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;background:#e3f2e8}
+  .grp-icon-badge.custom{background:#f3e8ff}
+  .chat-head-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:#fff;border:1px solid var(--hair);border-radius:12px 12px 0 0}
+  .chat-scroll-box{background:#faf6ee;border:1px solid var(--hair);border-top:none;border-radius:0 0 12px 12px;padding:12px;height:370px;overflow-y:auto;margin-bottom:10px}
+  .chat-compose-row{display:flex;gap:6px;align-items:center;flex-wrap:nowrap}
+  .gb-input{border:1px solid var(--hair-2);border-radius:10px;padding:8px 11px;font-size:13.5px;background:#fdfcfa;color:var(--ink);font-family:var(--sans);outline:none;width:100%}
+  .gb-input:focus{border-color:var(--accent);background:#fff}
+  .seg-switch{display:inline-flex;background:#efe9de;padding:3px;border-radius:10px;gap:3px}
+  .seg-switch button{border:none;background:transparent;font-size:12.5px;padding:5px 10px;border-radius:8px;color:var(--muted);white-space:nowrap;font-weight:500}
+  .seg-switch button.on{background:#fff;color:var(--accent);font-weight:700;box-shadow:var(--shadow-sm)}
 </style>
 </head>
 <body>
@@ -189,7 +224,7 @@
       <button data-tab="logs">打卡记录与汇总</button>
       <button data-tab="studio">伙伴工作室</button>
       <button data-tab="family">家庭与档案</button>
-      <button data-tab="chat">💬 家庭聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
+      <button data-tab="chat">💬 好友聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
       <button data-tab="mailbox">📬 家长信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
     </nav>
 
@@ -588,23 +623,92 @@
       </div>
     </section>
 
-    <!-- 5.5 家庭即时聊天（同家庭自动成为好友） -->
+    <!-- 5.5 家长好友聊天、家庭群聊 & 查看孩子好友聊天记录 -->
     <section id="tab-chat" style="display:none">
       <div class="panel">
-        <div class="panel-head">
-          <h2>💬 家庭即时聊天（文字 · 语音 · 图片）</h2>
-          <span class="pill">同家庭自动位于孩子的「家庭」分组</span>
+        <div class="panel-head" style="flex-wrap:wrap;gap:8px">
+          <div class="seg-switch">
+            <button type="button" class="on" id="btnChatModeMine">💬 我的好友</button>
+            <button type="button" id="btnChatModeKids">👀 孩子好友/记录</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:nowrap" id="pSocialTopActions">
+            <button type="button" class="sm" id="btnParentCard" style="white-space:nowrap">🪪 名片</button>
+            <button type="button" class="sm amber" id="btnAddParentFriend" style="white-space:nowrap">➕ 加好友</button>
+            <button type="button" class="sm primary" id="btnCreateParentGroup" style="white-space:nowrap">👥 建群</button>
+          </div>
         </div>
-        <div class="child-filter-bar" id="chatContactsBar" style="margin-bottom:10px"></div>
-        <div id="parentChatBox" style="background:#faf6ee;border:1px solid var(--hair-2);border-radius:14px;padding:12px;height:360px;overflow-y:auto;margin-bottom:10px"></div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="pChatImgFile" accept="image/*" style="display:none">
-          <button type="button" class="sm" id="btnPChatImg">🖼️ 发图片</button>
-          <button type="button" class="sm" id="btnPChatVoice">🎤 录语音</button>
-          <input type="text" id="pChatInput" maxlength="500" placeholder="给孩子发一句暖心消息..." style="flex:1;min-width:160px">
-          <button type="button" class="primary sm" id="btnPChatSend">发送</button>
+
+        <!-- 模式 1：家长自己的好友列表 + 群聊 + 对话 -->
+        <div id="pSocialMineView" class="social-shell">
+          <div class="social-pane-list">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#fbf8f2;border:1px solid var(--hair);border-radius:10px;padding:6px 10px;margin-bottom:8px;font-size:12px">
+              <span id="pSelfShareInfo" style="color:var(--accent);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔑 分享码：加载中...</span>
+              <button type="button" class="sm" id="btnCopyPShareCode" style="padding:2px 8px;flex:none">复制</button>
+            </div>
+
+            <div id="pIncomingReqSection" style="display:none;background:#fff8ef;border:1px solid #ecd1aa;border-radius:12px;padding:9px;margin-bottom:8px">
+              <div id="pIncomingReqTitle" style="font-size:12px;font-weight:700;color:#b8621b;margin-bottom:6px">🔔 新的家长好友申请</div>
+              <div id="pIncomingReqList" style="display:flex;flex-direction:column;gap:6px"></div>
+            </div>
+
+            <div class="child-filter-bar" id="pFriendFilterBar" style="margin-bottom:8px">
+              <button type="button" class="sm on" data-pf="all">全部</button>
+              <button type="button" class="sm" data-pf="群聊">👥 群聊</button>
+              <button type="button" class="sm" data-pf="家庭">👨‍👩‍👧 家庭</button>
+              <button type="button" class="sm" data-pf="朋友">🤝 朋友</button>
+            </div>
+            <div id="pFriendsList" class="social-list"></div>
+          </div>
+
+          <div class="social-pane-chat">
+            <div class="chat-head-bar">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                <button type="button" class="sm social-back-btn" id="btnPMineBack">← 列表</button>
+                <div id="pChatHeadAvatar" style="flex:none"></div>
+                <div style="min-width:0">
+                  <div id="pChatHeadTitle" style="font-weight:700;font-size:14.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">请选择好友或群聊</div>
+                  <div id="pChatHeadSub" style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">家长端支持与家人、家庭群以及家长好友对话</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;flex:none">
+                <button type="button" class="sm" id="btnPGroupManage" style="display:none;white-space:nowrap">👥 群员</button>
+                <button type="button" class="sm danger" id="btnPRemoveFriend" style="display:none;white-space:nowrap">解除好友</button>
+              </div>
+            </div>
+            <div id="parentChatBox" class="chat-scroll-box"></div>
+            <div class="chat-compose-row">
+              <input type="file" id="pChatImgFile" accept="image/*" style="display:none">
+              <button type="button" class="sm" id="btnPChatImg" title="发送图片" style="flex:none;padding:7px 10px">🖼️</button>
+              <button type="button" class="sm" id="btnPChatVoice" title="录制语音" style="flex:none;padding:7px 10px;white-space:nowrap">🎤</button>
+              <input type="text" id="pChatInput" class="gb-input" maxlength="500" placeholder="输入消息..." style="flex:1;min-width:0">
+              <button type="button" class="primary sm" id="btnPChatSend" style="flex:none;padding:8px 14px;white-space:nowrap">发送</button>
+            </div>
+            <div class="msg" id="pChatMsg"></div>
+          </div>
         </div>
-        <div class="msg" id="pChatMsg"></div>
+
+        <!-- 模式 2：家长监护查看儿童端好友列表与聊天记录（只读） -->
+        <div id="pSocialKidsView" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+            <div class="child-filter-bar" id="pOversightChildBar" style="margin:0"></div>
+            <span class="pill">🔒 只读查看（不清除孩子未读）</span>
+          </div>
+          <div class="social-shell" id="pOversightShell">
+            <div id="pOversightList" class="social-list social-pane-list"></div>
+            <div class="social-pane-chat">
+              <div class="chat-head-bar">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                  <button type="button" class="sm social-back-btn" id="btnPKidsBack">← 列表</button>
+                  <div style="min-width:0;flex:1">
+                    <div id="pOvChatTitle" style="font-weight:700;font-size:14.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">请在左侧选择孩子的好友或群聊</div>
+                    <div id="pOvChatSub" style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">查看对应聊天记录、语音和图片</div>
+                  </div>
+                </div>
+              </div>
+              <div id="pOversightChatBox" class="chat-scroll-box" style="height:410px"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -891,6 +995,71 @@
       <img id="ppImg" src="" alt="打卡照片" style="width:100%;max-height:62vh;object-fit:contain;border-radius:10px;display:block">
     </div>
     <button class="primary" id="btnClosePhotoPreview" style="width:100%">关闭预览</button>
+  </div>
+</div>
+
+<!-- 家长名片二维码弹窗 -->
+<div class="modal-backdrop" id="pMyCardModal">
+  <div class="modal-card" style="max-width:380px">
+    <h3 id="pCardTitle" style="font-family:var(--serif);margin-bottom:6px">🪪 我的家长好友名片</h3>
+    <div id="pCardQrBox" style="display:inline-block;padding:8px;background:#fff;border:1px solid var(--hair);border-radius:14px;margin:6px auto"></div>
+    <div id="pCardCodeText" style="font-size:18px;font-weight:700;color:var(--accent);letter-spacing:.1em;margin:6px 0"></div>
+    <p id="pCardSub" style="font-size:12px;color:var(--muted);margin-bottom:12px">安全边界：仅限其他家长扫码或输入分享码/账号互加好友，需对方同意后对话</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button type="button" class="primary sm" id="btnCardCopy" style="flex:1">📋 复制分享码</button>
+      <button type="button" class="sm" id="btnCardReset" style="flex:1">🔄 更换分享码</button>
+    </div>
+    <button type="button" class="ghost" id="btnCardClose" style="width:100%">关闭</button>
+  </div>
+</div>
+
+<!-- 添加家长好友弹窗 -->
+<div class="modal-backdrop" id="pAddFriendModal">
+  <div class="modal-card" style="text-align:left;max-width:420px">
+    <h3 style="font-family:var(--serif);margin-bottom:4px">➕ 添加家长好友</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">安全边界：家长端仅支持添加其他家长账号或家长分享码，不可跨家庭添加孩子。</p>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input type="text" id="pAddSearchInput" class="gb-input" placeholder="输入对方家长账号或 8 位分享码..." style="flex:1;min-width:0">
+      <button type="button" class="primary sm" id="btnPLookupParent" style="flex:none;white-space:nowrap">查找</button>
+    </div>
+    <button type="button" class="sm" id="btnPScanQr" style="display:none;width:100%;margin-bottom:8px">📷 扫一扫对方家长二维码名片</button>
+    <div id="pAddLookupResult" style="display:none;background:#fbf8f2;border:1px solid var(--hair);border-radius:12px;padding:10px;margin-bottom:10px"></div>
+    <div class="msg" id="pAddFriendMsg"></div>
+    <button type="button" class="ghost" id="btnCloseAddParentModal" style="width:100%;margin-top:6px">关闭</button>
+  </div>
+</div>
+
+<!-- 发起群聊弹窗 -->
+<div class="modal-backdrop" id="pCreateGroupModal">
+  <div class="modal-card" style="text-align:left;max-width:420px">
+    <h3 style="font-family:var(--serif);margin-bottom:6px">👥 发起新群聊</h3>
+    <div class="field"><label>群聊名称</label><input type="text" id="pNewGroupName" maxlength="30" placeholder="例如：家校沟通群 / 周末亲子群"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">选择成员（说明：默认家庭群已自动包含全家人；若跨家庭拉家长好友建群，则不可混入孩子）：</div>
+    <div id="pCreateGroupMembers" style="max-height:210px;overflow-y:auto;border:1px solid var(--hair);border-radius:10px;padding:8px;margin-bottom:10px"></div>
+    <div class="msg" id="pCreateGroupMsg"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button type="button" class="ghost" id="btnCloseCreateGroup" style="flex:1">取消</button>
+      <button type="button" class="primary" id="btnConfirmCreateGroup" style="flex:1">创建群聊</button>
+    </div>
+  </div>
+</div>
+
+<!-- 群详情与成员管理弹窗 -->
+<div class="modal-backdrop" id="pGroupDetailModal">
+  <div class="modal-card" style="text-align:left;max-width:430px">
+    <h3 id="pGdTitle" style="font-family:var(--serif);margin-bottom:4px">群聊成员</h3>
+    <p id="pGdSub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></p>
+    <div id="pGdMembersList" style="max-height:200px;overflow-y:auto;border:1px solid var(--hair);border-radius:10px;padding:8px;margin-bottom:10px"></div>
+    <div id="pGdInviteBox" style="display:none;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:4px">邀请更多好友入群：</div>
+      <div id="pGdInviteList" style="max-height:130px;overflow-y:auto;border:1px solid var(--hair);border-radius:10px;padding:6px;margin-bottom:6px"></div>
+      <button type="button" class="sm primary" id="btnPGdInvite">➕ 确认邀请所选成员</button>
+    </div>
+    <div class="msg" id="pGdMsg"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button type="button" class="sm danger" id="btnPGdLeave" style="display:none">退出群聊</button>
+      <button type="button" class="ghost" id="btnPGdClose" style="flex:1">关闭</button>
+    </div>
   </div>
 </div>
 
@@ -2288,105 +2457,658 @@
     }catch(e){note("mailMsg",e.message,true);}
   });
 
-  /* ==================== 家庭即时聊天 ==================== */
-  var activeChatChildId="";
-  var chatContacts=[];
+  /* ==================== 家长好友列表、群聊 & 孩子好友监护查看 ==================== */
+  var pSocialOv=null;
+  var pChatMode="mine"; // mine | kids
+  var pFriendFilter="all"; // all | 群聊 | 家庭 | 朋友
+  var activeChatPeerType="";
+  var activeChatPeerId="";
+  var pOvChildId="";
+  var pOvChildSocial=null;
+  var pOvPeerType="";
+  var pOvPeerId="";
   var chatRecMedia=null;
   var chatRecChunks=[];
   var chatRecStartMs=0;
   var chatPollTimer=null;
 
-  async function loadParentChatContacts(loadMessages){
-    try{
-      var r=await api("/api/parent/chat/contacts");
-      chatContacts=r.contacts||[];
-      var totalUnread=chatContacts.reduce(function(acc,c){return acc+(c.unread_count||0);},0);
-      var badge=$id("chatUnreadBadge");
-      if(totalUnread>0){badge.style.display="inline-block";badge.textContent=totalUnread;}
-      else{badge.style.display="none";}
+  function fmtShortTime(ms){
+    if(!ms) return "";
+    var dt=new Date(ms);
+    return String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+  }
 
-      var bar=$id("chatContactsBar");
-      if(!chatContacts.length){
-        bar.innerHTML='<span style="color:var(--muted);font-size:13px">暂无孩子档案</span>';
-        $id("parentChatBox").innerHTML="";
+  function renderBubbleListHtml(msgs, isGroup, selfLabel){
+    if(!msgs||!msgs.length) return "";
+    var tok=encodeURIComponent(token()||"");
+    return msgs.map(function(m){
+      var mine=!!m.is_self;
+      var tm=fmtShortTime(m.created_at);
+      var senderLine="";
+      if(!mine&&(isGroup||selfLabel)){
+        senderLine='<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-bottom:3px">'
+          +GBArt.avatarHtml(m.sender_avatar_idx||0,m.sender_avatar_url||"",16)
+          +'<span>'+GBArt.esc(m.sender_name||"成员")+'</span></div>';
+      }else if(mine&&selfLabel){
+        senderLine='<div style="font-size:11px;color:#2f6b4f;margin-bottom:3px;font-weight:600">'+GBArt.esc(selfLabel)+'</div>';
+      }
+      var inner="";
+      if(m.msg_type==="image"&&m.media_url){
+        var fullUrl=m.media_url+"?token="+tok;
+        inner='<img class="chat-img-thumb" src="'+fullUrl+'" data-full="'+fullUrl+'" style="max-width:200px;max-height:220px;border-radius:10px;display:block;cursor:pointer">';
+      }else if(m.msg_type==="voice"&&m.media_url){
+        inner='<div style="font-size:12px;margin-bottom:4px">🎤 语音 '+(m.duration_sec||1)+'″</div><audio controls preload="none" src="'+m.media_url+'?token='+tok+'" style="height:34px;max-width:220px"></audio>';
+      }else{
+        inner='<div style="white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.5">'+GBArt.esc(m.text||"")+'</div>';
+      }
+      return '<div style="display:flex;flex-direction:column;align-items:'+(mine?"flex-end":"flex-start")+';margin-bottom:10px">'
+        +senderLine
+        +'<div style="max-width:78%;padding:9px 12px;border-radius:14px;background:'+(mine?"#dff2e6":"#fff")+';border:1px solid '+(mine?"#b8d9c4":"#e6dfd1")+'">'+inner+'</div>'
+        +'<span style="font-size:10.5px;color:var(--muted);margin-top:2px">'+tm+'</span>'
+        +'</div>';
+    }).join("");
+  }
+
+  function bindChatImageClicks(container){
+    container.querySelectorAll(".chat-img-thumb").forEach(function(img){
+      img.addEventListener("click",function(){
+        $id("ppTitle").textContent="聊天图片";
+        $id("ppSub").textContent="";
+        $id("ppImg").src=img.getAttribute("data-full");
+        $id("photoPreviewModal").classList.add("show");
+      });
+    });
+  }
+
+  function setParentChatMode(mode){
+    pChatMode=mode;
+    $id("btnChatModeMine").classList.toggle("on",mode==="mine");
+    $id("btnChatModeKids").classList.toggle("on",mode==="kids");
+    $id("pSocialMineView").style.display=(mode==="mine")?"":"none";
+    $id("pSocialKidsView").style.display=(mode==="kids")?"":"none";
+    $id("pSocialTopActions").style.display=(mode==="mine")?"flex":"none";
+    if(mode==="kids"){
+      loadChildOversightOverview(true);
+    }else{
+      loadParentChatContacts(true);
+    }
+  }
+  $id("btnChatModeMine").addEventListener("click",function(){setParentChatMode("mine");});
+  $id("btnChatModeKids").addEventListener("click",function(){setParentChatMode("kids");});
+
+  function renderParentRequests(reqs){
+    var sec=$id("pIncomingReqSection");
+    var list=$id("pIncomingReqList");
+    if(!reqs||!reqs.length){sec.style.display="none";list.innerHTML="";return;}
+    sec.style.display="block";
+    $id("pIncomingReqTitle").textContent="🔔 新的家长好友申请（"+reqs.length+" 条待同意）";
+    list.innerHTML="";
+    reqs.forEach(function(rq){
+      var row=document.createElement("div");
+      row.style.cssText="background:#fff;border:1px solid #eed7b4;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px";
+      row.innerHTML='<div style="display:flex;align-items:center;gap:8px">'
+        +GBArt.avatarHtml(rq.avatar_idx,rq.avatar_url,32)
+        +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">'+GBArt.esc(rq.name)+(rq.family_name?' <span style="font-weight:400;color:var(--muted);font-size:11.5px">('+GBArt.esc(rq.family_name)+')</span>':"")+'</div>'
+        +'<div style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+GBArt.esc(rq.message||"想加为家长好友")+'</div></div></div>'
+        +'<div style="display:flex;justify-content:flex-end;gap:6px">'
+        +'<button type="button" class="sm danger rq-rej">拒绝</button>'
+        +'<button type="button" class="sm primary rq-acc">✓ 同意</button></div>';
+      row.querySelector(".rq-rej").addEventListener("click",function(){respondParentReq(rq.id,"reject");});
+      row.querySelector(".rq-acc").addEventListener("click",function(){respondParentReq(rq.id,"accept");});
+      list.appendChild(row);
+    });
+  }
+
+  async function respondParentReq(reqId,action){
+    try{
+      var r=await api("/api/parent/friends/requests/respond",{method:"POST",body:JSON.stringify({requestId:reqId,action:action})});
+      showToast(r.message||"已处理");
+      await loadParentChatContacts(false);
+    }catch(e){showToast(e.message,true);}
+  }
+
+  function renderParentSidebarList(){
+    if(!pSocialOv) return;
+    var friends=pSocialOv.friends||[];
+    var groups=pSocialOv.chat_groups||[];
+    var box=$id("pFriendsList");
+    box.innerHTML="";
+
+    if(pFriendFilter==="all"||pFriendFilter==="群聊"){
+      var t1=document.createElement("div");t1.className="social-sec-title";
+      t1.innerHTML='<span>👥 群聊（'+groups.length+'） · 默认家庭群</span>';
+      box.appendChild(t1);
+      if(!groups.length){
+        var e1=document.createElement("div");e1.style.cssText="font-size:12px;color:var(--muted);padding:8px 10px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
+        e1.textContent="暂无群聊";box.appendChild(e1);
+      }else{
+        groups.forEach(function(g){
+          var isOn=(activeChatPeerType==="group"&&activeChatPeerId===g.id);
+          var btn=document.createElement("button");btn.type="button";
+          btn.className="social-row"+(isOn?" on":"");
+          btn.innerHTML='<div class="grp-icon-badge '+(g.is_family_default?"":"custom")+'">'+(g.is_family_default?"👨‍👩‍👧‍👦":"👥")+'</div>'
+            +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(g.name)+'</span>'
+            +'<span class="sr-tag '+(g.is_family_default?"":"friend")+'">'+(g.is_family_default?"家庭群":"群聊")+" · "+g.member_count+'人</span></div>'
+            +'<div class="sr-sub">'+GBArt.esc(g.last_message||("成员："+(g.members_preview||"")))+'</div></div>'
+            +'<div class="sr-right">'+(g.last_message_at?'<span class="sr-time">'+fmtShortTime(g.last_message_at)+'</span>':"")
+            +(g.unread_count>0?'<span class="sr-badge">'+g.unread_count+'</span>':"")+'</div>';
+          btn.addEventListener("click",function(){
+            activeChatPeerType="group";activeChatPeerId=g.id;
+            $id("pSocialMineView").classList.add("chat-open");
+            renderParentSidebarList();updateParentChatHeader();loadParentChatMessages();
+          });
+          box.appendChild(btn);
+        });
+      }
+    }
+
+    var secGroups=pFriendFilter==="群聊"?[]:(pFriendFilter==="all"?["家庭","朋友"]:[pFriendFilter]);
+    secGroups.forEach(function(grp){
+      var list=friends.filter(function(f){return f.group_name===grp;});
+      var sec=document.createElement("div");sec.className="social-sec-title";
+      sec.textContent=(grp==="家庭")?("👨‍👩‍👧 家庭成员（"+list.length+"） · 家人与孩子"):("🤝 家长好友（"+list.length+"） · 仅家长互加");
+      box.appendChild(sec);
+      if(!list.length){
+        var emp=document.createElement("div");emp.style.cssText="font-size:12px;color:var(--muted);padding:8px 10px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
+        emp.textContent=(grp==="家庭")?"暂无其他家庭成员":"点击右上角「➕ 加家长好友」，与同学家长互加好友沟通";
+        box.appendChild(emp);
         return;
       }
-      if(!activeChatChildId||!chatContacts.some(function(c){return c.peer_id===activeChatChildId;})){
-        activeChatChildId=chatContacts[0].peer_id;
-      }
-      bar.innerHTML="";
-      chatContacts.forEach(function(c){
-        var b=document.createElement("button");b.type="button";
-        b.className=(c.peer_id===activeChatChildId)?"on":"";
-        b.innerHTML=GBArt.avatarHtml(c.avatar_idx,c.avatar_url,20)+" "+GBArt.esc(c.name)+(c.unread_count>0?' <span style="background:#e11d48;color:#fff;font-size:10px;padding:1px 5px;border-radius:999px">'+c.unread_count+"</span>":"");
-        b.addEventListener("click",function(){
-          activeChatChildId=c.peer_id;
-          loadParentChatContacts(true);
+      list.forEach(function(f){
+        var isOn=(activeChatPeerType===f.peer_type&&activeChatPeerId===f.peer_id);
+        var btn=document.createElement("button");btn.type="button";
+        btn.className="social-row"+(isOn?" on":"");
+        btn.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,34)
+          +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(f.name)+'</span>'
+          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span></div>'
+          +'<div class="sr-sub">'+GBArt.esc(f.last_message||"点击开始聊天~")+'</div></div>'
+          +'<div class="sr-right">'+(f.last_message_at?'<span class="sr-time">'+fmtShortTime(f.last_message_at)+'</span>':"")
+          +(f.unread_count>0?'<span class="sr-badge">'+f.unread_count+'</span>':"")+'</div>';
+        btn.addEventListener("click",function(){
+          activeChatPeerType=f.peer_type;activeChatPeerId=f.peer_id;
+          $id("pSocialMineView").classList.add("chat-open");
+          renderParentSidebarList();updateParentChatHeader();loadParentChatMessages();
         });
-        bar.appendChild(b);
+        box.appendChild(btn);
       });
-      if(loadMessages) await loadParentChatMessages();
+    });
+  }
+
+  function updateParentChatHeader(){
+    var avEl=$id("pChatHeadAvatar"), titleEl=$id("pChatHeadTitle"), subEl=$id("pChatHeadSub");
+    var btnGrp=$id("btnPGroupManage"), btnDel=$id("btnPRemoveFriend");
+    btnGrp.style.display="none";btnDel.style.display="none";
+    if(!pSocialOv||!activeChatPeerId){
+      avEl.innerHTML="";titleEl.textContent="请选择好友或群聊";subEl.textContent="";return;
+    }
+    if(activeChatPeerType==="group"){
+      var g=(pSocialOv.chat_groups||[]).find(function(x){return x.id===activeChatPeerId;});
+      if(g){
+        avEl.innerHTML='<div class="grp-icon-badge '+(g.is_family_default?"":"custom")+'">'+(g.is_family_default?"👨‍👩‍👧‍👦":"👥")+'</div>';
+        titleEl.textContent=g.name;
+        subEl.textContent=(g.is_family_default?"默认家庭群":"群聊")+" · "+g.member_count+"人："+(g.members_preview||"");
+        btnGrp.style.display="inline-block";
+      }
+      return;
+    }
+    var f=(pSocialOv.friends||[]).find(function(x){return x.peer_type===activeChatPeerType&&x.peer_id===activeChatPeerId;});
+    if(f){
+      avEl.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,34);
+      titleEl.textContent=f.name;
+      subEl.textContent=f.group_name+"分组 · "+(f.role_label||"")+" · 支持文字/图片/语音";
+      if(!f.is_family&&f.peer_type==="parent"){btnDel.style.display="inline-block";}
+    }
+  }
+
+  async function loadParentChatContacts(loadMessages){
+    try{
+      var ov=await api("/api/parent/friends");
+      pSocialOv=ov;
+      var friends=ov.friends||[], groups=ov.chat_groups||[], reqs=ov.incoming_requests||[];
+      var totalUnread=friends.reduce(function(a,c){return a+(c.unread_count||0);},0)
+        +groups.reduce(function(a,g){return a+(g.unread_count||0);},0);
+      var badge=$id("chatUnreadBadge");
+      if(totalUnread>0||reqs.length>0){
+        badge.style.display="inline-block";
+        badge.textContent=totalUnread>0?totalUnread:("申请"+reqs.length);
+      }else{
+        badge.style.display="none";
+      }
+      if(ov.self){
+        $id("pSelfShareInfo").textContent="🔑 分享码："+ov.self.friend_code+" · 账号："+(ov.self.username||"");
+      }
+      renderParentRequests(reqs);
+
+      var found=(activeChatPeerType==="group"&&groups.some(function(g){return g.id===activeChatPeerId;}))
+        ||(activeChatPeerType!=="group"&&friends.some(function(c){return c.peer_type===activeChatPeerType&&c.peer_id===activeChatPeerId;}));
+      if(!found){
+        if(groups.length){activeChatPeerType="group";activeChatPeerId=groups[0].id;}
+        else if(friends.length){activeChatPeerType=friends[0].peer_type;activeChatPeerId=friends[0].peer_id;}
+        else{activeChatPeerType="";activeChatPeerId="";}
+      }
+      renderParentSidebarList();
+      updateParentChatHeader();
+      if(loadMessages&&activeChatPeerId) await loadParentChatMessages();
     }catch(e){}
   }
 
-  async function loadParentChatMessages(){
-    if(!activeChatChildId) return;
+  $id("pFriendFilterBar").querySelectorAll("button").forEach(function(b){
+    b.addEventListener("click",function(){
+      pFriendFilter=b.getAttribute("data-pf")||"all";
+      $id("pFriendFilterBar").querySelectorAll("button").forEach(function(x){
+        x.classList.toggle("on",x.getAttribute("data-pf")===pFriendFilter);
+      });
+      renderParentSidebarList();
+    });
+  });
+
+  $id("btnCopyPShareCode").addEventListener("click",function(){
+    var code=pSocialOv&&pSocialOv.self?pSocialOv.self.friend_code:"";
+    if(!code) return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(code).then(function(){showToast("已复制家长分享码："+code);});
+    }else{showToast("家长分享码："+code);}
+  });
+
+  async function loadParentChatMessages(quiet){
+    if(!activeChatPeerId){
+      $id("parentChatBox").innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">请在左侧选择好友或群聊开启对话</div>';
+      return;
+    }
     try{
-      var r=await api("/api/parent/chat/messages?childId="+encodeURIComponent(activeChatChildId));
+      var r=await api("/api/parent/chat/messages?peerType="+encodeURIComponent(activeChatPeerType)+"&peerId="+encodeURIComponent(activeChatPeerId));
       var msgs=r.messages||[];
       var box=$id("parentChatBox");
       if(!msgs.length){
-        box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">还没有聊天记录，给孩子发一条文字、图片或语音消息吧~</div>';
+        box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">还没有聊天记录，发一条文字、图片或语音消息吧~</div>';
         return;
       }
-      var tok=encodeURIComponent(token()||"");
-      box.innerHTML=msgs.map(function(m){
-        var mine=!!m.is_self;
-        var dt=new Date(m.created_at);
-        var tm=String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
-        var inner="";
-        if(m.msg_type==="image"&&m.media_url){
-          inner='<img src="'+m.media_url+'?token='+tok+'" style="max-width:200px;max-height:220px;border-radius:10px;display:block">';
-        }else if(m.msg_type==="voice"&&m.media_url){
-          inner='<div style="font-size:12px;margin-bottom:4px">🎤 语音 '+m.duration_sec+'″</div><audio controls preload="none" src="'+m.media_url+'?token='+tok+'" style="height:34px;max-width:220px"></audio>';
-        }else{
-          inner='<div style="white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.5">'+GBArt.esc(m.text||"")+'</div>';
-        }
-        return '<div style="display:flex;flex-direction:column;align-items:'+(mine?"flex-end":"flex-start")+';margin-bottom:10px">'
-          +'<div style="max-width:78%;padding:9px 12px;border-radius:14px;background:'+(mine?"#dff2e6":"#fff")+';border:1px solid '+(mine?"#b8d9c4":"#e6dfd1")+'">'+inner+'</div>'
-          +'<span style="font-size:10.5px;color:var(--muted);margin-top:2px">'+tm+'</span>'
-          +'</div>';
-      }).join("");
-      box.scrollTop=box.scrollHeight;
+      var wasNearBottom=(box.scrollHeight-box.scrollTop-box.clientHeight)<80;
+      box.innerHTML=renderBubbleListHtml(msgs, activeChatPeerType==="group", "");
+      bindChatImageClicks(box);
+      if(!quiet||wasNearBottom) box.scrollTop=box.scrollHeight;
       loadParentChatContacts(false);
     }catch(e){}
   }
 
+  $id("btnPRemoveFriend").addEventListener("click",async function(){
+    if(activeChatPeerType!=="parent"||!activeChatPeerId) return;
+    if(!this._arm){this._arm=true;this.textContent="确认解除好友？";var self=this;setTimeout(function(){self._arm=false;self.textContent="解除好友";},3500);return;}
+    try{
+      await api("/api/parent/friends/"+encodeURIComponent(activeChatPeerId),{method:"DELETE"});
+      showToast("已解除家长好友关系");
+      activeChatPeerId="";activeChatPeerType="";
+      await loadParentChatContacts(true);
+    }catch(e){showToast(e.message,true);}
+  });
+
+  /* ---- 家长名片二维码弹窗 ---- */
+  function openParentCardModal(){
+    if(!pSocialOv||!pSocialOv.self) return;
+    var s=pSocialOv.self;
+    $id("pCardTitle").textContent="🪪 "+s.name+" 的家长名片";
+    $id("pCardQrBox").innerHTML=s.qr_svg||"";
+    $id("pCardCodeText").textContent=s.friend_code;
+    $id("pCardSub").textContent="家庭："+(s.family_name||"")+" · 账号："+(s.username||"")+"（仅限家长之间互加，需同意后聊天）";
+    $id("pMyCardModal").classList.add("show");
+  }
+  $id("btnParentCard").addEventListener("click",openParentCardModal);
+  $id("btnCardClose").addEventListener("click",function(){$id("pMyCardModal").classList.remove("show");});
+  $id("btnCardCopy").addEventListener("click",function(){
+    var code=pSocialOv&&pSocialOv.self?pSocialOv.self.friend_code:"";
+    if(!code) return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(code).then(function(){showToast("已复制分享码："+code);});
+    }else{showToast("分享码："+code);}
+  });
+  $id("btnCardReset").addEventListener("click",async function(){
+    try{
+      var r=await api("/api/parent/friends/code/reset",{method:"POST",body:"{}"});
+      if(pSocialOv&&pSocialOv.self){
+        pSocialOv.self.friend_code=r.friend_code;pSocialOv.self.qr_payload=r.qr_payload;pSocialOv.self.qr_svg=r.qr_svg;
+      }
+      openParentCardModal();
+      loadParentChatContacts(false);
+      showToast("已更新家长分享码！");
+    }catch(e){showToast(e.message,true);}
+  });
+
+  /* ---- 添加家长好友弹窗（含二维码扫码桥接） ---- */
+  function openAddParentModal(prefill){
+    $id("pAddSearchInput").value=prefill||"";
+    $id("pAddLookupResult").style.display="none";
+    $id("pAddFriendMsg").textContent="";
+    $id("btnPScanQr").style.display=(window.AndroidBridge&&typeof window.AndroidBridge.scanQrCode==="function")?"block":"none";
+    $id("pAddFriendModal").classList.add("show");
+    if(prefill) lookupParentCandidate();
+  }
+  $id("btnAddParentFriend").addEventListener("click",function(){openAddParentModal("");});
+  $id("btnCloseAddParentModal").addEventListener("click",function(){$id("pAddFriendModal").classList.remove("show");});
+  $id("btnPScanQr").addEventListener("click",function(){
+    if(window.AndroidBridge&&window.AndroidBridge.scanQrCode) window.AndroidBridge.scanQrCode();
+  });
+  window.onParentQrScanned=function(raw){
+    if(raw){
+      if(!$id("tab-chat")||$id("tab-chat").style.display==="none") switchMainTab("chat");
+      openAddParentModal(raw);
+    }
+  };
+  async function lookupParentCandidate(){
+    var q=$id("pAddSearchInput").value.trim();
+    if(!q){note("pAddFriendMsg","请输入家长账号或分享码",true);return;}
+    var box=$id("pAddLookupResult");
+    box.style.display="none";$id("pAddFriendMsg").textContent="";
+    try{
+      var r=await api("/api/parent/friends/lookup?q="+encodeURIComponent(q));
+      var c=r.candidate;
+      var statusMap={
+        self:"这是你自己的账号",family:"同家庭成员，已自动位于「家庭」分组",friend:"你们已经是家长好友啦",
+        pending_outgoing:"已发送好友申请，等待对方同意",pending_incoming:"对方已向你发送申请，请到左侧申请栏点击同意",none:""
+      };
+      var extra=statusMap[c.relation_status]||"";
+      box.style.display="block";
+      box.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        +GBArt.avatarHtml(c.avatar_idx,c.avatar_url,40)
+        +'<div><div style="font-weight:700;font-size:14px">'+GBArt.esc(c.name)+'</div>'
+        +'<div style="font-size:12px;color:var(--muted)">家庭：'+GBArt.esc(c.family_name||"")+' · 账号：'+GBArt.esc(c.username||"")+'</div></div></div>'
+        +(extra?'<div style="font-size:12.5px;color:#b8621b;font-weight:600">'+extra+'</div>'
+          :'<input type="text" id="pReqGreetInput" class="gb-input" maxlength="60" placeholder="打个招呼，如：我是大宝妈妈..." style="margin-bottom:8px">'
+            +'<button type="button" class="primary sm" id="btnPSendFriendReq" style="width:100%">📤 发送家长好友申请</button>');
+      var sendBtn=$id("btnPSendFriendReq");
+      if(sendBtn){
+        sendBtn.addEventListener("click",async function(){
+          try{
+            var g=$id("pReqGreetInput").value.trim();
+            var sr=await api("/api/parent/friends/request",{method:"POST",body:JSON.stringify({target:c.parent_id,message:g})});
+            showToast(sr.message||"已发送申请");
+            $id("pAddFriendModal").classList.remove("show");
+            loadParentChatContacts(false);
+          }catch(err){note("pAddFriendMsg",err.message,true);}
+        });
+      }
+    }catch(e){note("pAddFriendMsg",e.message,true);}
+  }
+  $id("btnPLookupParent").addEventListener("click",lookupParentCandidate);
+  $id("pAddSearchInput").addEventListener("keydown",function(e){if(e.key==="Enter") lookupParentCandidate();});
+
+  /* ---- 发起群聊 & 群成员管理弹窗 ---- */
+  $id("btnCreateParentGroup").addEventListener("click",function(){
+    if(!pSocialOv||!(pSocialOv.friends||[]).length){
+      showToast("先添加至少一位家庭成员或家长好友后才能发起群聊",true);return;
+    }
+    $id("pNewGroupName").value="";$id("pCreateGroupMsg").textContent="";
+    var list=$id("pCreateGroupMembers");list.innerHTML="";
+    (pSocialOv.friends||[]).forEach(function(f){
+      var lb=document.createElement("label");
+      lb.style.cssText="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-bottom:1px dashed #f0eae0";
+      lb.innerHTML='<input type="checkbox" value="'+GBArt.esc(f.peer_type+":"+f.peer_id)+'">'
+        +GBArt.avatarHtml(f.avatar_idx,f.avatar_url,26)
+        +'<span style="font-size:13px;font-weight:600">'+GBArt.esc(f.name)+'</span>'
+        +'<span style="font-size:11px;color:var(--muted)">('+GBArt.esc(f.role_label||f.group_name)+')</span>';
+      list.appendChild(lb);
+    });
+    $id("pCreateGroupModal").classList.add("show");
+  });
+  $id("btnCloseCreateGroup").addEventListener("click",function(){$id("pCreateGroupModal").classList.remove("show");});
+  $id("btnConfirmCreateGroup").addEventListener("click",async function(){
+    var nm=$id("pNewGroupName").value.trim();
+    var members=[];
+    $id("pCreateGroupMembers").querySelectorAll("input:checked").forEach(function(cb){
+      var parts=cb.value.split(":");
+      if(parts.length===2) members.push({memberType:parts[0],memberId:parts[1]});
+    });
+    if(!nm){note("pCreateGroupMsg","请输入群名称",true);return;}
+    if(!members.length){note("pCreateGroupMsg","请至少选择一位成员",true);return;}
+    try{
+      var r=await api("/api/parent/groups",{method:"POST",body:JSON.stringify({name:nm,members:members})});
+      $id("pCreateGroupModal").classList.remove("show");
+      showToast("已创建群聊「"+nm+"」！");
+      activeChatPeerType="group";activeChatPeerId=r.group.id;
+      await loadParentChatContacts(true);
+    }catch(e){note("pCreateGroupMsg",e.message,true);}
+  });
+
+  async function openParentGroupDetail(){
+    if(activeChatPeerType!=="group"||!activeChatPeerId) return;
+    $id("pGdMsg").textContent="";
+    try{
+      var r=await api("/api/parent/groups/"+encodeURIComponent(activeChatPeerId));
+      var grp=r.group;
+      $id("pGdTitle").textContent="👥 "+grp.name;
+      $id("pGdSub").textContent=grp.is_family_default
+        ?"👨‍👩‍👧‍👦 默认家庭群（群名与家庭名保持同步，家庭成员自动入群）"
+        :("群聊 · 共 "+grp.member_count+" 位成员");
+      var ml=$id("pGdMembersList");
+      ml.innerHTML=(grp.members||[]).map(function(m){
+        var ow=(m.role==="owner"&&!grp.is_family_default)?" · 群主":"";
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px dashed #f0eae0">'
+          +GBArt.avatarHtml(m.avatar_idx,m.avatar_url,28)
+          +'<span style="font-size:13px;font-weight:600">'+GBArt.esc(m.name)+'</span>'
+          +'<span style="font-size:11px;color:var(--muted)">('+GBArt.esc((m.role_label||"")+ow)+')</span></div>';
+      }).join("");
+
+      var invBox=$id("pGdInviteBox"), leaveBtn=$id("btnPGdLeave");
+      if(grp.is_family_default){
+        invBox.style.display="none";leaveBtn.style.display="none";
+      }else{
+        leaveBtn.style.display="inline-block";
+        var ex={};(grp.members||[]).forEach(function(m){ex[m.member_type+":"+m.member_id]=true;});
+        var cands=(pSocialOv&&pSocialOv.friends?pSocialOv.friends:[]).filter(function(f){return !ex[f.peer_type+":"+f.peer_id];});
+        if(cands.length){
+          invBox.style.display="block";
+          var il=$id("pGdInviteList");il.innerHTML="";
+          cands.forEach(function(f){
+            var lb=document.createElement("label");
+            lb.style.cssText="display:flex;align-items:center;gap:6px;padding:4px 2px;font-size:12.5px;cursor:pointer";
+            lb.innerHTML='<input type="checkbox" value="'+GBArt.esc(f.peer_type+":"+f.peer_id)+'">'+GBArt.esc(f.name)+' <span style="color:var(--muted)">('+GBArt.esc(f.role_label||f.group_name)+')</span>';
+            il.appendChild(lb);
+          });
+        }else{invBox.style.display="none";}
+      }
+      $id("pGroupDetailModal").classList.add("show");
+    }catch(e){showToast(e.message,true);}
+  }
+  $id("btnPGroupManage").addEventListener("click",openParentGroupDetail);
+  $id("btnPGdClose").addEventListener("click",function(){$id("pGroupDetailModal").classList.remove("show");});
+  $id("btnPGdInvite").addEventListener("click",async function(){
+    var arr=[];
+    $id("pGdInviteList").querySelectorAll("input:checked").forEach(function(cb){
+      var pts=cb.value.split(":");if(pts.length===2) arr.push({memberType:pts[0],memberId:pts[1]});
+    });
+    if(!arr.length){note("pGdMsg","请先勾选要邀请的成员",true);return;}
+    try{
+      await api("/api/parent/groups/"+encodeURIComponent(activeChatPeerId)+"/members",{method:"POST",body:JSON.stringify({members:arr})});
+      showToast("已邀请新成员入群！");
+      await openParentGroupDetail();
+      await loadParentChatContacts(false);
+    }catch(e){note("pGdMsg",e.message,true);}
+  });
+  $id("btnPGdLeave").addEventListener("click",async function(){
+    if(!this._arm){this._arm=true;this.textContent="确认退群？";var self=this;setTimeout(function(){self._arm=false;self.textContent="退出群聊";},3500);return;}
+    try{
+      await api("/api/parent/groups/"+encodeURIComponent(activeChatPeerId)+"/leave",{method:"POST",body:"{}"});
+      $id("pGroupDetailModal").classList.remove("show");
+      showToast("已退出该群聊");
+      activeChatPeerId="";activeChatPeerType="";
+      await loadParentChatContacts(true);
+    }catch(e){note("pGdMsg",e.message,true);}
+  });
+
+  /* ---- 监护视图：查看儿童端好友列表与聊天记录（只读） ---- */
+  async function loadChildOversightOverview(loadMsgs){
+    if(!pSocialOv) await loadParentChatContacts(false);
+    var kids=(pSocialOv&&pSocialOv.children)?pSocialOv.children:[];
+    var bar=$id("pOversightChildBar");
+    bar.innerHTML="";
+    if(!kids.length){
+      $id("pOversightList").innerHTML='<div style="font-size:12.5px;color:var(--muted);padding:12px">暂无孩子档案</div>';
+      $id("pOversightChatBox").innerHTML="";
+      return;
+    }
+    if(!pOvChildId||!kids.some(function(k){return k.id===pOvChildId;})){
+      pOvChildId=kids[0].id;
+    }
+    kids.forEach(function(k){
+      var b=document.createElement("button");b.type="button";
+      b.className=(k.id===pOvChildId)?"on":"";
+      b.innerHTML=GBArt.avatarHtml(k.avatar_idx,k.avatar_url,18)+" "+GBArt.esc(k.name)
+        +(k.unread_chat>0?' <span style="background:#e11d48;color:#fff;font-size:10px;padding:1px 5px;border-radius:999px">'+k.unread_chat+"</span>":"");
+      b.addEventListener("click",function(){
+        pOvChildId=k.id;pOvPeerType="";pOvPeerId="";
+        loadChildOversightOverview(true);
+      });
+      bar.appendChild(b);
+    });
+    try{
+      pOvChildSocial=await api("/api/parent/children/"+encodeURIComponent(pOvChildId)+"/social");
+      var fList=pOvChildSocial.friends||[], gList=pOvChildSocial.chat_groups||[], inc=pOvChildSocial.incoming_requests||[];
+      var valid=(pOvPeerType==="group"&&gList.some(function(g){return g.id===pOvPeerId;}))
+        ||(pOvPeerType!=="group"&&fList.some(function(f){return f.peer_type===pOvPeerType&&f.peer_id===pOvPeerId;}));
+      if(!valid){
+        if(fList.some(function(f){return !f.is_family;})){
+          var firstExt=fList.find(function(f){return !f.is_family;});
+          pOvPeerType=firstExt.peer_type;pOvPeerId=firstExt.peer_id;
+        }else if(gList.length){
+          pOvPeerType="group";pOvPeerId=gList[0].id;
+        }else if(fList.length){
+          pOvPeerType=fList[0].peer_type;pOvPeerId=fList[0].peer_id;
+        }else{pOvPeerType="";pOvPeerId="";}
+      }
+      renderChildOversightList();
+      if(loadMsgs) await loadChildOversightMessages(false);
+    }catch(e){}
+  }
+
+  function renderChildOversightList(){
+    if(!pOvChildSocial) return;
+    var box=$id("pOversightList");box.innerHTML="";
+    var kids=(pSocialOv&&pSocialOv.children)?pSocialOv.children:[];
+    var kid=kids.find(function(k){return k.id===pOvChildId;});
+    var kidName=kid?kid.name:"孩子";
+
+    if(pOvChildSocial.incoming_requests&&pOvChildSocial.incoming_requests.length){
+      var rqSec=document.createElement("div");rqSec.className="social-sec-title";
+      rqSec.textContent="🔔 待孩子确认的好友申请（"+pOvChildSocial.incoming_requests.length+"）";
+      box.appendChild(rqSec);
+      pOvChildSocial.incoming_requests.forEach(function(r){
+        var dv=document.createElement("div");
+        dv.style.cssText="background:#fff8ef;border:1px solid #ecd1aa;border-radius:10px;padding:6px 8px;font-size:12px";
+        dv.textContent=r.name+" ("+r.username+")："+(r.message||"想交朋友");
+        box.appendChild(dv);
+      });
+    }
+
+    var gList=pOvChildSocial.chat_groups||[];
+    var tG=document.createElement("div");tG.className="social-sec-title";
+    tG.textContent="👥 "+kidName+" 所在的群聊（"+gList.length+"）";
+    box.appendChild(tG);
+    gList.forEach(function(g){
+      var isOn=(pOvPeerType==="group"&&pOvPeerId===g.id);
+      var btn=document.createElement("button");btn.type="button";
+      btn.className="social-row"+(isOn?" on":"");
+      btn.innerHTML='<div class="grp-icon-badge '+(g.is_family_default?"":"custom")+'">'+(g.is_family_default?"👨‍👩‍👧‍👦":"👥")+'</div>'
+        +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(g.name)+'</span>'
+        +'<span class="sr-tag '+(g.is_family_default?"":"friend")+'">'+(g.is_family_default?"家庭群":"群聊")+" · "+g.member_count+'人</span></div>'
+        +'<div class="sr-sub">'+GBArt.esc(g.last_message||("成员："+(g.members_preview||"")))+'</div></div>'
+        +'<div class="sr-right">'+(g.last_message_at?'<span class="sr-time">'+fmtShortTime(g.last_message_at)+'</span>':"")
+        +(g.unread_count>0?'<span class="sr-badge">'+g.unread_count+'</span>':"")+'</div>';
+      btn.addEventListener("click",function(){
+        pOvPeerType="group";pOvPeerId=g.id;
+        $id("pOversightShell").classList.add("chat-open");
+        renderChildOversightList();loadChildOversightMessages(false);
+      });
+      box.appendChild(btn);
+    });
+
+    ["朋友","家庭"].forEach(function(grp){
+      var list=(pOvChildSocial.friends||[]).filter(function(f){return f.group_name===grp;});
+      var sec=document.createElement("div");sec.className="social-sec-title";
+      sec.textContent=(grp==="朋友")?("🧒 "+kidName+" 的外部小伙伴（"+list.length+"）"):("👨‍👩‍👧 "+kidName+" 的家庭分组（"+list.length+"）");
+      box.appendChild(sec);
+      if(!list.length){
+        var emp=document.createElement("div");emp.style.cssText="font-size:12px;color:var(--muted);padding:7px 9px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
+        emp.textContent="暂无";box.appendChild(emp);return;
+      }
+      list.forEach(function(f){
+        var isOn=(pOvPeerType===f.peer_type&&pOvPeerId===f.peer_id);
+        var btn=document.createElement("button");btn.type="button";
+        btn.className="social-row"+(isOn?" on":"");
+        btn.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,32)
+          +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(f.name)+'</span>'
+          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span></div>'
+          +'<div class="sr-sub">'+GBArt.esc(f.last_message||"暂无消息")+'</div></div>'
+          +'<div class="sr-right">'+(f.last_message_at?'<span class="sr-time">'+fmtShortTime(f.last_message_at)+'</span>':"")
+          +(f.unread_count>0?'<span class="sr-badge">'+f.unread_count+'</span>':"")+'</div>';
+        btn.addEventListener("click",function(){
+          pOvPeerType=f.peer_type;pOvPeerId=f.peer_id;
+          $id("pOversightShell").classList.add("chat-open");
+          renderChildOversightList();loadChildOversightMessages(false);
+        });
+        box.appendChild(btn);
+      });
+    });
+  }
+
+  async function loadChildOversightMessages(quiet){
+    var box=$id("pOversightChatBox");
+    if(!pOvChildId||!pOvPeerId){
+      $id("pOvChatTitle").textContent="暂无可查看的对话";
+      $id("pOvChatSub").textContent="";
+      box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">该孩子还没有好友聊天记录</div>';
+      return;
+    }
+    var kids=(pSocialOv&&pSocialOv.children)?pSocialOv.children:[];
+    var kid=kids.find(function(k){return k.id===pOvChildId;});
+    var kidName=kid?kid.name:"孩子";
+    if(pOvPeerType==="group"){
+      var g=(pOvChildSocial.chat_groups||[]).find(function(x){return x.id===pOvPeerId;});
+      $id("pOvChatTitle").textContent=kidName+" 的群聊 · "+(g?g.name:pOvPeerId);
+      $id("pOvChatSub").textContent=g?("共 "+g.member_count+" 人："+(g.members_preview||"")):"群聊只读记录";
+    }else{
+      var f=(pOvChildSocial.friends||[]).find(function(x){return x.peer_type===pOvPeerType&&x.peer_id===pOvPeerId;});
+      $id("pOvChatTitle").textContent=kidName+" 与 "+(f?f.name:"好友")+" 的对话";
+      $id("pOvChatSub").textContent=(f?f.group_name+"分组 · "+(f.role_label||""):"")+" · 仅家长监护查看";
+    }
+    try{
+      var r=await api("/api/parent/children/"+encodeURIComponent(pOvChildId)+"/chat/messages?peerType="+encodeURIComponent(pOvPeerType)+"&peerId="+encodeURIComponent(pOvPeerId));
+      var msgs=r.messages||[];
+      if(!msgs.length){
+        box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">双方还没有发送过聊天消息</div>';
+        return;
+      }
+      var wasNearBottom=(box.scrollHeight-box.scrollTop-box.clientHeight)<80;
+      box.innerHTML=renderBubbleListHtml(msgs, pOvPeerType==="group", "🧒 "+kidName);
+      bindChatImageClicks(box);
+      if(!quiet||wasNearBottom) box.scrollTop=box.scrollHeight;
+    }catch(e){}
+  }
+
+  /* ---- 发送文字 / 图片 / 语音消息 ---- */
   $id("btnPChatSend").addEventListener("click",async function(){
     var txt=$id("pChatInput").value.trim();
-    if(!txt||!activeChatChildId) return;
+    if(!txt||!activeChatPeerId) return;
     try{
-      await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"text",text:txt})});
+      await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"text",text:txt})});
       $id("pChatInput").value="";
-      await loadParentChatMessages();
+      await loadParentChatMessages(false);
     }catch(e){note("pChatMsg",e.message,true);}
   });
   $id("pChatInput").addEventListener("keydown",function(e){if(e.key==="Enter"){$id("btnPChatSend").click();}});
   $id("btnPChatImg").addEventListener("click",function(){$id("pChatImgFile").click();});
   $id("pChatImgFile").addEventListener("change",function(){
     var f=this.files&&this.files[0];this.value="";
-    if(!f||!activeChatChildId) return;
+    if(!f||!activeChatPeerId) return;
     var reader=new FileReader();
     reader.onload=async function(){
       try{
-        await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"image",mediaData:reader.result,mimeType:f.type||"image/jpeg"})});
-        await loadParentChatMessages();
+        await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"image",mediaData:reader.result,mimeType:f.type||"image/jpeg"})});
+        await loadParentChatMessages(false);
       }catch(e){note("pChatMsg",e.message,true);}
     };
     reader.readAsDataURL(f);
   });
   $id("btnPChatVoice").addEventListener("click",async function(){
-    if(!activeChatChildId) return;
+    if(!activeChatPeerId) return;
     if(chatRecMedia&&chatRecMedia.state==="recording"){
       chatRecMedia.stop();
       return;
@@ -2403,26 +3125,37 @@
       chatRecMedia.ondataavailable=function(ev){if(ev.data&&ev.data.size>0) chatRecChunks.push(ev.data);};
       chatRecMedia.onstop=function(){
         stream.getTracks().forEach(function(t){t.stop();});
-        $id("btnPChatVoice").textContent="🎤 录语音";
+        $id("btnPChatVoice").textContent="🎤";
         var dur=Math.max(1,Math.round((Date.now()-chatRecStartMs)/1000));
         var blob=new Blob(chatRecChunks,{type:chatRecMedia.mimeType||"audio/webm"});
         var rdr=new FileReader();
         rdr.onload=async function(){
           try{
-            await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"voice",mediaData:rdr.result,mimeType:blob.type||"audio/webm",durationSec:dur})});
-            await loadParentChatMessages();
+            await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"voice",mediaData:rdr.result,mimeType:blob.type||"audio/webm",durationSec:dur})});
+            await loadParentChatMessages(false);
           }catch(err){note("pChatMsg",err.message,true);}
         };
         rdr.readAsDataURL(blob);
       };
       chatRecMedia.start();
-      $id("btnPChatVoice").textContent="⏹️ 停止发送";
+      $id("btnPChatVoice").textContent="⏹️";
     }catch(e){note("pChatMsg","无法打开麦克风："+e.message,true);}
+  });
+
+  $id("btnPMineBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
+  $id("btnPKidsBack").addEventListener("click",function(){$id("pOversightShell").classList.remove("chat-open");});
+  ["pMyCardModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
+    $id(mid).addEventListener("click",function(e){if(e.target===$id(mid)) $id(mid).classList.remove("show");});
   });
 
   chatPollTimer=setInterval(function(){
     var sec=$id("tab-chat");
-    if(token()&&sec&&sec.style.display!=="none"&&activeChatChildId) loadParentChatMessages();
+    if(!token()||!sec||sec.style.display==="none") return;
+    if(pChatMode==="kids"){
+      loadChildOversightMessages(true);
+    }else if(activeChatPeerId){
+      loadParentChatMessages(true);
+    }
   },4000);
 
   try{

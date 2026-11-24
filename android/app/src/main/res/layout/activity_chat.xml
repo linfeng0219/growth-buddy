@@ -41,6 +41,17 @@
             android:layout_height="38dp"
             android:layout_marginStart="10dp" />
 
+        <TextView
+            android:id="@+id/tvChatGroupBadge"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center"
+            android:text="👨‍👩‍👧‍👦"
+            android:textSize="19sp"
+            android:visibility="gone" />
+
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -69,6 +80,25 @@
                 android:textColor="#7D7263"
                 android:textSize="11.5sp" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/btnChatGroupInfo"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:layout_marginStart="6dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="0dp"
+            android:singleLine="true"
+            android:text="👥 群员"
+            android:textColor="#2F6B4F"
+            android:textSize="12sp"
+            android:visibility="gone"
+            app:strokeColor="#BED6C7" />
     </LinearLayout>
 
     <!-- 消息列表区域 -->
@@ -122,6 +152,8 @@
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:paddingHorizontal="12dp"
+            android:paddingVertical="0dp"
+            android:singleLine="true"
             android:text="取消"
             android:textColor="#6B6052"
             android:textSize="12.5sp" />
@@ -136,6 +168,8 @@
             android:minWidth="0dp"
             android:minHeight="0dp"
             android:paddingHorizontal="14dp"
+            android:paddingVertical="0dp"
+            android:singleLine="true"
             android:text="发送语音"
             android:textColor="#FFFFFF"
             android:textSize="12.5sp"

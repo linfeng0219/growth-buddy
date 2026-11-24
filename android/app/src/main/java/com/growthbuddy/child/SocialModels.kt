@@ -60,10 +60,33 @@ data class FriendLookupCandidate(
     val relationStatus: String
 )
 
+data class ChatGroupMemberItem(
+    val memberType: String,
+    val memberId: String,
+    val name: String,
+    val roleLabel: String,
+    val avatarIdx: Int,
+    val avatarUrl: String,
+    val role: String
+)
+
+data class ChatGroupItem(
+    val id: String,
+    val name: String,
+    val isFamilyDefault: Boolean,
+    val memberCount: Int,
+    val membersPreview: String,
+    val unreadCount: Int,
+    val lastMessage: String,
+    val lastMessageAt: Long,
+    val members: List<ChatGroupMemberItem> = emptyList()
+)
+
 data class SocialOverview(
     val self: SocialSelfInfo,
     val groups: List<String>,
     val friends: List<FriendItem>,
+    val chatGroups: List<ChatGroupItem>,
     val incomingRequests: List<FriendRequestItem>,
     val outgoingRequests: List<FriendRequestItem>
 )
@@ -72,6 +95,9 @@ data class ChatMessageItem(
     val id: String,
     val senderType: String,
     val senderId: String,
+    val senderName: String,
+    val senderAvatarIdx: Int,
+    val senderAvatarUrl: String,
     val receiverType: String,
     val receiverId: String,
     val isSelf: Boolean,
@@ -128,9 +154,47 @@ object SocialParser {
             )
         }
 
+        val chatGroups = mutableListOf<ChatGroupItem>()
+        val cgArr = obj.optJSONArray("chat_groups") ?: JSONArray()
+        for (i in 0 until cgArr.length()) {
+            chatGroups.add(parseGroupItem(cgArr.getJSONObject(i)))
+        }
+
         val inc = parseRequests(obj.optJSONArray("incoming_requests") ?: JSONArray())
         val out = parseRequests(obj.optJSONArray("outgoing_requests") ?: JSONArray())
-        return SocialOverview(self, groups, friends, inc, out)
+        return SocialOverview(self, groups, friends, chatGroups, inc, out)
+    }
+
+    fun parseGroupItem(g: JSONObject): ChatGroupItem {
+        val mList = mutableListOf<ChatGroupMemberItem>()
+        val mArr = g.optJSONArray("members")
+        if (mArr != null) {
+            for (j in 0 until mArr.length()) {
+                val m = mArr.getJSONObject(j)
+                mList.add(
+                    ChatGroupMemberItem(
+                        memberType = m.optString("member_type", "child"),
+                        memberId = m.optString("member_id", ""),
+                        name = m.optString("name", "成员"),
+                        roleLabel = m.optString("role_label", ""),
+                        avatarIdx = m.optInt("avatar_idx", 0),
+                        avatarUrl = m.optString("avatar_url", ""),
+                        role = m.optString("role", "member")
+                    )
+                )
+            }
+        }
+        return ChatGroupItem(
+            id = g.optString("id", ""),
+            name = g.optString("name", "群聊"),
+            isFamilyDefault = g.optBoolean("is_family_default", false),
+            memberCount = g.optInt("member_count", mList.size),
+            membersPreview = g.optString("members_preview", ""),
+            unreadCount = g.optInt("unread_count", 0),
+            lastMessage = g.optString("last_message", ""),
+            lastMessageAt = g.optLong("last_message_at", 0L),
+            members = mList
+        )
     }
 
     private fun parseRequests(arr: JSONArray): List<FriendRequestItem> {
@@ -179,6 +243,9 @@ object SocialParser {
                     id = m.optString("id", ""),
                     senderType = m.optString("sender_type", "child"),
                     senderId = m.optString("sender_id", ""),
+                    senderName = m.optString("sender_name", ""),
+                    senderAvatarIdx = m.optInt("sender_avatar_idx", 0),
+                    senderAvatarUrl = m.optString("sender_avatar_url", ""),
                     receiverType = m.optString("receiver_type", "child"),
                     receiverId = m.optString("receiver_id", ""),
                     isSelf = m.optBoolean("is_self", false),
