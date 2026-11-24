@@ -1,7 +1,52 @@
 package main
 
+import (
+	"fmt"
+	"time"
+)
+
+func formatTrayUnreadTip(count int) string {
+	if count < 0 {
+		count = 0
+	}
+	return fmt.Sprintf("未读信息%d条", count)
+}
+
 // chromaKeyRef 是透明背景模式下用于抠图的色键 RGB(1, 2, 3)。
 const chromaKeyRef uint32 = 0x00030201
+
+const conversationGapMs int64 = 3 * 60 * 1000 // 前后消息间隔小于 3 分钟归为同一次对话
+
+func shouldShowConversationTimestamp(prevCreatedAt, curCreatedAt int64, isFirst bool) bool {
+	if curCreatedAt <= 0 {
+		return false
+	}
+	if isFirst || prevCreatedAt <= 0 {
+		return true
+	}
+	return curCreatedAt-prevCreatedAt >= conversationGapMs
+}
+
+func formatConversationTime(createdAtMs int64, now time.Time) string {
+	if createdAtMs <= 0 {
+		return ""
+	}
+	t := time.UnixMilli(createdAtMs).In(now.Location())
+	ny, nm, nd := now.Date()
+	ty, tm, td := t.Date()
+	if ty == ny && tm == nm && td == nd {
+		return t.Format("15:04")
+	}
+	yest := now.AddDate(0, 0, -1)
+	yy, ym, yd := yest.Date()
+	if ty == yy && tm == ym && td == yd {
+		return "昨天 " + t.Format("15:04")
+	}
+	if ty == ny {
+		return t.Format("01-02 15:04")
+	}
+	return t.Format("2006-01-02 15:04")
+}
 
 func isDarkColor(c uint32) bool {
 	r := int(c & 0xFF)

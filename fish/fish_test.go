@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestFishVersionAndOTAUpdate(t *testing.T) {
@@ -205,5 +206,36 @@ func TestFishAPIFlow(t *testing.T) {
 	sent, _, err := sendGroupText(ts.URL, lr.Role, lr.Token, grp.ID, "收到")
 	if err != nil || sent.Text != "收到" {
 		t.Fatalf("send mismatch: %+v %v", sent, err)
+	}
+}
+
+func TestConversationGroupingTimestampAndTrayTip(t *testing.T) {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Date(2026, 11, 24, 17, 30, 0, 0, loc)
+	t1 := now.Add(-10 * time.Minute).UnixMilli()
+	t2Same := t1 + (2*60+59)*1000 // < 3 分钟：归为同一次对话
+	t3New := t2Same + 3*60*1000   // == 3 分钟：新一次对话
+
+	if !shouldShowConversationTimestamp(0, t1, true) {
+		t.Fatalf("expected first message to show timestamp")
+	}
+	if shouldShowConversationTimestamp(t1, t2Same, false) {
+		t.Fatalf("expected message within 3 minutes to share previous conversation without timestamp")
+	}
+	if !shouldShowConversationTimestamp(t2Same, t3New, false) {
+		t.Fatalf("expected message >= 3 minutes apart to start a new conversation timestamp")
+	}
+	if got := formatConversationTime(now.UnixMilli(), now); got != "17:30" {
+		t.Fatalf("expected today format 17:30, got %q", got)
+	}
+	yest := now.AddDate(0, 0, -1).UnixMilli()
+	if got := formatConversationTime(yest, now); got != "昨天 17:30" {
+		t.Fatalf("expected yesterday format 昨天 17:30, got %q", got)
+	}
+	if got := formatTrayUnreadTip(0); got != "未读信息0条" {
+		t.Fatalf("unexpected tray tip for 0: %q", got)
+	}
+	if got := formatTrayUnreadTip(5); got != "未读信息5条" {
+		t.Fatalf("unexpected tray tip for 5: %q", got)
 	}
 }

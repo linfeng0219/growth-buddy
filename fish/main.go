@@ -53,30 +53,32 @@ const (
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
 
 type appState struct {
-	mu            sync.Mutex
-	hwnd          uintptr
-	hInst         uintptr
-	hIcon         uintptr
-	hIconUnread   uintptr
-	trayAdded     bool
-	trayUnread    bool
-	initialSynced bool
-	cfg           FishConfig
-	loggedIn      bool
-	loggingIn     bool
-	polling       bool
-	sending       bool
-	loginStatus   string
-	messages      []ChatMsg
-	seenIDs       map[string]bool
-	lastMsgTs     int64
-	scrollY       int32
-	maxScrollY    int32
-	atBottom      bool
+	mu              sync.Mutex
+	hwnd            uintptr
+	hInst           uintptr
+	hIcon           uintptr
+	hIconUnread     uintptr
+	trayAdded       bool
+	trayUnreadCount int
+	unreadCount     int
+	initialSynced   bool
+	cfg             FishConfig
+	loggedIn        bool
+	loggingIn       bool
+	polling         bool
+	sending         bool
+	loginStatus     string
+	messages        []ChatMsg
+	seenIDs         map[string]bool
+	lastMsgTs       int64
+	scrollY         int32
+	maxScrollY      int32
+	atBottom        bool
 
 	uiFont   uintptr
 	boldFont uintptr
 	chatFont uintptr
+	tsFont   uintptr
 	bgBrush  uintptr
 
 	// Login controls
@@ -136,6 +138,9 @@ func (a *appState) refreshResources() {
 	if a.chatFont != 0 {
 		pDeleteObject.Call(a.chatFont)
 	}
+	if a.tsFont != 0 {
+		pDeleteObject.Call(a.tsFont)
+	}
 	if a.bgBrush != 0 {
 		pDeleteObject.Call(a.bgBrush)
 	}
@@ -147,6 +152,11 @@ func (a *appState) refreshResources() {
 	a.uiFont = createUIFont(a.dpiScale(14), false, qual)
 	a.boldFont = createUIFont(a.dpiScale(15), true, qual)
 	a.chatFont = createUIFont(a.dpiScale(int32(a.cfg.FontSize)), false, qual)
+	tsPx := int32(a.cfg.FontSize) - 3
+	if tsPx < 11 {
+		tsPx = 11
+	}
+	a.tsFont = createUIFont(a.dpiScale(tsPx), false, qual)
 
 	bgRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 	if a.cfg.BgTransparent {
@@ -451,29 +461,47 @@ func (a *appState) paintWindow() {
 			pSetTextColor.Call(memDC, uintptr(baseFg))
 
 			gapY := a.dpiScale(8)
+			tsGapY := a.dpiScale(2)
 			type measured struct {
-				text string
-				h    int32
+				text        string
+				isTimestamp bool
+				h           int32
+				gapAfter    int32
 			}
-			items := make([]measured, 0, len(msgs))
+			items := make([]measured, 0, len(msgs)+8)
 			var totalH int32
 
 			if len(msgs) == 0 {
-				items = append(items, measured{text: "暂无群聊消息"})
+				items = append(items, measured{text: "暂无群聊消息", gapAfter: gapY})
 			} else {
-				for _, m := range msgs {
-					items = append(items, measured{text: a.formatMsgLine(m)})
+				nowTime := time.Now()
+				for i, m := range msgs {
+					var prevTs int64
+					if i > 0 {
+						prevTs = msgs[i-1].CreatedAt
+					}
+					if shouldShowConversationTimestamp(prevTs, m.CreatedAt, i == 0) {
+						if tsStr := formatConversationTime(m.CreatedAt, nowTime); tsStr != "" {
+							items = append(items, measured{text: tsStr, isTimestamp: true, gapAfter: tsGapY})
+						}
+					}
+					items = append(items, measured{text: a.formatMsgLine(m), gapAfter: gapY})
 				}
 			}
 
 			for i := range items {
+				if items[i].isTimestamp && a.tsFont != 0 {
+					pSelectObject.Call(memDC, a.tsFont)
+				} else {
+					pSelectObject.Call(memDC, a.chatFont)
+				}
 				calc := RECT{Left: 0, Top: 0, Right: viewW - a.dpiScale(6), Bottom: 0}
 				pDrawTextW.Call(memDC, uintptr(unsafe.Pointer(u16(items[i].text))), ^uintptr(0), uintptr(unsafe.Pointer(&calc)), DT_LEFT|DT_WORDBREAK|DT_CALCRECT|DT_NOPREFIX|DT_EDITCONTROL)
 				items[i].h = calc.Bottom - calc.Top
-				totalH += items[i].h + gapY
+				totalH += items[i].h + items[i].gapAfter
 			}
-			if totalH > gapY {
-				totalH -= gapY
+			if len(items) > 0 {
+				totalH -= items[len(items)-1].gapAfter
 			}
 
 			maxScroll := totalH - viewH
@@ -505,6 +533,11 @@ func (a *appState) paintWindow() {
 						dr.Bottom = cr.Bottom
 					}
 					if dr.Bottom > dr.Top {
+						if it.isTimestamp && a.tsFont != 0 {
+							pSelectObject.Call(memDC, a.tsFont)
+						} else {
+							pSelectObject.Call(memDC, a.chatFont)
+						}
 						lineFg := baseFg
 						if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
 							if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, dr.Top, dr.Bottom); ok {
@@ -516,7 +549,7 @@ func (a *appState) paintWindow() {
 						pDrawTextW.Call(memDC, uintptr(unsafe.Pointer(u16(it.text))), ^uintptr(0), uintptr(unsafe.Pointer(&drawRc)), DT_LEFT|DT_WORDBREAK|DT_NOPREFIX|DT_EDITCONTROL)
 					}
 				}
-				y += it.h + gapY
+				y += it.h + it.gapAfter
 			}
 			pSelectObject.Call(memDC, oldFont)
 		}
@@ -679,7 +712,7 @@ func (a *appState) pollMessagesAsync() {
 			return
 		}
 		changed := false
-		hasIncomingOther := false
+		incomingOtherCount := 0
 		wasInitial := !a.initialSynced
 		if err == nil {
 			if a.seenIDs == nil {
@@ -694,7 +727,7 @@ func (a *appState) pollMessagesAsync() {
 					}
 					changed = true
 					if !wasInitial && !m.IsSelf {
-						hasIncomingOther = true
+						incomingOtherCount++
 					}
 				}
 			}
@@ -705,11 +738,7 @@ func (a *appState) pollMessagesAsync() {
 		}
 		a.mu.Unlock()
 		if changed {
-			incomingFlag := uintptr(0)
-			if hasIncomingOther {
-				incomingFlag = 1
-			}
-			pPostMessageW.Call(a.hwnd, wmAppRefresh, 0, incomingFlag)
+			pPostMessageW.Call(a.hwnd, wmAppRefresh, 0, uintptr(incomingOtherCount))
 		}
 	}()
 }
@@ -718,7 +747,7 @@ func (a *appState) handleSendMessage() {
 	if !a.loggedIn {
 		return
 	}
-	a.setUnreadTrayIcon(false)
+	a.setUnreadCount(0)
 	txt := strings.TrimSpace(getCtrlText(a.hEditMsg))
 	if txt == "" {
 		return
@@ -777,24 +806,27 @@ func (a *appState) addTrayIcon() {
 	nid.UFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP
 	nid.UCallbackMessage = wmAppTray
 	nid.HIcon = a.hIcon
-	tip, _ := syscall.UTF16FromString("fish · 家庭群聊")
+	tip, _ := syscall.UTF16FromString("未读信息0条")
 	copy(nid.SzTip[:], tip)
 	r, _, _ := pShellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
 	if r != 0 {
 		a.trayAdded = true
-		a.trayUnread = false
+		a.unreadCount = 0
+		a.trayUnreadCount = 0
 	}
 }
 
-func (a *appState) setUnreadTrayIcon(unread bool) {
-	if a.hwnd == 0 || !a.trayAdded || a.trayUnread == unread {
+func (a *appState) setUnreadCount(count int) {
+	if count < 0 {
+		count = 0
+	}
+	a.unreadCount = count
+	if a.hwnd == 0 || !a.trayAdded || a.trayUnreadCount == count {
 		return
 	}
 	icon := a.hIcon
-	tipStr := "fish · 家庭群聊"
-	if unread && a.hIconUnread != 0 {
+	if count > 0 && a.hIconUnread != 0 {
 		icon = a.hIconUnread
-		tipStr = "fish · 有未读新消息"
 	}
 	var nid NOTIFYICONDATAW
 	nid.CbSize = uint32(unsafe.Sizeof(nid))
@@ -802,10 +834,10 @@ func (a *appState) setUnreadTrayIcon(unread bool) {
 	nid.UID = idTrayIcon
 	nid.UFlags = NIF_ICON | NIF_TIP
 	nid.HIcon = icon
-	tip, _ := syscall.UTF16FromString(tipStr)
+	tip, _ := syscall.UTF16FromString(formatTrayUnreadTip(count))
 	copy(nid.SzTip[:], tip)
 	pShellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&nid)))
-	a.trayUnread = unread
+	a.trayUnreadCount = count
 }
 
 func (a *appState) isActivelyViewing() bool {
@@ -950,7 +982,7 @@ func (a *appState) showAndBringToFront(focusInput bool) {
 	if a.hwnd == 0 {
 		return
 	}
-	a.setUnreadTrayIcon(false)
+	a.setUnreadCount(0)
 	pShowWindow.Call(a.hwnd, SW_SHOW)
 	pSetWindowPos.Call(a.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
 	pSetWindowPos.Call(a.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
@@ -1066,7 +1098,7 @@ func (a *appState) handleCommand(id int) {
 		a.initialSynced = false
 		saveConfig(a.cfg)
 		a.mu.Unlock()
-		a.setUnreadTrayIcon(false)
+		a.setUnreadCount(0)
 		setCtrlText(a.hLblLoginStatus, "")
 		a.layoutControls()
 		a.triggerRepaint()
@@ -1221,7 +1253,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_ACTIVATE:
 		if (wParam & 0xFFFF) != 0 {
-			a.setUnreadTrayIcon(false)
+			a.setUnreadCount(0)
 		}
 		return 0
 
@@ -1269,8 +1301,8 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 				a.pollMessagesAsync()
 			}
 		}
-		if lParam == 1 && !a.isActivelyViewing() {
-			a.setUnreadTrayIcon(true)
+		if lParam > 0 && !a.isActivelyViewing() {
+			a.setUnreadCount(a.unreadCount + int(lParam))
 		}
 		a.triggerRepaint()
 		return 0
