@@ -5,6 +5,8 @@
 *.db-shm
 server/data/
 server/growth-buddy-server
+server/public/downloads/*.exe
+fish/*.exe
 server/server.log
 
 # Android & Gradle build artifacts

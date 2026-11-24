@@ -373,6 +373,9 @@ func (a *AppServer) serveStatic(w http.ResponseWriter, r *http.Request) {
 		ct = "application/json; charset=utf-8"
 	case ".svg":
 		ct = "image/svg+xml"
+	case ".exe":
+		ct = "application/octet-stream"
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, path.Base(clean)))
 	}
 	if ct == "" {
 		ct = "application/octet-stream"

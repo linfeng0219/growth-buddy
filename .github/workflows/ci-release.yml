@@ -36,6 +36,14 @@ jobs:
         working-directory: server
         run: go test -v ./...
 
+      - name: Test & build Fish Windows desktop client
+        working-directory: fish
+        run: |
+          go test -v ./...
+          mkdir -p ../server/public/downloads
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-H windowsgui -s -w" -o ../server/public/downloads/fish.exe .
+          ls -lh ../server/public/downloads/fish.exe
+
       - name: Build static-SQLite Linux binary
         id: build
         working-directory: server
@@ -68,8 +76,9 @@ jobs:
           mkdir -p dist
           cp "server/growth-buddy-server" "dist/growth-buddy-server"
           cp "server/growth-buddy-server-${BUILD_VER}" "dist/growth-buddy-server-${BUILD_VER}"
+          cp "server/public/downloads/fish.exe" "dist/fish.exe"
           tar -czf dist/growth-buddy-go-aliyun.tar.gz -C "$STAGE" .
-          (cd dist && sha256sum "growth-buddy-server-${BUILD_VER}" growth-buddy-server growth-buddy-go-aliyun.tar.gz > SHA256SUMS.txt)
+          (cd dist && sha256sum "growth-buddy-server-${BUILD_VER}" growth-buddy-server growth-buddy-go-aliyun.tar.gz fish.exe > SHA256SUMS.txt)
           ls -lh dist/
 
       - name: Upload growth-buddy-server binary (Artifact)
@@ -87,6 +96,7 @@ jobs:
             dist/growth-buddy-server-${{ env.BUILD_VER }}
             dist/growth-buddy-server
             dist/growth-buddy-go-aliyun.tar.gz
+            dist/fish.exe
             dist/SHA256SUMS.txt
 
   release:
@@ -137,6 +147,7 @@ jobs:
             release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
             release-files/growth-buddy-server
             release-files/growth-buddy-go-aliyun.tar.gz
+            release-files/fish.exe
             release-files/SHA256SUMS.txt
 
       - name: Publish Versioned GitHub Release (tag v*)
@@ -148,4 +159,5 @@ jobs:
             release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
             release-files/growth-buddy-server
             release-files/growth-buddy-go-aliyun.tar.gz
+            release-files/fish.exe
             release-files/SHA256SUMS.txt
