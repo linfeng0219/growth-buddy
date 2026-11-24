@@ -131,6 +131,10 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if cfg := normalizeMaxMessages(999); cfg != 100 {
 		t.Fatalf("expected invalid maxMessages normalized to 100, got %d", cfg)
 	}
+	def := defaultConfig()
+	if !def.BgTransparent || !def.AutoInvertText {
+		t.Fatalf("expected defaultConfig BgTransparent=true and AutoInvertText=true, got %+v", def)
+	}
 
 	// Build 10x10 top-down BGRA image: top half pure red (0x00FF0000), bottom half dark navy (0x00001020)
 	pix := make([]uint32, 10*10)
