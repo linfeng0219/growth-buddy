@@ -115,6 +115,13 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if got := brightenColor(0x00FFFFFF, 28); got != 0x00FFFFFF {
 		t.Fatalf("expected white clamped to white, got 0x%08x", got)
 	}
+	btnBg := darkenColorForButton(0x00EEFAF6, false)
+	if !isDarkColor(btnBg) || btnBg == chromaKeyRef {
+		t.Fatalf("expected dark button color, got 0x%08x", btnBg)
+	}
+	if pressedBg := darkenColorForButton(0x00EEFAF6, true); colorLuminance(pressedBg) > colorLuminance(btnBg) {
+		t.Fatalf("expected pressed button color darker or equal, got %d > %d", colorLuminance(pressedBg), colorLuminance(btnBg))
+	}
 
 	// Build 10x10 top-down BGRA image: top half pure red (0x00FF0000), bottom half dark navy (0x00001020)
 	pix := make([]uint32, 10*10)

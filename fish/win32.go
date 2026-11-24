@@ -107,6 +107,7 @@ const (
 	ES_NUMBER       = 0x2000
 	BS_PUSHBUTTON   = 0x0000
 	BS_AUTOCHECKBOX = 0x0003
+	BS_OWNERDRAW    = 0x000B
 
 	LWA_COLORKEY = 0x00000001
 	LWA_ALPHA    = 0x00000002
@@ -120,6 +121,7 @@ const (
 	WM_CLOSE          = 0x0010
 	WM_ERASEBKGND     = 0x0014
 	WM_GETMINMAXINFO  = 0x0024
+	WM_DRAWITEM       = 0x002B
 	WM_KEYDOWN        = 0x0100
 	WM_CHAR           = 0x0102
 	WM_COMMAND        = 0x0111
@@ -193,6 +195,7 @@ const (
 	MB_ICONINFORMATION = 0x00000040
 	IDOK               = 1
 	IDYES              = 6
+	ODS_SELECTED       = 0x0001
 
 	SRCCOPY     = 0x00CC0020
 	CAPTUREBLT  = 0x40000000
@@ -266,6 +269,18 @@ type MINMAXINFO struct {
 	PtMaxPosition  POINT
 	PtMinTrackSize POINT
 	PtMaxTrackSize POINT
+}
+
+type DRAWITEMSTRUCT struct {
+	CtlType    uint32
+	CtlID      uint32
+	ItemID     uint32
+	ItemAction uint32
+	ItemState  uint32
+	HwndItem   uintptr
+	HDC        uintptr
+	RcItem     RECT
+	ItemData   uintptr
 }
 
 type NOTIFYICONDATAW struct {

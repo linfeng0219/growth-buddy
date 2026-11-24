@@ -239,16 +239,16 @@ func (a *appState) createAllControls() {
 
 	stLbl := uint32(WS_CHILD)
 	stEdit := uint32(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_LEFT | ES_AUTOHSCROLL)
-	stBtn := uint32(WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON)
+	stOwnerBtn := uint32(WS_CHILD | WS_TABSTOP | BS_OWNERDRAW)
 
 	// Login UI
 	a.hLblTitle = createCtrl("STATIC", "🐟 fish", stLbl, 0, 0, 0, 100, 24, h, 0, inst)
-	a.hBtnLoginQuit = createCtrl("BUTTON", "×", stBtn, 0, 0, 0, 26, 24, h, idBtnQuit, inst)
+	a.hBtnLoginQuit = createCtrl("BUTTON", "×", stOwnerBtn, 0, 0, 0, 26, 24, h, idBtnQuit, inst)
 	a.hLblUser = createCtrl("STATIC", "账号", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
 	a.hEditUser = createCtrl("EDIT", "", stEdit, 0, 0, 0, 200, 26, h, 0, inst)
 	a.hLblPass = createCtrl("STATIC", "密码", stLbl, 0, 0, 0, 80, 20, h, 0, inst)
 	a.hEditPass = createCtrl("EDIT", "", stEdit|ES_PASSWORD, 0, 0, 0, 200, 26, h, idEditPass, inst)
-	a.hBtnLogin = createCtrl("BUTTON", "登录家庭群", stBtn, 0, 0, 0, 120, 32, h, idBtnLogin, inst)
+	a.hBtnLogin = createCtrl("BUTTON", "进入", stOwnerBtn, 0, 0, 0, 120, 32, h, idBtnLogin, inst)
 	a.hLblLoginStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 240, 36, h, 0, inst)
 
 	// Chat UI (no Send/Hide/Settings/Logout buttons on page; Enter sends message)
@@ -527,6 +527,41 @@ func (a *appState) paintWindow() {
 	pSelectObject.Call(memDC, oldBmp)
 	pDeleteObject.Call(bmp)
 	pDeleteDC.Call(memDC)
+}
+
+func (a *appState) drawDarkButton(dis *DRAWITEMSTRUCT) {
+	if dis == nil || dis.HDC == 0 {
+		return
+	}
+	pressed := (dis.ItemState & ODS_SELECTED) != 0
+	bgRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+	fillCol := darkenColorForButton(bgRef, pressed)
+	borderCol := brightenColor(fillCol, 22)
+
+	rc := dis.RcItem
+	if br, _, _ := pCreateSolidBrush.Call(uintptr(fillCol)); br != 0 {
+		pFillRect.Call(dis.HDC, uintptr(unsafe.Pointer(&rc)), br)
+		pDeleteObject.Call(br)
+	}
+	if fbr, _, _ := pCreateSolidBrush.Call(uintptr(borderCol)); fbr != 0 {
+		pFrameRect.Call(dis.HDC, uintptr(unsafe.Pointer(&rc)), fbr)
+		pDeleteObject.Call(fbr)
+	}
+
+	txt := getCtrlText(dis.HwndItem)
+	if txt != "" {
+		font := a.boldFont
+		if dis.HwndItem == a.hBtnLoginQuit {
+			font = a.uiFont
+		}
+		if font != 0 {
+			oldF, _, _ := pSelectObject.Call(dis.HDC, font)
+			defer pSelectObject.Call(dis.HDC, oldF)
+		}
+		pSetBkMode.Call(dis.HDC, TRANSPARENT)
+		pSetTextColor.Call(dis.HDC, 0x00F6F8F5) // bright off-white text
+		pDrawTextW.Call(dis.HDC, uintptr(unsafe.Pointer(u16(txt))), ^uintptr(0), uintptr(unsafe.Pointer(&rc)), DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX)
+	}
 }
 
 func (a *appState) triggerRepaint() {
@@ -1095,6 +1130,14 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_COMMAND:
 		id := int(wParam & 0xFFFF)
 		a.handleCommand(id)
+		return 0
+
+	case WM_DRAWITEM:
+		if lParam != 0 {
+			dis := (*DRAWITEMSTRUCT)(unsafe.Pointer(lParam))
+			a.drawDarkButton(dis)
+			return 1
+		}
 		return 0
 
 	case WM_CTLCOLORSTATIC, WM_CTLCOLORBTN:

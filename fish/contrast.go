@@ -76,6 +76,41 @@ func brightenColor(c uint32, delta int) uint32 {
 	return out
 }
 
+// darkenColorForButton 计算较暗的按钮底色，确保与亮色文字搭配清晰且不刺眼。
+func darkenColorForButton(bg uint32, pressed bool) uint32 {
+	r := int(bg & 0xFF)
+	g := int((bg >> 8) & 0xFF)
+	b := int((bg >> 16) & 0xFF)
+	if !isDarkColor(bg) {
+		r = r/5 + 6
+		g = g/5 + 8
+		b = b/5 + 6
+	} else {
+		r = r - 18
+		g = g - 18
+		b = b - 18
+	}
+	if pressed {
+		r -= 10
+		g -= 10
+		b -= 10
+	}
+	clampMin := func(v int) int {
+		if v < 18 {
+			return 18
+		}
+		if v > 72 {
+			return 72
+		}
+		return v
+	}
+	out := uint32((clampMin(b) << 16) | (clampMin(g) << 8) | clampMin(r))
+	if out == chromaKeyRef {
+		return 0x001E2420
+	}
+	return out
+}
+
 // averageBGRAStripColor 计算 top-down 32bpp BGRA 像素缓冲区指定行区间的平均色（返回 COLORREF 0x00BBGGRR）。
 func averageBGRAStripColor(bgra []uint32, w, h, yStart, yEnd int32) (uint32, bool) {
 	if w <= 0 || h <= 0 || len(bgra) < int(w*h) {

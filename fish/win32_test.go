@@ -14,6 +14,9 @@ func TestWin32NotifyIconStructAndTrayIcon(t *testing.T) {
 	if got := unsafe.Sizeof(NOTIFYICONDATAW{}); got != 976 {
 		t.Fatalf("expected NOTIFYICONDATAW size 976 on amd64, got %d", got)
 	}
+	if got := unsafe.Sizeof(DRAWITEMSTRUCT{}); got != 64 {
+		t.Fatalf("expected DRAWITEMSTRUCT size 64 on amd64, got %d", got)
+	}
 	icon := createFishTrayIcon()
 	if icon == 0 {
 		t.Fatalf("createFishTrayIcon returned 0")
