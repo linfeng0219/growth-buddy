@@ -591,6 +591,70 @@ func TestAppOTAReleaseLifecycle(t *testing.T) {
 	if !strings.Contains(notes, "好友") || !strings.Contains(notes, "• ") || strings.Contains(notes, "732 题") {
 		t.Fatalf("expected auto-filled App-only release_notes from 2026-11-24 changelog, got %q", notes)
 	}
+
+	// Fish Windows .exe release upload, /api/app/version?platform=fish, /api/app/latest.exe, delete
+	fakeEXE := []byte("MZ-fake-fish-exe-payload-67890")
+	exeSum := sha256.Sum256(fakeEXE)
+	expectedExeSHA := hex.EncodeToString(exeSum[:])
+
+	var fishBuf bytes.Buffer
+	fmw := multipart.NewWriter(&fishBuf)
+	_ = fmw.WriteField("platform", "fish")
+	_ = fmw.WriteField("versionCode", "20")
+	_ = fmw.WriteField("versionName", "2026.11.24-1620")
+	_ = fmw.WriteField("releaseNotes", "桌面端 fish 首个 OTA 版本")
+	_ = fmw.WriteField("forceUpdate", "true")
+	fPart, _ := fmw.CreateFormFile("file", "fish-2026.11.24-1620.exe")
+	_, _ = fPart.Write(fakeEXE)
+	_ = fmw.Close()
+
+	fReq, _ := http.NewRequest("POST", ts.URL+"/api/admin/releases", &fishBuf)
+	fReq.Header.Set("Authorization", "Bearer "+adminTok)
+	fReq.Header.Set("Content-Type", fmw.FormDataContentType())
+	fResp, err := http.DefaultClient.Do(fReq)
+	if err != nil {
+		t.Fatalf("fish release upload failed: %v", err)
+	}
+	defer fResp.Body.Close()
+	if fResp.StatusCode != 201 {
+		b, _ := io.ReadAll(fResp.Body)
+		t.Fatalf("expected 201 on fish release upload, got %d: %s", fResp.StatusCode, string(b))
+	}
+	var fishCreated map[string]any
+	_ = json.NewDecoder(fResp.Body).Decode(&fishCreated)
+	fishID := fishCreated["id"].(string)
+	if fishCreated["platform"] != "fish" || fishCreated["sha256"] != expectedExeSHA {
+		t.Fatalf("unexpected fish release metadata: %+v", fishCreated)
+	}
+
+	st, fv1 := doJSON(t, ts, "GET", "/api/app/version?platform=fish&currentVersionCode=10", "", nil)
+	if st != 200 || fv1["hasUpdate"] != true || fv1["forceUpdate"] != true {
+		t.Fatalf("expected fish hasUpdate=true: %d %+v", st, fv1)
+	}
+	st, fv2 := doJSON(t, ts, "GET", "/api/app/version?platform=fish&currentVersionCode=20", "", nil)
+	if st != 200 || fv2["hasUpdate"] != false {
+		t.Fatalf("expected fish hasUpdate=false at 20: %d %+v", st, fv2)
+	}
+
+	for _, dlPath := range []string{"/api/app/download/" + fishID + ".exe", "/api/app/latest.exe"} {
+		dlResp, err := http.Get(ts.URL + dlPath)
+		if err != nil || dlResp.StatusCode != 200 {
+			t.Fatalf("fish download %s failed: %v", dlPath, err)
+		}
+		bodyBytes, _ := io.ReadAll(dlResp.Body)
+		_ = dlResp.Body.Close()
+		if !bytes.Equal(bodyBytes, fakeEXE) {
+			t.Fatalf("downloaded EXE bytes mismatch on %s", dlPath)
+		}
+	}
+
+	st, _ = doJSON(t, ts, "DELETE", "/api/admin/releases/"+fishID, adminTok, nil)
+	if st != 200 {
+		t.Fatalf("delete fish release failed: %d", st)
+	}
+	if _, err := os.Stat(filepath.Join(relDir, fishID+".exe")); !os.IsNotExist(err) {
+		t.Fatalf("expected local EXE file to be deleted")
+	}
 }
 
 func TestChangelogLatestDate(t *testing.T) {

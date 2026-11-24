@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	wmAppRefresh = WM_APP + 1
-	wmAppShow    = WM_APP + 2
-	wmAppTray    = WM_APP + 3
+	wmAppRefresh      = WM_APP + 1
+	wmAppShow         = WM_APP + 2
+	wmAppTray         = WM_APP + 3
+	wmAppUpdateResult = WM_APP + 4
 
 	idTimerPoll  = 1
 	idHotkeyBoss = 1
@@ -44,6 +45,7 @@ const (
 	idBtnHKCtrlAltH   = 134
 	idBtnHKF9         = 135
 	idBtnQuit         = 136
+	idBtnCheckUpdate  = 137
 
 	idMenuToggle   = 201
 	idMenuSettings = 202
@@ -95,7 +97,13 @@ type appState struct {
 	hLblFont, hBtnPickFont, hBtnFS13, hBtnFS15, hBtnFS18         uintptr
 	hLblHotkey, hBtnHKAltH, hBtnHKAltQ, hBtnHKCtrlAltH, hBtnHKF9 uintptr
 	hLblHKStatus                                                 uintptr
+	hLblVersion, hBtnCheckUpdate                                 uintptr
 	hBtnCloseSet, hBtnQuit                                       uintptr
+
+	checkingUpdate   bool
+	pendingUpdateRes *FishVersionResponse
+	pendingUpdateErr string
+	pendingUpdateMan bool
 
 	hotkeyStatus     string
 	bgSwatchRc       RECT
@@ -163,6 +171,7 @@ func (a *appState) refreshResources() {
 		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
 		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
 		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
+		a.hLblVersion, a.hBtnCheckUpdate,
 		a.hBtnCloseSet, a.hBtnQuit,
 	}
 	for _, h := range allCtrls {
@@ -246,6 +255,10 @@ func (a *appState) createAllControls() {
 	a.hBtnHKF9 = createCtrl("BUTTON", "F9", stBtn, 0, 0, 0, 34, 24, h, idBtnHKF9, inst)
 	a.hLblHKStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 260, 18, h, 0, inst)
 
+	verName, _ := currentFishVersion()
+	a.hLblVersion = createCtrl("STATIC", "版本：v"+verName, stLbl, 0, 0, 0, 170, 20, h, 0, inst)
+	a.hBtnCheckUpdate = createCtrl("BUTTON", "检查更新", stBtn, 0, 0, 0, 82, 24, h, idBtnCheckUpdate, inst)
+
 	a.hBtnCloseSet = createCtrl("BUTTON", "返回群聊", stBtn, 0, 0, 0, 120, 28, h, idBtnCloseSetting, inst)
 	a.hBtnQuit = createCtrl("BUTTON", "退出程序", stBtn, 0, 0, 0, 90, 28, h, idBtnQuit, inst)
 
@@ -307,6 +320,7 @@ func (a *appState) layoutControls() {
 		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
 		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
 		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
+		a.hLblVersion, a.hBtnCheckUpdate,
 		a.hBtnCloseSet, a.hBtnQuit,
 	} {
 		showCtrl(h, showSet)
@@ -410,7 +424,11 @@ func (a *appState) layoutControls() {
 		y += s(24)
 		moveCtrl(a.hLblHKStatus, x, y, cw-pad*2, s(18))
 		setCtrlText(a.hLblHKStatus, a.hotkeyStatus)
-		y += s(24)
+		y += s(22)
+
+		moveCtrl(a.hLblVersion, x, y+s(3), s(166), s(18))
+		moveCtrl(a.hBtnCheckUpdate, x+s(170), y, s(82), s(24))
+		y += s(28)
 
 		quitW := s(84)
 		moveCtrl(a.hBtnCloseSet, x, y, cw-pad*2-quitW-s(8), s(28))
@@ -947,6 +965,8 @@ func (a *appState) handleCommand(id int) {
 		a.cfg.Hotkey = "F9"
 		saveConfig(a.cfg)
 		a.registerBossHotkey()
+	case idBtnCheckUpdate:
+		a.checkUpdateAsync(true)
 	case idBtnQuit, idMenuQuit:
 		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
 	case idMenuToggle:
@@ -973,6 +993,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.addTrayIcon()
 		a.layoutControls()
 		pSetTimer.Call(hwnd, idTimerPoll, 2500, 0)
+		a.checkUpdateAsync(false)
 		if a.loggedIn {
 			a.pollMessagesAsync()
 			go func() {
@@ -1107,6 +1128,10 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.triggerRepaint()
 		return 0
 
+	case wmAppUpdateResult:
+		a.handleUpdateMessage(wParam)
+		return 0
+
 	case WM_COMMAND:
 		id := int(wParam & 0xFFFF)
 		a.handleCommand(id)
@@ -1183,9 +1208,126 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	return r
 }
 
+func (a *appState) checkUpdateAsync(manual bool) {
+	a.mu.Lock()
+	if a.checkingUpdate {
+		a.mu.Unlock()
+		return
+	}
+	a.checkingUpdate = true
+	srv := a.cfg.ServerURL
+	if !a.loggedIn && a.hEditSrv != 0 {
+		if s := strings.TrimSpace(getCtrlText(a.hEditSrv)); s != "" {
+			srv = s
+		}
+	}
+	a.mu.Unlock()
+
+	if manual && a.hBtnCheckUpdate != 0 {
+		setCtrlText(a.hBtnCheckUpdate, "检查中...")
+	}
+
+	_, verCode := currentFishVersion()
+	go func() {
+		res, err := checkFishUpdate(srv, verCode)
+		a.mu.Lock()
+		a.checkingUpdate = false
+		a.pendingUpdateRes = res
+		a.pendingUpdateMan = manual
+		if err != nil {
+			a.pendingUpdateErr = err.Error()
+		} else {
+			a.pendingUpdateErr = ""
+		}
+		hwnd := a.hwnd
+		a.mu.Unlock()
+		if hwnd != 0 {
+			pPostMessageW.Call(hwnd, wmAppUpdateResult, 1, 0)
+		}
+	}()
+}
+
+func (a *appState) handleUpdateMessage(kind uintptr) {
+	if kind == 2 {
+		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
+		return
+	}
+	if a.hBtnCheckUpdate != 0 {
+		setCtrlText(a.hBtnCheckUpdate, "检查更新")
+	}
+
+	a.mu.Lock()
+	res := a.pendingUpdateRes
+	errMsg := a.pendingUpdateErr
+	manual := a.pendingUpdateMan
+	srv := a.cfg.ServerURL
+	a.pendingUpdateRes = nil
+	a.pendingUpdateErr = ""
+	a.mu.Unlock()
+
+	if errMsg != "" {
+		if manual || kind == 3 {
+			pMessageBoxW.Call(a.hwnd, uintptr(unsafe.Pointer(u16(errMsg))), uintptr(unsafe.Pointer(u16("fish 更新"))), MB_OK|MB_ICONERROR)
+		}
+		return
+	}
+	if res == nil || !res.HasRelease || res.Release == nil || !res.HasUpdate {
+		if manual {
+			verName, _ := currentFishVersion()
+			pMessageBoxW.Call(a.hwnd, uintptr(unsafe.Pointer(u16("当前已是最新版本（v"+verName+"）"))), uintptr(unsafe.Pointer(u16("fish 检查更新"))), MB_OK|MB_ICONINFORMATION)
+		}
+		return
+	}
+
+	rel := *res.Release
+	verName, _ := currentFishVersion()
+	prompt := fmt.Sprintf("发现新版本 v%s（当前 v%s）\n\n%s\n\n是否立即下载并重启更新？",
+		rel.VersionName, verName, strings.TrimSpace(rel.ReleaseNotes))
+	title := "fish 发现新版本"
+	if res.ForceUpdate {
+		title = "fish 发现重要更新"
+	}
+	ans, _, _ := pMessageBoxW.Call(a.hwnd, uintptr(unsafe.Pointer(u16(prompt))), uintptr(unsafe.Pointer(u16(title))), MB_YESNO|MB_ICONINFORMATION)
+	if ans != IDYES {
+		return
+	}
+
+	a.mu.Lock()
+	if a.checkingUpdate {
+		a.mu.Unlock()
+		return
+	}
+	a.checkingUpdate = true
+	a.mu.Unlock()
+	if a.hBtnCheckUpdate != 0 {
+		setCtrlText(a.hBtnCheckUpdate, "更新中...")
+	}
+
+	go func() {
+		err := downloadAndApplyFishUpdate(srv, rel)
+		a.mu.Lock()
+		a.checkingUpdate = false
+		if err != nil {
+			a.pendingUpdateErr = "自动更新失败：" + err.Error()
+			hwnd := a.hwnd
+			a.mu.Unlock()
+			if hwnd != 0 {
+				pPostMessageW.Call(hwnd, wmAppUpdateResult, 3, 0)
+			}
+			return
+		}
+		hwnd := a.hwnd
+		a.mu.Unlock()
+		if hwnd != 0 {
+			pPostMessageW.Call(hwnd, wmAppUpdateResult, 2, 0)
+		}
+	}()
+}
+
 func main() {
 	runtime.LockOSThread()
 	pSetProcessDPIAware.Call()
+	cleanupPendingUpdateFiles()
 
 	cfg := loadConfig()
 	gApp = &appState{

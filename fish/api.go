@@ -2,17 +2,43 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var httpClient = &http.Client{Timeout: 12 * time.Second}
+var downloadClient = &http.Client{Timeout: 5 * time.Minute}
+
+type FishReleaseDTO struct {
+	ID           string `json:"id"`
+	Platform     string `json:"platform"`
+	VersionCode  int    `json:"version_code"`
+	VersionName  string `json:"version_name"`
+	ReleaseNotes string `json:"release_notes"`
+	ForceUpdate  bool   `json:"force_update"`
+	FileName     string `json:"file_name"`
+	FileSize     int64  `json:"file_size"`
+	SHA256       string `json:"sha256"`
+	DownloadURL  string `json:"download_url"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+type FishVersionResponse struct {
+	HasRelease  bool            `json:"hasRelease"`
+	HasUpdate   bool            `json:"hasUpdate"`
+	ForceUpdate bool            `json:"forceUpdate"`
+	Release     *FishReleaseDTO `json:"release"`
+}
 
 type LoginResult struct {
 	Token       string
@@ -206,4 +232,81 @@ func sendGroupText(serverURL, role, token, groupID, text string) (*ChatMsg, int,
 		return nil, code, err
 	}
 	return &res.Message, code, nil
+}
+
+func resolveDownloadURL(serverURL, rawURL string) string {
+	u := strings.TrimSpace(rawURL)
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	base := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+	if base == "" {
+		base = defaultServerURL
+	}
+	if !strings.HasPrefix(u, "/") {
+		u = "/" + u
+	}
+	return base + u
+}
+
+func checkFishUpdate(serverURL string, currentVersionCode int) (*FishVersionResponse, error) {
+	q := "/api/app/version?platform=fish&currentVersionCode=" + strconv.Itoa(currentVersionCode)
+	_, raw, err := apiRequest(serverURL, "GET", q, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	var res FishVersionResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func downloadFishUpdateToFile(serverURL string, rel FishReleaseDTO, destPath string) error {
+	dlURL := resolveDownloadURL(serverURL, rel.DownloadURL)
+	req, err := http.NewRequest("GET", dlURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return errors.New("下载更新包失败 (" + strconv.Itoa(resp.StatusCode) + ")")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	tmpPath := destPath + ".part"
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		return err
+	}
+	hasher := sha256.New()
+	_, copyErr := io.Copy(io.MultiWriter(out, hasher), io.LimitReader(resp.Body, 200<<20))
+	closeErr := out.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(tmpPath)
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	}
+
+	gotSHA := strings.ToLower(hex.EncodeToString(hasher.Sum(nil)))
+	expectedSHA := strings.ToLower(strings.TrimSpace(rel.SHA256))
+	if expectedSHA != "" && gotSHA != expectedSHA {
+		_ = os.Remove(tmpPath)
+		return errors.New("更新包 SHA-256 校验失败")
+	}
+
+	_ = os.Remove(destPath)
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }

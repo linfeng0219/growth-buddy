@@ -106,8 +106,8 @@
     <a class="pill ghost" href="/parent.html" style="text-decoration:none;padding:11px 18px;font-size:14px">🔑 直接登录家长端</a>
   </div>
   <div style="display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 6px">
-    <span style="font-size:13px;color:var(--muted)">🐟 桌面端 fish</span>
-    <a href="/downloads/fish.exe" download="fish.exe" class="pill ghost" style="text-decoration:none">下载 Windows 版 ↓</a>
+    <span id="fishVerLabel" style="font-size:13px;color:var(--muted)">🐟 桌面端 fish</span>
+    <a id="fishDownloadLink" href="/api/app/latest.exe" class="pill ghost" style="text-decoration:none">下载 Windows 版 ↓</a>
   </div>
   <div class="foot" id="sysFoot">成长小伙伴 · Growth Buddy · 系统版本 v2.3.0</div>
 </div>
@@ -128,6 +128,15 @@
       var dlUrl=rel.download_url||"/api/app/latest.apk";
       if(dlUrl.indexOf("/api/app/download/")===0&&dlUrl.slice(-4)!==".apk") dlUrl+=".apk";
       document.getElementById("apkDownloadLink").href=dlUrl;
+    }
+  }).catch(function(){});
+  fetch("/api/app/version?platform=fish").then(function(r){return r.json();}).then(function(d){
+    if(d&&d.hasRelease&&d.release){
+      var rel=d.release;
+      document.getElementById("fishVerLabel").textContent="🐟 桌面端 fish（v"+rel.version_name+"）";
+      var dlUrl=rel.download_url||"/api/app/latest.exe";
+      if(dlUrl.indexOf("/api/app/download/")===0&&dlUrl.slice(-4)!==".exe") dlUrl+=".exe";
+      document.getElementById("fishDownloadLink").href=dlUrl;
     }
   }).catch(function(){});
 </script>

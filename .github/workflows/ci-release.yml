@@ -12,8 +12,58 @@ permissions:
   contents: write
 
 jobs:
+  detect-changes:
+    name: Detect Changed Modules
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      fish: ${{ steps.filter.outputs.fish }}
+    steps:
+      - name: Checkout shallow history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine changed modules
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            echo "fish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BASE=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+          elif git rev-parse HEAD~1 >/dev/null 2>&1; then
+            BASE="HEAD~1"
+          fi
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            echo "fish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED="$(git diff --name-only "$BASE" HEAD)"
+          echo "Changed files:"
+          echo "$CHANGED"
+          SERVER_CHANGED=false
+          FISH_CHANGED=false
+          if echo "$CHANGED" | grep -qE '^(server/|\.github/workflows/ci-release\.yml$)'; then
+            SERVER_CHANGED=true
+          fi
+          if echo "$CHANGED" | grep -qE '^(fish/|\.github/workflows/ci-release\.yml$)'; then
+            FISH_CHANGED=true
+          fi
+          echo "server=${SERVER_CHANGED}" >> "$GITHUB_OUTPUT"
+          echo "fish=${FISH_CHANGED}" >> "$GITHUB_OUTPUT"
+
   server-build:
     name: Go + SQLite Server (Test & Package)
+    needs: [ detect-changes ]
+    if: needs.detect-changes.outputs.server == 'true'
     runs-on: ubuntu-22.04
     outputs:
       build_ver: ${{ steps.build.outputs.build_ver }}
@@ -36,14 +86,6 @@ jobs:
         working-directory: server
         run: go test -v ./...
 
-      - name: Test & build Fish Windows desktop client
-        working-directory: fish
-        run: |
-          go test -v ./...
-          mkdir -p ../server/public/downloads
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-H windowsgui -s -w" -o ../server/public/downloads/fish.exe .
-          ls -lh ../server/public/downloads/fish.exe
-
       - name: Build static-SQLite Linux binary
         id: build
         working-directory: server
@@ -62,7 +104,6 @@ jobs:
           STAGE="$(mktemp -d)"
           cp -a server/. "$STAGE/"
           rm -rf "$STAGE/data" "$STAGE/.env" "$STAGE"/growth-buddy-server*
-          # Replace Dockerfile in release tarball with ultra-fast prebuilt binary image
           printf '%s\n' \
             'FROM debian:12-slim' \
             'WORKDIR /app' \
@@ -76,9 +117,8 @@ jobs:
           mkdir -p dist
           cp "server/growth-buddy-server" "dist/growth-buddy-server"
           cp "server/growth-buddy-server-${BUILD_VER}" "dist/growth-buddy-server-${BUILD_VER}"
-          cp "server/public/downloads/fish.exe" "dist/fish.exe"
           tar -czf dist/growth-buddy-go-aliyun.tar.gz -C "$STAGE" .
-          (cd dist && sha256sum "growth-buddy-server-${BUILD_VER}" growth-buddy-server growth-buddy-go-aliyun.tar.gz fish.exe > SHA256SUMS.txt)
+          (cd dist && sha256sum "growth-buddy-server-${BUILD_VER}" growth-buddy-server growth-buddy-go-aliyun.tar.gz > SHA256SUMS.txt)
           ls -lh dist/
 
       - name: Upload growth-buddy-server binary (Artifact)
@@ -96,13 +136,69 @@ jobs:
             dist/growth-buddy-server-${{ env.BUILD_VER }}
             dist/growth-buddy-server
             dist/growth-buddy-go-aliyun.tar.gz
-            dist/fish.exe
             dist/SHA256SUMS.txt
 
+  fish-build:
+    name: Fish Desktop Client (Test & Windows Build)
+    needs: [ detect-changes ]
+    if: needs.detect-changes.outputs.fish == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      fish_ver: ${{ steps.build.outputs.fish_ver }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Run Fish unit tests
+        working-directory: fish
+        run: go test -v ./...
+
+      - name: Build Fish Windows binary with version
+        id: build
+        working-directory: fish
+        run: |
+          NOW_CST="$(TZ=Asia/Shanghai date '+%Y %m %d %H %M')"
+          read -r YY MM DD HH MI <<< "$NOW_CST"
+          FISH_VER="${YY}.${MM}.${DD}-${HH}${MI}"
+          FISH_CODE=$(( (10#${YY}-2020)*100000000 + 10#${MM}*1000000 + 10#${DD}*10000 + 10#${HH}*100 + 10#${MI} ))
+          echo "FISH_VER=${FISH_VER}" >> "$GITHUB_ENV"
+          echo "fish_ver=${FISH_VER}" >> "$GITHUB_OUTPUT"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-H windowsgui -s -w -X main.FishVersionName=${FISH_VER} -X main.FishVersionCode=${FISH_CODE}" \
+            -o "fish-${FISH_VER}.exe" .
+          cp "fish-${FISH_VER}.exe" "fish.exe"
+          sha256sum "fish-${FISH_VER}.exe" fish.exe > SHA256SUMS-fish.txt
+          ls -lh "fish-${FISH_VER}.exe" fish.exe
+
+      - name: Upload Fish binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fish-${{ env.FISH_VER }}
+          path: |
+            fish/fish-${{ env.FISH_VER }}.exe
+            fish/fish.exe
+            fish/SHA256SUMS-fish.txt
+          compression-level: 0
+
+      - name: Upload Fish release bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fish-release-files
+          path: |
+            fish/fish-${{ env.FISH_VER }}.exe
+            fish/fish.exe
+            fish/SHA256SUMS-fish.txt
+
   release:
-    name: Publish GitHub Release (Raw Uncompressed Binary)
-    if: github.event_name != 'pull_request'
-    needs: [ server-build ]
+    name: Publish GitHub Release Assets
+    if: always() && github.event_name != 'pull_request' && (needs.server-build.result == 'success' || needs.fish-build.result == 'success') && needs.server-build.result != 'failure' && needs.fish-build.result != 'failure'
+    needs: [ detect-changes, server-build, fish-build ]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository (for rolling latest tag)
@@ -111,19 +207,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download release files
+      - name: Download server release files
+        if: needs.server-build.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: server-release-files
           path: release-files
 
-      - name: Mark binaries executable
+      - name: Download fish release files
+        if: needs.fish-build.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: fish-release-files
+          path: release-files
+
+      - name: Mark Linux binaries executable
+        if: needs.server-build.result == 'success'
         run: chmod +x release-files/growth-buddy-server*
 
-      - name: Update rolling latest tag and clear old binary assets
+      - name: Ensure rolling latest release & clean replaced assets
         if: "!startsWith(github.ref, 'refs/tags/v')"
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILT_SERVER: ${{ needs.server-build.result == 'success' }}
+          BUILT_FISH: ${{ needs.fish-build.result == 'success' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -131,24 +238,25 @@ jobs:
           git push -f origin refs/tags/latest
           if gh release view latest >/dev/null 2>&1; then
             for a in $(gh release view latest --json assets -q '.assets[].name'); do
-              gh release delete-asset latest "$a" --yes || true
+              if [ "$BUILT_SERVER" = "true" ] && [[ "$a" == growth-buddy-server* || "$a" == "growth-buddy-go-aliyun.tar.gz" || "$a" == "SHA256SUMS.txt" ]]; then
+                gh release delete-asset latest "$a" --yes || true
+              fi
+              if [ "$BUILT_FISH" = "true" ] && [[ "$a" == fish*.exe || "$a" == "SHA256SUMS-fish.txt" ]]; then
+                gh release delete-asset latest "$a" --yes || true
+              fi
             done
           fi
 
-      - name: Publish Rolling Latest Release (main)
+      - name: Update Rolling Latest Release (main)
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: "Latest Build (${{ needs.server-build.outputs.build_ver }})"
+          name: "Latest Build (${{ needs.server-build.outputs.build_ver || needs.fish-build.outputs.fish_ver }})"
           make_latest: "true"
-          body: "每次推送 `main` 自动构建的最新 Linux `amd64` 静态服务端二进制（未压缩，下载后可直接拖入服务器运行）。"
+          body: "每次推送 `main` 按改动模块自动构建对应产物（`server/` 变动构建服务端，`fish/` 变动构建 Windows 桌面端；未改动的模块不重复发版）。"
           files: |
-            release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
-            release-files/growth-buddy-server
-            release-files/growth-buddy-go-aliyun.tar.gz
-            release-files/fish.exe
-            release-files/SHA256SUMS.txt
+            release-files/*
 
       - name: Publish Versioned GitHub Release (tag v*)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -156,8 +264,4 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            release-files/growth-buddy-server-${{ needs.server-build.outputs.build_ver }}
-            release-files/growth-buddy-server
-            release-files/growth-buddy-go-aliyun.tar.gz
-            release-files/fish.exe
-            release-files/SHA256SUMS.txt
+            release-files/*

@@ -3389,6 +3389,7 @@ func (s *Store) DeleteRelease(id string) error {
 	}
 	if fileName != "" && s.releasesDir != "" {
 		_ = os.Remove(filepath.Join(s.releasesDir, id+".apk"))
+		_ = os.Remove(filepath.Join(s.releasesDir, id+".exe"))
 	}
 	return nil
 }

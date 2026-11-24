@@ -448,13 +448,24 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 404, map[string]string{"error": "暂未发布安卓安装包"})
 			return
 		}
-		a.serveReleaseAPK(w, r, rel)
+		a.serveReleaseFile(w, r, rel)
+		return
+	}
+
+	if (m == http.MethodGet || m == http.MethodHead) && p == "/api/app/latest.exe" {
+		rel, err := a.store.GetLatestRelease("fish")
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": "暂未发布 fish 安装包"})
+			return
+		}
+		a.serveReleaseFile(w, r, rel)
 		return
 	}
 
 	if (m == http.MethodGet || m == http.MethodHead) && strings.HasPrefix(p, "/api/app/download/") {
 		id := strings.TrimPrefix(p, "/api/app/download/")
 		id = strings.TrimSuffix(id, ".apk")
+		id = strings.TrimSuffix(id, ".exe")
 		if id == "" || strings.Contains(id, "/") {
 			writeJSON(w, 404, map[string]string{"error": "版本不存在"})
 			return
@@ -464,7 +475,7 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 404, map[string]string{"error": "版本不存在"})
 			return
 		}
-		a.serveReleaseAPK(w, r, rel)
+		a.serveReleaseFile(w, r, rel)
 		return
 	}
 
@@ -668,15 +679,33 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 404, map[string]string{"error": "接口不存在"})
 }
 
-func (a *AppServer) serveReleaseAPK(w http.ResponseWriter, r *http.Request, rel *AppReleaseDTO) {
+func releaseExtAndMime(platform string) (ext string, contentType string, defaultPrefix string) {
+	if strings.EqualFold(platform, "fish") {
+		return ".exe", "application/octet-stream", "fish-"
+	}
+	return ".apk", "application/vnd.android.package-archive", "GrowthBuddyChild-"
+}
+
+func (a *AppServer) serveReleaseFile(w http.ResponseWriter, r *http.Request, rel *AppReleaseDTO) {
+	ext, ct, prefix := releaseExtAndMime(rel.Platform)
 	if rel.FileName != "" && a.store.releasesDir != "" {
-		localPath := filepath.Join(a.store.releasesDir, rel.ID+".apk")
+		localPath := filepath.Join(a.store.releasesDir, rel.ID+ext)
+		if _, err := os.Stat(localPath); err != nil {
+			altExt := ".apk"
+			if ext == ".apk" {
+				altExt = ".exe"
+			}
+			altPath := filepath.Join(a.store.releasesDir, rel.ID+altExt)
+			if _, altErr := os.Stat(altPath); altErr == nil {
+				localPath = altPath
+			}
+		}
 		if _, err := os.Stat(localPath); err == nil {
 			dlName := rel.FileName
-			if !strings.HasSuffix(strings.ToLower(dlName), ".apk") {
-				dlName = fmt.Sprintf("GrowthBuddyChild-%s.apk", rel.VersionName)
+			if !strings.HasSuffix(strings.ToLower(dlName), ext) {
+				dlName = prefix + rel.VersionName + ext
 			}
-			w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+			w.Header().Set("Content-Type", ct)
 			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, dlName))
 			w.Header().Set("Cache-Control", "no-cache")
 			http.ServeFile(w, r, localPath)
@@ -687,7 +716,7 @@ func (a *AppServer) serveReleaseAPK(w http.ResponseWriter, r *http.Request, rel 
 		http.Redirect(w, r, rel.DownloadURL, http.StatusFound)
 		return
 	}
-	writeJSON(w, 404, map[string]string{"error": "APK 文件不存在"})
+	writeJSON(w, 404, map[string]string{"error": "安装包文件不存在"})
 }
 
 func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
@@ -2134,7 +2163,8 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 
 	/* ===== 5. 管理端：App 版本发布与 OTA 远程升级管理 ===== */
 	if m == http.MethodGet && p == "/api/admin/releases" {
-		list, err := a.store.ListReleases("")
+		platformFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("platform")))
+		list, err := a.store.ListReleases(platformFilter)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -2166,6 +2196,17 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 404, map[string]string{"error": "接口不存在"})
 }
 
+func normalizeReleasePlatform(raw string) (string, error) {
+	p := strings.ToLower(strings.TrimSpace(raw))
+	if p == "" {
+		return "android", nil
+	}
+	if p == "android" || p == "fish" {
+		return p, nil
+	}
+	return "", errors.New("不支持的发布平台：" + p)
+}
+
 func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "multipart/form-data") {
@@ -2181,6 +2222,13 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			}
 		}()
 
+		platform, err := normalizeReleasePlatform(r.FormValue("platform"))
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		ext, _, prefix := releaseExtAndMime(platform)
+
 		vCode, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("versionCode")))
 		vName := strings.TrimSpace(r.FormValue("versionName"))
 		notes := strings.TrimSpace(r.FormValue("releaseNotes"))
@@ -2190,15 +2238,22 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			vName = time.Now().In(loc).Format("2006.01.02-1504")
 		}
 		if notes == "" {
-			notes = a.defaultReleaseNotesForVersion(vName)
+			if platform == "fish" {
+				notes = "🐟 桌面端 fish 更新（v" + vName + "）"
+			} else {
+				notes = a.defaultReleaseNotesForVersion(vName)
+			}
 		}
 		if vCode <= 0 {
 			vCode = autoVersionCodeFromName(vName)
 		}
 
-		file, header, err := r.FormFile("apk")
+		file, header, err := r.FormFile("file")
 		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": "请选择要上传的 .apk 安装包文件"})
+			file, header, err = r.FormFile("apk")
+		}
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": "请选择要上传的 " + ext + " 安装包文件"})
 			return
 		}
 		defer file.Close()
@@ -2208,7 +2263,7 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			writeJSON(w, 500, map[string]string{"error": "无法创建安装包存储目录"})
 			return
 		}
-		destPath := filepath.Join(a.store.releasesDir, relID+".apk")
+		destPath := filepath.Join(a.store.releasesDir, relID+ext)
 		out, err := os.Create(destPath)
 		if err != nil {
 			writeJSON(w, 500, map[string]string{"error": "无法保存安装包文件"})
@@ -2224,13 +2279,13 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 		}
 
 		origName := filepath.Base(header.Filename)
-		if origName == "" || origName == "." || !strings.HasSuffix(strings.ToLower(origName), ".apk") {
-			origName = fmt.Sprintf("GrowthBuddyChild-%s.apk", vName)
+		if origName == "" || origName == "." || !strings.HasSuffix(strings.ToLower(origName), ext) {
+			origName = prefix + vName + ext
 		}
 
 		created, err := a.store.CreateRelease(AppReleaseDTO{
 			ID:           relID,
-			Platform:     "android",
+			Platform:     platform,
 			VersionCode:  vCode,
 			VersionName:  vName,
 			ReleaseNotes: notes,
@@ -2238,7 +2293,7 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			FileName:     origName,
 			FileSize:     written,
 			SHA256:       hex.EncodeToString(hasher.Sum(nil)),
-			DownloadURL:  "/api/app/download/" + relID,
+			DownloadURL:  "/api/app/download/" + relID + ext,
 		})
 		if err != nil {
 			_ = os.Remove(destPath)
@@ -2255,9 +2310,14 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, 400, map[string]string{"error": err.Error()})
 		return
 	}
+	platform, err := normalizeReleasePlatform(mapStr(body, "platform"))
+	if err != nil {
+		writeJSON(w, 400, map[string]string{"error": err.Error()})
+		return
+	}
 	dlURL := strings.TrimSpace(mapStr(body, "downloadUrl"))
 	if !strings.HasPrefix(dlURL, "http://") && !strings.HasPrefix(dlURL, "https://") {
-		writeJSON(w, 400, map[string]string{"error": "请上传 APK 文件，或填写以 http(s):// 开头的外部下载地址"})
+		writeJSON(w, 400, map[string]string{"error": "请上传安装包文件，或填写以 http(s):// 开头的外部下载地址"})
 		return
 	}
 	vName := strings.TrimSpace(mapStr(body, "versionName"))
@@ -2271,10 +2331,14 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 	}
 	notes := strings.TrimSpace(mapStr(body, "releaseNotes"))
 	if notes == "" {
-		notes = a.defaultReleaseNotesForVersion(vName)
+		if platform == "fish" {
+			notes = "🐟 桌面端 fish 更新（v" + vName + "）"
+		} else {
+			notes = a.defaultReleaseNotesForVersion(vName)
+		}
 	}
 	created, err := a.store.CreateRelease(AppReleaseDTO{
-		Platform:     "android",
+		Platform:     platform,
 		VersionCode:  vCode,
 		VersionName:  vName,
 		ReleaseNotes: notes,

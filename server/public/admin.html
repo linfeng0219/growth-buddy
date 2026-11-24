@@ -106,17 +106,26 @@
 
     <div id="secReleases" style="display:none">
       <div class="panel" style="margin-bottom:14px">
-        <h3 style="font-family:var(--serif);margin-bottom:6px">发布新版安卓儿童端（OTA 远程升级）</h3>
+        <h3 style="font-family:var(--serif);margin-bottom:6px">发布客户端新版本（OTA 远程升级）</h3>
         <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">
-          上传新版本 APK 后，儿童端 App 启动时或点击「检查更新」将自动发现新版本、校验 SHA-256 并下载安装。
+          上传新版安卓 APK 或 Fish Windows 客户端后，对应客户端启动或检查更新时将自动发现新版本、校验 SHA-256 并升级。
         </p>
-        <div class="field">
-          <label>版本号（默认自动使用当前/文件编译时间，如 2026.11.20-1710）</label>
-          <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.20-1710">
+        <div class="row2">
+          <div class="field">
+            <label>发布目标端</label>
+            <select id="relPlatform">
+              <option value="android">📱 安卓儿童端（.apk）</option>
+              <option value="fish">🐟 桌面端 fish（Windows .exe）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>版本号（默认自动使用当前/文件编译时间，如 2026.11.24-1600）</label>
+            <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.24-1600">
+          </div>
         </div>
         <div class="field">
-          <label>更新日志（打开页面或选完 APK 时已自动填入最新 App 更新内容，可自行修改）</label>
-          <textarea id="relNotes" rows="4" placeholder="自动读取 App 专属更新日志，或手动输入新版说明"></textarea>
+          <label>更新日志（安卓端可自动填入最新 App 更新内容，可自行修改）</label>
+          <textarea id="relNotes" rows="4" placeholder="输入新版更新说明（fish 留空将自动使用默认版本说明）"></textarea>
           <div class="quick-chips">
             <button type="button" class="qchip" id="btnFillLatestChangelog">✨ 填入最新 App 日志</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="常规体验优化与已知问题修复">常规优化与修复</button>
@@ -125,23 +134,26 @@
           </div>
         </div>
         <div class="row2">
-          <div class="field"><label>方式一：直接上传 .apk 安装包（推荐，最大 150 MB）</label><input type="file" id="relApkFile" accept=".apk"></div>
-          <div class="field"><label>方式二：或填写外部 APK 直链（不上传文件时生效）</label><input type="text" id="relExtUrl" placeholder="https://..."></div>
+          <div class="field"><label id="relFileLabel">方式一：直接上传 .apk 安装包（推荐，最大 150 MB）</label><input type="file" id="relApkFile" accept=".apk"></div>
+          <div class="field"><label id="relExtUrlLabel">方式二：或填写外部 APK 直链（不上传文件时生效）</label><input type="text" id="relExtUrl" placeholder="https://..."></div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="relForce" checked style="width:auto"> 强制升级（不显示“稍后再说”，协议全量升级推荐勾选）
+            <input type="checkbox" id="relForce" checked style="width:auto"> 强制升级（客户端检测到新版后直接引导升级）
           </label>
           <button class="primary" id="btnPublishRelease">🚀 发布新版本</button>
         </div>
-        <div id="relUploadProg" style="display:none;margin-top:8px;font-size:12.5px;color:var(--accent)">正在上传 APK...</div>
+        <div id="relUploadProg" style="display:none;margin-top:8px;font-size:12.5px;color:var(--accent)">正在上传安装包...</div>
         <div class="msg" id="relMsg"></div>
       </div>
 
       <div class="panel">
         <div class="sub-head" style="margin-bottom:10px">
           <span>📦 已发布的版本历史</span>
-          <a href="/api/app/latest.apk" class="pill ghost" style="text-decoration:none;font-size:12px">最新版直链 /api/app/latest.apk</a>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <a href="/api/app/latest.apk" class="pill ghost" style="text-decoration:none;font-size:12px">Android /api/app/latest.apk</a>
+            <a href="/api/app/latest.exe" class="pill ghost" style="text-decoration:none;font-size:12px">Fish /api/app/latest.exe</a>
+          </div>
         </div>
         <div id="releasesContainer"></div>
       </div>
@@ -737,10 +749,17 @@
       var box=$id("releasesContainer");
       box.innerHTML="";
       if(!list.length){
-        box.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">暂未发布任何安卓版本，上传 APK 后客户端即可自动检测远程升级。</div>';
+        box.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">暂未发布任何版本，上传安装包后客户端即可自动检测远程升级。</div>';
         return;
       }
-      list.forEach(function(rel,idx){
+      var latestByPlat={};
+      list.forEach(function(rel){
+        var plat=(rel.platform||"android").toLowerCase();
+        var isLatest=!latestByPlat[plat];
+        latestByPlat[plat]=true;
+        var platTag=plat==="fish"
+          ?'<span class="tag" style="background:#e6f2fb;color:#1b5e8a">🐟 Fish</span>'
+          :'<span class="tag" style="background:#eaf5ee;color:#2f6b4f">📱 Android</span>';
         var row=document.createElement("div");
         row.className="user-row";
         var dt=new Date(rel.created_at).toLocaleString();
@@ -748,8 +767,9 @@
         row.innerHTML=
           '<div class="user-meta" style="flex-direction:column;align-items:flex-start;gap:4px">'
             +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+              +platTag
               +'<strong>'+GBArt.esc(rel.version_name)+'</strong>'
-              +(idx===0?'<span class="tag amber">当前最新</span>':'')
+              +(isLatest?'<span class="tag amber">当前最新</span>':'')
               +(rel.force_update?'<span class="tag" style="background:#fde8e8;color:#b83232">强制升级</span>':'')
               +'<span class="tag gray">'+fmtSize(rel.file_size)+'</span>'
             +'</div>'
@@ -802,7 +822,21 @@
     });
     return lines.join("\n");
   }
+  function syncReleasePlatformUI(){
+    var plat=$id("relPlatform")?$id("relPlatform").value:"android";
+    var isFish=plat==="fish";
+    $id("relApkFile").accept=isFish?".exe":".apk";
+    $id("relFileLabel").textContent=isFish?"方式一：直接上传 Windows fish .exe（推荐，最大 150 MB）":"方式一：直接上传 .apk 安装包（推荐，最大 150 MB）";
+    $id("relExtUrlLabel").textContent=isFish?"方式二：或填写外部 .exe 直链（不上传文件时生效）":"方式二：或填写外部 APK 直链（不上传文件时生效）";
+    if(isFish&&!relNotesManualEdited){
+      $id("relNotes").value="";
+    }else if(!isFish&&!relNotesManualEdited){
+      autoFillReleaseNotes(true);
+    }
+  }
   function autoFillReleaseNotes(force){
+    var plat=$id("relPlatform")?$id("relPlatform").value:"android";
+    if(plat!=="android") return;
     var ta=$id("relNotes");
     if(!ta) return;
     if(!force&&relNotesManualEdited&&ta.value.trim()!=="") return;
@@ -814,16 +848,31 @@
       relNotesManualEdited=false;
     }
   }
+  if($id("relPlatform")){
+    $id("relPlatform").addEventListener("change",function(){
+      $id("relApkFile").value="";
+      syncReleasePlatformUI();
+    });
+  }
   $id("relNotes").addEventListener("input",function(){
     relNotesManualEdited=this.value.trim()!=="";
   });
   $id("btnFillLatestChangelog").addEventListener("click",function(){
     relNotesManualEdited=false;
+    if($id("relPlatform")) $id("relPlatform").value="android";
+    syncReleasePlatformUI();
     autoFillReleaseNotes(true);
   });
   $id("relApkFile").addEventListener("change",function(){
     var f=this.files&&this.files[0];
     if(f){
+      if(/\.exe$/i.test(f.name)&&$id("relPlatform")&&$id("relPlatform").value!=="fish"){
+        $id("relPlatform").value="fish";
+        syncReleasePlatformUI();
+      }else if(/\.apk$/i.test(f.name)&&$id("relPlatform")&&$id("relPlatform").value!=="android"){
+        $id("relPlatform").value="android";
+        syncReleasePlatformUI();
+      }
       $id("relVerName").value=parseVerFromFile(f);
       if(!relNotesManualEdited||$id("relNotes").value.trim()===""){
         autoFillReleaseNotes(true);
@@ -831,6 +880,8 @@
     }
   });
   $id("btnPublishRelease").addEventListener("click",async function(){
+    var plat=$id("relPlatform")?$id("relPlatform").value:"android";
+    var ext=plat==="fish"?".exe":".apk";
     var fileInput=$id("relApkFile");
     var pickedFile=fileInput.files&&fileInput.files[0];
     var vName=$id("relVerName").value.trim()||(pickedFile?parseVerFromFile(pickedFile):fmtTimeVer(new Date()));
@@ -844,13 +895,14 @@
     try{
       if(fileInput.files&&fileInput.files.length>0){
         var fd=new FormData();
+        fd.append("platform",plat);
         fd.append("versionName",vName);
         fd.append("releaseNotes",notes);
         fd.append("forceUpdate",force?"true":"false");
-        fd.append("apk",fileInput.files[0]);
+        fd.append("file",fileInput.files[0]);
 
         prog.style.display="block";
-        prog.textContent="正在上传 APK（0%）...";
+        prog.textContent="正在上传安装包（0%）...";
         await new Promise(function(resolve,reject){
           var xhr=new XMLHttpRequest();
           xhr.open("POST","/api/admin/releases");
@@ -858,7 +910,7 @@
           xhr.upload.onprogress=function(ev){
             if(ev.lengthComputable){
               var pct=Math.round((ev.loaded/ev.total)*100);
-              prog.textContent="正在上传 APK（"+pct+"% · "+(ev.loaded/(1024*1024)).toFixed(1)+"/"+(ev.total/(1024*1024)).toFixed(1)+" MB）...";
+              prog.textContent="正在上传安装包（"+pct+"% · "+(ev.loaded/(1024*1024)).toFixed(1)+"/"+(ev.total/(1024*1024)).toFixed(1)+" MB）...";
             }
           };
           xhr.onload=function(){
@@ -874,15 +926,15 @@
       }else if(extUrl){
         await api("/api/admin/releases",{
           method:"POST",
-          body:JSON.stringify({versionName:vName,releaseNotes:notes,forceUpdate:force,downloadUrl:extUrl})
+          body:JSON.stringify({platform:plat,versionName:vName,releaseNotes:notes,forceUpdate:force,downloadUrl:extUrl})
         });
       }else{
-        throw new Error("请选择要上传的 .apk 文件，或填写外部直链");
+        throw new Error("请选择要上传的 "+ext+" 文件，或填写外部直链");
       }
       $id("relVerName").value="";$id("relNotes").value="";relNotesManualEdited=false;
       $id("relApkFile").value="";$id("relExtUrl").value="";$id("relForce").checked=true;
       autoFillReleaseNotes(true);
-      note("relMsg","🎉 新版本 "+vName+" 发布成功！App 启动后即可检测到远程升级。");
+      note("relMsg","🎉 "+(plat==="fish"?"Fish ":"安卓 ")+"新版本 "+vName+" 发布成功！客户端启动后即可检测到远程升级。");
       await loadReleases();
     }catch(e){
       note("relMsg",e.message,true);
