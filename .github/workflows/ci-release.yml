@@ -134,9 +134,7 @@ jobs:
           name: server-release-files
           path: |
             dist/growth-buddy-server-${{ env.BUILD_VER }}
-            dist/growth-buddy-server
-            dist/growth-buddy-go-aliyun.tar.gz
-            dist/SHA256SUMS.txt
+          compression-level: 0
 
   fish-build:
     name: Fish Desktop Client (Test & Windows Build)
@@ -182,8 +180,6 @@ jobs:
           name: fish-${{ env.FISH_VER }}
           path: |
             fish/fish-${{ env.FISH_VER }}.exe
-            fish/fish.exe
-            fish/SHA256SUMS-fish.txt
           compression-level: 0
 
       - name: Upload Fish release bundle artifact
@@ -192,8 +188,7 @@ jobs:
           name: fish-release-files
           path: |
             fish/fish-${{ env.FISH_VER }}.exe
-            fish/fish.exe
-            fish/SHA256SUMS-fish.txt
+          compression-level: 0
 
   release:
     name: Publish GitHub Release Assets
