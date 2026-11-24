@@ -373,11 +373,11 @@ func (s *Store) ResetChildFriendCode(familyID, childID string) (string, string, 
 	var code string
 	err := s.db.WithLock(func(tx *Tx) error {
 		code = s.uniqueFriendCodeLocked(tx)
-		res, err := tx.Exec("UPDATE children SET friend_code = ? WHERE id = ? AND family_id = ?", code, childID, familyID)
+		affected, err := tx.Exec("UPDATE children SET friend_code = ? WHERE id = ? AND family_id = ?", code, childID, familyID)
 		if err != nil {
 			return err
 		}
-		if res.RowsAffected == 0 {
+		if affected == 0 {
 			return errors.New("孩子档案不存在")
 		}
 		return nil
@@ -611,14 +611,14 @@ func (s *Store) RespondFriendRequest(childID, reqID, action string) (string, err
 
 func (s *Store) RemoveFriend(childID, peerID string) error {
 	return s.db.WithLock(func(tx *Tx) error {
-		res, err := tx.Exec(
+		affected, err := tx.Exec(
 			"DELETE FROM friendships WHERE (child_id = ? AND friend_child_id = ?) OR (child_id = ? AND friend_child_id = ?)",
 			childID, peerID, peerID, childID,
 		)
 		if err != nil {
 			return err
 		}
-		if res.RowsAffected == 0 {
+		if affected == 0 {
 			return errors.New("未找到该朋友关系（家庭成员无法删除）")
 		}
 		return nil

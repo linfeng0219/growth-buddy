@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -96,7 +97,7 @@ func TestSocialFriendsAndMultimediaChatFlow(t *testing.T) {
 		t.Fatalf("unexpected qr payload: %s", qrPayload)
 	}
 
-	st, lookupRes := doJSON(t, ts, "GET", "/api/child/friends/lookup?q="+qrPayload, tokDa, nil)
+	st, lookupRes := doJSON(t, ts, "GET", "/api/child/friends/lookup?q="+url.QueryEscape(qrPayload), tokDa, nil)
 	if st != 200 {
 		t.Fatalf("lookup by QR failed: %d %+v", st, lookupRes)
 	}
