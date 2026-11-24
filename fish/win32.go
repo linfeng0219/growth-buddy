@@ -22,6 +22,7 @@ var (
 	pShowWindow             = user32.NewProc("ShowWindow")
 	pUpdateWindow           = user32.NewProc("UpdateWindow")
 	pIsWindowVisible        = user32.NewProc("IsWindowVisible")
+	pGetForegroundWindow    = user32.NewProc("GetForegroundWindow")
 	pSetForegroundWindow    = user32.NewProc("SetForegroundWindow")
 	pFindWindowW            = user32.NewProc("FindWindowW")
 	pRegisterHotKey         = user32.NewProc("RegisterHotKey")
@@ -116,6 +117,7 @@ const (
 	WM_DESTROY        = 0x0002
 	WM_MOVE           = 0x0003
 	WM_SIZE           = 0x0005
+	WM_ACTIVATE       = 0x0006
 	WM_SETFONT        = 0x0030
 	WM_PAINT          = 0x000F
 	WM_CLOSE          = 0x0010
@@ -313,7 +315,7 @@ type ICONINFO struct {
 	HbmColor uintptr
 }
 
-func createFishTrayIcon() uintptr {
+func createFishTrayIcon(unread bool) uintptr {
 	const sz = 16
 	pixels := make([]uint32, sz*sz)
 	// Cute teal-green badge (#2F6B4F) with a crisp white fish silhouette (BGRA byte order in uint32 little-endian: 0xAARRGGBB)
@@ -342,6 +344,23 @@ func createFishTrayIcon() uintptr {
 		}
 	}
 	pixels[7*sz+4] = eye
+	if unread {
+		// Unread notification red dot at top-right corner with crisp 1px white halo
+		const dotHalo uint32 = 0xFFFFFFFF
+		const dotRed uint32 = 0xFFFF3B30
+		for y := 0; y < sz; y++ {
+			for x := 0; x < sz; x++ {
+				dx := float64(x) - 12.2
+				dy := float64(y) - 3.6
+				d2 := dx*dx + dy*dy
+				if d2 <= 3.1*3.1 {
+					pixels[y*sz+x] = dotRed
+				} else if d2 <= 4.1*4.1 {
+					pixels[y*sz+x] = dotHalo
+				}
+			}
+		}
+	}
 	mask := make([]byte, (sz/8)*sz)
 	hColor, _, _ := pCreateBitmap.Call(sz, sz, 1, 32, uintptr(unsafe.Pointer(&pixels[0])))
 	hMask, _, _ := pCreateBitmap.Call(sz, sz, 1, 1, uintptr(unsafe.Pointer(&mask[0])))

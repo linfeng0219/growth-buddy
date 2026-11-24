@@ -59,6 +59,24 @@ func autoVersionCodeFromName(vName string) int {
 	return versionCodeFromTime(time.Now())
 }
 
+func parseChatLimitParam(raw string) int {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "" {
+		return 120
+	}
+	if v == "all" || v == "0" || v == "-1" || v == "unlimited" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 120
+	}
+	if n > 5000 {
+		return 5000
+	}
+	return n
+}
+
 var dateRegexp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 type AppServer struct {
@@ -1071,7 +1089,8 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		peerID := strings.TrimSpace(r.URL.Query().Get("peerId"))
 		afterMs, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("after")), 10, 64)
-		msgs, err := a.store.ListChatMessages("child", targetChildID, peerType, peerID, afterMs)
+		msgLimit := parseChatLimitParam(r.URL.Query().Get("limit"))
+		msgs, err := a.store.ListChatMessages("child", targetChildID, peerType, peerID, afterMs, msgLimit)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
@@ -1898,7 +1917,8 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			peerID = strings.TrimSpace(r.URL.Query().Get("childId"))
 		}
 		afterMs, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("after")), 10, 64)
-		msgs, err := a.store.ListChatMessages("parent", auth.ParentID, peerType, peerID, afterMs)
+		msgLimit := parseChatLimitParam(r.URL.Query().Get("limit"))
+		msgs, err := a.store.ListChatMessages("parent", auth.ParentID, peerType, peerID, afterMs, msgLimit)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return

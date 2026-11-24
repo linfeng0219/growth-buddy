@@ -168,9 +168,10 @@ func TestFishAPIFlow(t *testing.T) {
 			})
 			return
 		}
+		gotLim := r.URL.Query().Get("limit")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"messages": []map[string]any{
-				{"id": "m1", "sender_name": "大宝", "msg_type": "text", "text": "打卡啦"},
+				{"id": "m1", "sender_name": "大宝", "msg_type": "text", "text": "打卡啦:" + gotLim},
 			},
 		})
 	})
@@ -185,9 +186,13 @@ func TestFishAPIFlow(t *testing.T) {
 	if err != nil || code != 200 || grp.ID != "grp_fam" || grp.Name != "阳光家" {
 		t.Fatalf("group mismatch: %+v %d %v", grp, code, err)
 	}
-	msgs, _, err := fetchGroupMessages(ts.URL, lr.Role, lr.Token, grp.ID, 0)
-	if err != nil || len(msgs) != 1 || msgs[0].SenderName != "大宝" {
+	msgs, _, err := fetchGroupMessages(ts.URL, lr.Role, lr.Token, grp.ID, 0, 500)
+	if err != nil || len(msgs) != 1 || msgs[0].SenderName != "大宝" || msgs[0].Text != "打卡啦:500" {
 		t.Fatalf("messages mismatch: %+v %v", msgs, err)
+	}
+	msgsAll, _, err := fetchGroupMessages(ts.URL, lr.Role, lr.Token, grp.ID, 0, 0)
+	if err != nil || len(msgsAll) != 1 || msgsAll[0].Text != "打卡啦:all" {
+		t.Fatalf("messages unlimited mismatch: %+v %v", msgsAll, err)
 	}
 	sent, _, err := sendGroupText(ts.URL, lr.Role, lr.Token, grp.ID, "收到")
 	if err != nil || sent.Text != "收到" {

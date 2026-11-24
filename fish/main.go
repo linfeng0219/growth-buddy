@@ -45,28 +45,34 @@ const (
 	idMenuCheckUpdate       = 214
 	idMenuLogout            = 215
 	idMenuQuit              = 216
+	idMenuLimit100          = 218
+	idMenuLimit500          = 219
+	idMenuLimitAll          = 220
 )
 
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
 
 type appState struct {
-	mu          sync.Mutex
-	hwnd        uintptr
-	hInst       uintptr
-	hIcon       uintptr
-	trayAdded   bool
-	cfg         FishConfig
-	loggedIn    bool
-	loggingIn   bool
-	polling     bool
-	sending     bool
-	loginStatus string
-	messages    []ChatMsg
-	seenIDs     map[string]bool
-	lastMsgTs   int64
-	scrollY     int32
-	maxScrollY  int32
-	atBottom    bool
+	mu            sync.Mutex
+	hwnd          uintptr
+	hInst         uintptr
+	hIcon         uintptr
+	hIconUnread   uintptr
+	trayAdded     bool
+	trayUnread    bool
+	initialSynced bool
+	cfg           FishConfig
+	loggedIn      bool
+	loggingIn     bool
+	polling       bool
+	sending       bool
+	loginStatus   string
+	messages      []ChatMsg
+	seenIDs       map[string]bool
+	lastMsgTs     int64
+	scrollY       int32
+	maxScrollY    int32
+	atBottom      bool
 
 	uiFont   uintptr
 	boldFont uintptr
@@ -629,6 +635,7 @@ func (a *appState) handleLoginClick() {
 			a.messages = nil
 			a.seenIDs = make(map[string]bool)
 			a.lastMsgTs = 0
+			a.initialSynced = false
 			a.atBottom = true
 			a.loginStatus = ""
 		}
@@ -649,6 +656,7 @@ func (a *appState) pollMessagesAsync() {
 	tok := a.cfg.Token
 	gid := a.cfg.GroupID
 	after := a.lastMsgTs
+	maxLim := a.cfg.MaxMessages
 	a.mu.Unlock()
 
 	go func() {
@@ -658,7 +666,7 @@ func (a *appState) pollMessagesAsync() {
 			a.mu.Unlock()
 			return
 		}
-		msgs, code, err := fetchGroupMessages(srv, role, tok, gid, after)
+		msgs, code, err := fetchGroupMessages(srv, role, tok, gid, after, maxLim)
 		a.mu.Lock()
 		a.polling = false
 		if code == 401 || code == 403 {
@@ -671,6 +679,8 @@ func (a *appState) pollMessagesAsync() {
 			return
 		}
 		changed := false
+		hasIncomingOther := false
+		wasInitial := !a.initialSynced
 		if err == nil {
 			if a.seenIDs == nil {
 				a.seenIDs = make(map[string]bool)
@@ -683,15 +693,23 @@ func (a *appState) pollMessagesAsync() {
 						a.lastMsgTs = m.CreatedAt
 					}
 					changed = true
+					if !wasInitial && !m.IsSelf {
+						hasIncomingOther = true
+					}
 				}
 			}
-			if len(a.messages) > 200 {
-				a.messages = a.messages[len(a.messages)-200:]
+			a.initialSynced = true
+			if a.cfg.MaxMessages > 0 && len(a.messages) > a.cfg.MaxMessages {
+				a.messages = a.messages[len(a.messages)-a.cfg.MaxMessages:]
 			}
 		}
 		a.mu.Unlock()
 		if changed {
-			pPostMessageW.Call(a.hwnd, wmAppRefresh, 0, 0)
+			incomingFlag := uintptr(0)
+			if hasIncomingOther {
+				incomingFlag = 1
+			}
+			pPostMessageW.Call(a.hwnd, wmAppRefresh, 0, incomingFlag)
 		}
 	}()
 }
@@ -700,6 +718,7 @@ func (a *appState) handleSendMessage() {
 	if !a.loggedIn {
 		return
 	}
+	a.setUnreadTrayIcon(false)
 	txt := strings.TrimSpace(getCtrlText(a.hEditMsg))
 	if txt == "" {
 		return
@@ -763,7 +782,42 @@ func (a *appState) addTrayIcon() {
 	r, _, _ := pShellNotifyIconW.Call(NIM_ADD, uintptr(unsafe.Pointer(&nid)))
 	if r != 0 {
 		a.trayAdded = true
+		a.trayUnread = false
 	}
+}
+
+func (a *appState) setUnreadTrayIcon(unread bool) {
+	if a.hwnd == 0 || !a.trayAdded || a.trayUnread == unread {
+		return
+	}
+	icon := a.hIcon
+	tipStr := "fish · 家庭群聊"
+	if unread && a.hIconUnread != 0 {
+		icon = a.hIconUnread
+		tipStr = "fish · 有未读新消息"
+	}
+	var nid NOTIFYICONDATAW
+	nid.CbSize = uint32(unsafe.Sizeof(nid))
+	nid.Hwnd = a.hwnd
+	nid.UID = idTrayIcon
+	nid.UFlags = NIF_ICON | NIF_TIP
+	nid.HIcon = icon
+	tip, _ := syscall.UTF16FromString(tipStr)
+	copy(nid.SzTip[:], tip)
+	pShellNotifyIconW.Call(NIM_MODIFY, uintptr(unsafe.Pointer(&nid)))
+	a.trayUnread = unread
+}
+
+func (a *appState) isActivelyViewing() bool {
+	if a.hwnd == 0 {
+		return false
+	}
+	vis, _, _ := pIsWindowVisible.Call(a.hwnd)
+	if vis == 0 {
+		return false
+	}
+	fg, _, _ := pGetForegroundWindow.Call()
+	return fg == a.hwnd
 }
 
 func (a *appState) removeTrayIcon() {
@@ -836,6 +890,20 @@ func (a *appState) showTrayMenu() {
 		pAppendMenuW.Call(menu, MF_POPUP, bgMenu, uintptr(unsafe.Pointer(u16(bgSummary))))
 	}
 
+	limitMenu, _, _ := pCreatePopupMenu.Call()
+	if limitMenu != 0 {
+		pAppendMenuW.Call(limitMenu, menuFlags(a.cfg.MaxMessages == 100), idMenuLimit100, uintptr(unsafe.Pointer(u16("最近 100 条"))))
+		pAppendMenuW.Call(limitMenu, menuFlags(a.cfg.MaxMessages == 500), idMenuLimit500, uintptr(unsafe.Pointer(u16("最近 500 条"))))
+		pAppendMenuW.Call(limitMenu, menuFlags(a.cfg.MaxMessages == 0), idMenuLimitAll, uintptr(unsafe.Pointer(u16("不限制"))))
+		limLabel := "显示条数 (不限制)"
+		if a.cfg.MaxMessages == 100 {
+			limLabel = "显示条数 (100条)"
+		} else if a.cfg.MaxMessages == 500 {
+			limLabel = "显示条数 (500条)"
+		}
+		pAppendMenuW.Call(menu, MF_POPUP, limitMenu, uintptr(unsafe.Pointer(u16(limLabel))))
+	}
+
 	hkMenu, _, _ := pCreatePopupMenu.Call()
 	if hkMenu != 0 {
 		pAppendMenuW.Call(hkMenu, menuFlags(a.cfg.Hotkey == "Alt+H"), idMenuHKAltH, uintptr(unsafe.Pointer(u16("Alt+H"))))
@@ -882,6 +950,7 @@ func (a *appState) showAndBringToFront(focusInput bool) {
 	if a.hwnd == 0 {
 		return
 	}
+	a.setUnreadTrayIcon(false)
 	pShowWindow.Call(a.hwnd, SW_SHOW)
 	pSetWindowPos.Call(a.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
 	pSetWindowPos.Call(a.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)
@@ -962,6 +1031,12 @@ func (a *appState) handleCommand(id int) {
 	case idMenuFont20:
 		a.cfg.FontSize = 20
 		a.updateAppearance()
+	case idMenuLimit100:
+		a.applyMessageLimit(100)
+	case idMenuLimit500:
+		a.applyMessageLimit(500)
+	case idMenuLimitAll:
+		a.applyMessageLimit(0)
 	case idMenuHKAltH:
 		a.cfg.Hotkey = "Alt+H"
 		saveConfig(a.cfg)
@@ -988,14 +1063,43 @@ func (a *appState) handleCommand(id int) {
 		a.messages = nil
 		a.seenIDs = nil
 		a.lastMsgTs = 0
+		a.initialSynced = false
 		saveConfig(a.cfg)
 		a.mu.Unlock()
+		a.setUnreadTrayIcon(false)
 		setCtrlText(a.hLblLoginStatus, "")
 		a.layoutControls()
 		a.triggerRepaint()
 	case idBtnQuit, idMenuQuit:
 		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
 	}
+}
+
+func (a *appState) applyMessageLimit(newLim int) {
+	a.mu.Lock()
+	oldLim := a.cfg.MaxMessages
+	a.cfg.MaxMessages = newLim
+	saveConfig(a.cfg)
+	trimmed := false
+	if newLim > 0 && len(a.messages) > newLim {
+		a.messages = a.messages[len(a.messages)-newLim:]
+		trimmed = true
+	}
+	needRefetch := a.loggedIn && ((oldLim > 0 && newLim == 0) || (oldLim > 0 && newLim > oldLim))
+	if needRefetch {
+		a.messages = nil
+		a.seenIDs = make(map[string]bool)
+		a.lastMsgTs = 0
+		a.initialSynced = false
+		a.atBottom = true
+	}
+	a.mu.Unlock()
+	if needRefetch {
+		a.pollMessagesAsync()
+	} else if trimmed {
+		a.triggerRepaint()
+	}
+	a.showAndBringToFront(false)
 }
 
 func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -1115,6 +1219,12 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.paintWindow()
 		return 0
 
+	case WM_ACTIVATE:
+		if (wParam & 0xFFFF) != 0 {
+			a.setUnreadTrayIcon(false)
+		}
+		return 0
+
 	case WM_MOUSEWHEEL:
 		if a.loggedIn {
 			delta := int16(wParam >> 16)
@@ -1158,6 +1268,9 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			if a.loggedIn {
 				a.pollMessagesAsync()
 			}
+		}
+		if lParam == 1 && !a.isActivelyViewing() {
+			a.setUnreadTrayIcon(true)
 		}
 		a.triggerRepaint()
 		return 0
@@ -1237,6 +1350,10 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if a.hIcon != 0 {
 			pDestroyIcon.Call(a.hIcon)
 			a.hIcon = 0
+		}
+		if a.hIconUnread != 0 {
+			pDestroyIcon.Call(a.hIconUnread)
+			a.hIconUnread = 0
 		}
 		return 0
 
@@ -1370,7 +1487,8 @@ func main() {
 		return
 	}
 	cur, _, _ := pLoadCursorW.Call(0, IDC_ARROW)
-	gApp.hIcon = createFishTrayIcon()
+	gApp.hIcon = createFishTrayIcon(false)
+	gApp.hIconUnread = createFishTrayIcon(true)
 	wc := WNDCLASSEXW{
 		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
 		LpfnWndProc:   syscall.NewCallback(mainWndProc),

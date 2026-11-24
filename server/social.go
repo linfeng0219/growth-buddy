@@ -1050,25 +1050,45 @@ func parseChatMedia(raw, fallbackMime string, allowedPrefix string, maxBytes int
 	return mimeType, decoded, cleanB64, nil
 }
 
-func (s *Store) fetchChatMessagesLocked(tx *Tx, selfType, selfID, convKey string, afterMs int64) ([]ChatMessageDTO, error) {
+func (s *Store) fetchChatMessagesLocked(tx *Tx, selfType, selfID, convKey string, afterMs int64, maxRows ...int) ([]ChatMessageDTO, error) {
 	list := make([]ChatMessageDTO, 0)
+	limit := 120
+	if len(maxRows) > 0 {
+		limit = maxRows[0]
+	}
 	var q string
 	var args []any
 	if afterMs > 0 {
 		q = `SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
 			 FROM chat_messages
 			 WHERE conv_key = ? AND created_at > ?
-			 ORDER BY created_at ASC, rowid ASC LIMIT 200`
+			 ORDER BY created_at ASC, rowid ASC`
+		if limit >= 0 {
+			incLim := limit
+			if incLim < 200 {
+				incLim = 200
+			}
+			q += fmt.Sprintf(" LIMIT %d", incLim)
+		}
 		args = []any{convKey, afterMs}
-	} else {
+	} else if limit < 0 {
 		q = `SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
+			 FROM chat_messages
+			 WHERE conv_key = ?
+			 ORDER BY created_at ASC, rowid ASC`
+		args = []any{convKey}
+	} else {
+		if limit == 0 {
+			limit = 120
+		}
+		q = fmt.Sprintf(`SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at
 			 FROM (
 				SELECT id, sender_type, sender_id, receiver_type, receiver_id, msg_type, text_content, media_id, duration_sec, is_read, created_at, rowid AS _rid
 				FROM chat_messages
 				WHERE conv_key = ?
-				ORDER BY created_at DESC, rowid DESC LIMIT 120
+				ORDER BY created_at DESC, rowid DESC LIMIT %d
 			 ) sub
-			 ORDER BY created_at ASC, _rid ASC`
+			 ORDER BY created_at ASC, _rid ASC`, limit)
 		args = []any{convKey}
 	}
 
@@ -1123,7 +1143,7 @@ func (s *Store) fetchChatMessagesLocked(tx *Tx, selfType, selfID, convKey string
 	return list, nil
 }
 
-func (s *Store) ListChatMessages(viewerType, viewerID, peerType, peerID string, afterMs int64) ([]ChatMessageDTO, error) {
+func (s *Store) ListChatMessages(viewerType, viewerID, peerType, peerID string, afterMs int64, maxRows ...int) ([]ChatMessageDTO, error) {
 	var list []ChatMessageDTO
 	convKey := buildConvKey(viewerType, viewerID, peerType, peerID)
 
@@ -1149,7 +1169,7 @@ func (s *Store) ListChatMessages(viewerType, viewerID, peerType, peerID string, 
 			)
 		}
 
-		list, err = s.fetchChatMessagesLocked(tx, viewerType, viewerID, convKey, afterMs)
+		list, err = s.fetchChatMessagesLocked(tx, viewerType, viewerID, convKey, afterMs, maxRows...)
 		return err
 	})
 	if err != nil {

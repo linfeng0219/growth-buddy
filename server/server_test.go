@@ -852,3 +852,50 @@ func TestAdminCredentialsAndPasswordReset(t *testing.T) {
 		t.Fatalf("child login with reset password failed: %d %+v", st, cl)
 	}
 }
+
+func TestGroupChatHistoryLimitParam(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "历史条数之家", "displayName": "妈妈", "username": "lim_mom", "password": "pass1234",
+		"childName": "小宝", "childUsername": "lim_kid", "childPassword": "pass1234",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d %+v", st, reg)
+	}
+	momTok := reg["token"].(string)
+
+	st, ov := doJSON(t, ts, "GET", "/api/parent/friends", momTok, nil)
+	if st != 200 {
+		t.Fatalf("friends failed: %d", st)
+	}
+	groups := ov["chat_groups"].([]any)
+	grpID := groups[0].(map[string]any)["id"].(string)
+
+	for i := 0; i < 5; i++ {
+		st, _ = doJSON(t, ts, "POST", "/api/parent/chat/messages", momTok, map[string]any{
+			"peerType": "group", "peerId": grpID, "msgType": "text", "text": fmt.Sprintf("msg-%d", i+1),
+		})
+		if st != 201 {
+			t.Fatalf("send msg %d failed: %d", i+1, st)
+		}
+	}
+
+	st, lim2 := doJSON(t, ts, "GET", "/api/parent/chat/messages?peerType=group&peerId="+grpID+"&limit=2", momTok, nil)
+	if st != 200 {
+		t.Fatalf("limit=2 failed: %d", st)
+	}
+	arr2 := lim2["messages"].([]any)
+	if len(arr2) != 2 || arr2[0].(map[string]any)["text"] != "msg-4" || arr2[1].(map[string]any)["text"] != "msg-5" {
+		t.Fatalf("expected latest 2 messages (msg-4, msg-5), got %+v", arr2)
+	}
+
+	st, limAll := doJSON(t, ts, "GET", "/api/parent/chat/messages?peerType=group&peerId="+grpID+"&limit=all", momTok, nil)
+	if st != 200 {
+		t.Fatalf("limit=all failed: %d", st)
+	}
+	arrAll := limAll["messages"].([]any)
+	if len(arrAll) != 5 {
+		t.Fatalf("expected all 5 messages with limit=all, got %d", len(arrAll))
+	}
+}

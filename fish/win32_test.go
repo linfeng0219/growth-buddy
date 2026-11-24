@@ -17,11 +17,16 @@ func TestWin32NotifyIconStructAndTrayIcon(t *testing.T) {
 	if got := unsafe.Sizeof(DRAWITEMSTRUCT{}); got != 64 {
 		t.Fatalf("expected DRAWITEMSTRUCT size 64 on amd64, got %d", got)
 	}
-	icon := createFishTrayIcon()
+	icon := createFishTrayIcon(false)
 	if icon == 0 {
-		t.Fatalf("createFishTrayIcon returned 0")
+		t.Fatalf("createFishTrayIcon(false) returned 0")
 	}
 	pDestroyIcon.Call(icon)
+	iconUnread := createFishTrayIcon(true)
+	if iconUnread == 0 {
+		t.Fatalf("createFishTrayIcon(true) returned 0")
+	}
+	pDestroyIcon.Call(iconUnread)
 }
 
 func TestMenuFlagsAndDropperTipBounds(t *testing.T) {

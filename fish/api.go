@@ -89,7 +89,7 @@ func apiRequest(serverURL, method, path, token string, body any) (int, []byte, e
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32*1024*1024))
 	if err != nil {
 		return resp.StatusCode, nil, err
 	}
@@ -189,7 +189,7 @@ func fetchDefaultFamilyGroup(serverURL, role, token string) (*FamilyGroupInfo, i
 	return &FamilyGroupInfo{ID: chosen.ID, Name: chosen.Name}, code, nil
 }
 
-func fetchGroupMessages(serverURL, role, token, groupID string, afterMs int64) ([]ChatMsg, int, error) {
+func fetchGroupMessages(serverURL, role, token, groupID string, afterMs int64, maxMessages ...int) ([]ChatMsg, int, error) {
 	basePath := "/api/child/chat/messages"
 	if role == "parent" {
 		basePath = "/api/parent/chat/messages"
@@ -197,6 +197,13 @@ func fetchGroupMessages(serverURL, role, token, groupID string, afterMs int64) (
 	q := basePath + "?peerType=group&peerId=" + url.QueryEscape(groupID)
 	if afterMs > 0 {
 		q += "&after=" + strconv.FormatInt(afterMs, 10)
+	}
+	if len(maxMessages) > 0 {
+		if maxMessages[0] <= 0 {
+			q += "&limit=all"
+		} else {
+			q += "&limit=" + strconv.Itoa(maxMessages[0])
+		}
 	}
 	code, raw, err := apiRequest(serverURL, "GET", q, token, nil)
 	if err != nil {

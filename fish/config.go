@@ -28,6 +28,7 @@ type FishConfig struct {
 	AutoInvertText bool   `json:"auto_invert_text"`
 	FontColor      string `json:"font_color"`
 	FontSize       int    `json:"font_size"`
+	MaxMessages    int    `json:"max_messages"` // 100, 500, or 0 (unlimited)
 	Hotkey         string `json:"hotkey"`
 }
 
@@ -41,6 +42,7 @@ func defaultConfig() FishConfig {
 		AutoInvertText: false,
 		FontColor:      "#233128",
 		FontSize:       15,
+		MaxMessages:    100,
 		Hotkey:         "Alt+H",
 	}
 }
@@ -75,6 +77,11 @@ func loadConfig() FishConfig {
 	}
 	if !isHexColor(cfg.FontColor) {
 		cfg.FontColor = "#233128"
+	}
+	switch cfg.MaxMessages {
+	case 0, 100, 500:
+	default:
+		cfg.MaxMessages = 100
 	}
 	_, _, cfg.Hotkey = parseHotkey(cfg.Hotkey)
 	return cfg
