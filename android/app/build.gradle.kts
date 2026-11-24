@@ -85,5 +85,8 @@ dependencies {
     // Google ML Kit Pose Detection (模型内置在 APK 中，离线可用)
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
 
+    // ZXing Core (离线生成与解析好友二维码，无 GMS 依赖)
+    implementation("com.google.zxing:core:3.5.3")
+
     testImplementation("junit:junit:4.13.2")
 }

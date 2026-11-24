@@ -2,13 +2,18 @@ package com.growthbuddy.child
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -112,6 +117,65 @@ class FocusActivity : AppCompatActivity() {
         })
 
         updateTimerUi()
+        applyResponsiveLayout()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveLayout()
+    }
+
+    private fun applyResponsiveLayout() {
+        val m = ResponsiveUi.metrics(this)
+        val dp = { v: Int -> ResponsiveUi.dp(this, v) }
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.focusTopBar, 1080, horizontalReserveDp = 32)
+
+        val leftLp = binding.focusLeftPane.layoutParams as LinearLayout.LayoutParams
+        val rightLp = binding.focusRightPane.layoutParams as LinearLayout.LayoutParams
+        val stageLp = binding.focusPetStage.layoutParams
+        val spacerLp = binding.focusSpacer.layoutParams as LinearLayout.LayoutParams
+
+        if (m.isDesktopSplit) {
+            binding.focusBodySplit.orientation = LinearLayout.HORIZONTAL
+            binding.focusBodySplit.gravity = Gravity.CENTER_VERTICAL
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.focusBodySplit, 1020, horizontalReserveDp = 32)
+            leftLp.width = 0
+            leftLp.weight = 0.95f
+            rightLp.width = 0
+            rightLp.weight = 1.05f
+            rightLp.marginStart = dp(24)
+            rightLp.topMargin = 0
+            stageLp.height = dp(268)
+            spacerLp.weight = 0f
+            spacerLp.height = dp(18)
+            binding.tvFocusTimer.setTextSize(TypedValue.COMPLEX_UNIT_SP, 72f)
+        } else {
+            binding.focusBodySplit.orientation = LinearLayout.VERTICAL
+            binding.focusBodySplit.gravity = Gravity.CENTER_HORIZONTAL
+            ResponsiveUi.applyCenteredMaxWidth(
+                this,
+                binding.focusBodySplit,
+                if (m.isTablet) 600 else 1000,
+                horizontalReserveDp = 32
+            )
+            leftLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            leftLp.weight = 0f
+            rightLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            rightLp.weight = 0f
+            rightLp.marginStart = 0
+            rightLp.topMargin = dp(6)
+            stageLp.height = dp(if (m.isTablet) 240 else if (m.isLandscape) 136 else 200)
+            spacerLp.weight = 1f
+            spacerLp.height = 0
+            binding.tvFocusTimer.setTextSize(
+                TypedValue.COMPLEX_UNIT_SP,
+                if (m.isTablet) 64f else if (m.isLandscape) 44f else 54f
+            )
+        }
+        binding.focusLeftPane.layoutParams = leftLp
+        binding.focusRightPane.layoutParams = rightLp
+        binding.focusPetStage.layoutParams = stageLp
+        binding.focusSpacer.layoutParams = spacerLp
     }
 
     private fun selectDuration(minutes: Int) {

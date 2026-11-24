@@ -1,12 +1,15 @@
 package com.growthbuddy.child
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -17,6 +20,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.growthbuddy.child.databinding.ActivityParentPortalBinding
 import org.json.JSONObject
 
@@ -36,6 +40,20 @@ class ParentPortalActivity : AppCompatActivity() {
     private var parentToken: String = ""
     private var tokenInjected = false
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingWebAudioRequest: PermissionRequest? = null
+
+    private val audioPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val req = pendingWebAudioRequest
+        pendingWebAudioRequest = null
+        if (req == null) return@registerForActivityResult
+        if (granted) {
+            req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+        } else {
+            req.deny()
+        }
+    }
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -177,6 +195,22 @@ class ParentPortalActivity : AppCompatActivity() {
                 return true
             }
 
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                val req = request ?: return
+                val wantsAudio = req.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (!wantsAudio) {
+                    req.deny()
+                    return
+                }
+                if (ContextCompat.checkSelfPermission(this@ParentPortalActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                } else {
+                    pendingWebAudioRequest?.deny()
+                    pendingWebAudioRequest = req
+                    audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -221,6 +255,8 @@ class ParentPortalActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pendingWebAudioRequest?.deny()
+        pendingWebAudioRequest = null
         binding.webParentPortal.destroy()
         super.onDestroy()
     }

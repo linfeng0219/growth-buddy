@@ -444,6 +444,46 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodGet && strings.HasPrefix(p, "/api/chat/media/") {
+		mediaID := strings.TrimPrefix(p, "/api/chat/media/")
+		if mediaID == "" || strings.Contains(mediaID, "/") {
+			writeJSON(w, 404, map[string]string{"error": "媒体不存在"})
+			return
+		}
+		auth := getAuth(r)
+		if auth == nil {
+			if qTok := strings.TrimSpace(r.URL.Query().Get("token")); qTok != "" {
+				auth = VerifyToken(qTok)
+			}
+		}
+		if auth == nil {
+			writeJSON(w, 401, map[string]string{"error": "请先登录后查看媒体"})
+			return
+		}
+		viewerType, viewerID := "", ""
+		switch auth.Role {
+		case "child":
+			viewerType, viewerID = "child", auth.ChildID
+		case "parent":
+			viewerType, viewerID = "parent", auth.ParentID
+		}
+		mimeType, raw, err := a.store.GetChatMedia(viewerType, viewerID, mediaID)
+		if err != nil {
+			status := 404
+			if strings.Contains(err.Error(), "无权") {
+				status = 403
+			}
+			writeJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", mimeType)
+		w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
+		w.Header().Set("Cache-Control", "private, max-age=604800")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(raw)
+		return
+	}
+
 	/* ===== 1. 认证与家庭绑定 ===== */
 	if m == http.MethodPost && p == "/api/auth/register-family" {
 		body, err := readJSONMap(r, 0)
@@ -846,6 +886,119 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"photo": photo, "state": st})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/child/friends" {
+		ov, err := a.store.GetChildSocialOverview(auth.FamilyID, targetChildID)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, ov)
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/friends/code/reset" {
+		code, qrPayload, err := a.store.ResetChildFriendCode(auth.FamilyID, targetChildID)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"friend_code": code, "qr_payload": qrPayload})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/child/friends/lookup" {
+		res, err := a.store.LookupFriendTarget(auth.FamilyID, targetChildID, r.URL.Query().Get("q"))
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"candidate": res})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/friends/request" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		st, msg, err := a.store.SendFriendRequest(auth.FamilyID, targetChildID, mapStr(body, "target"), mapStr(body, "message"))
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "status": st, "message": msg})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/friends/requests/respond" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		msg, err := a.store.RespondFriendRequest(targetChildID, mapStr(body, "requestId"), mapStr(body, "action"))
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "message": msg})
+		return
+	}
+
+	if m == http.MethodDelete && strings.HasPrefix(p, "/api/child/friends/") {
+		peerID := strings.TrimPrefix(p, "/api/child/friends/")
+		if err := a.store.RemoveFriend(targetChildID, peerID); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/child/chat/messages" {
+		peerType := strings.TrimSpace(r.URL.Query().Get("peerType"))
+		if peerType == "" {
+			peerType = "child"
+		}
+		peerID := strings.TrimSpace(r.URL.Query().Get("peerId"))
+		afterMs, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("after")), 10, 64)
+		msgs, err := a.store.ListChatMessages("child", targetChildID, peerType, peerID, afterMs)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"messages": msgs})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/child/chat/messages" {
+		body, err := readJSONMap(r, 6*1024*1024)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		peerType := mapStr(body, "peerType")
+		if peerType == "" {
+			peerType = "child"
+		}
+		msgDTO, err := a.store.SendChatMessage(
+			"child", targetChildID,
+			peerType, mapStr(body, "peerId"),
+			mapStr(body, "msgType"),
+			mapStr(body, "text"),
+			mapStr(body, "mediaData"),
+			mapStr(body, "mimeType"),
+			mapInt(body, "durationSec", 0),
+		)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"message": msgDTO})
 		return
 	}
 
@@ -1365,6 +1518,51 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/parent/chat/contacts" {
+		contacts, err := a.store.ListParentChatContacts(fid, auth.ParentID)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"contacts": contacts})
+		return
+	}
+
+	if m == http.MethodGet && p == "/api/parent/chat/messages" {
+		childID := strings.TrimSpace(r.URL.Query().Get("childId"))
+		afterMs, _ := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("after")), 10, 64)
+		msgs, err := a.store.ListChatMessages("parent", auth.ParentID, "child", childID, afterMs)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"messages": msgs})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/parent/chat/messages" {
+		body, err := readJSONMap(r, 6*1024*1024)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		msgDTO, err := a.store.SendChatMessage(
+			"parent", auth.ParentID,
+			"child", mapStr(body, "childId"),
+			mapStr(body, "msgType"),
+			mapStr(body, "text"),
+			mapStr(body, "mediaData"),
+			mapStr(body, "mimeType"),
+			mapInt(body, "durationSec", 0),
+		)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 201, map[string]any{"message": msgDTO})
 		return
 	}
 

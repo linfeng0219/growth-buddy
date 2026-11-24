@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/ropeRootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#111111">
@@ -112,6 +113,7 @@
         app:layout_constraintTop_toBottomOf="@id/topHud">
 
         <LinearLayout
+            android:id="@+id/scoreCountPane"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
@@ -137,11 +139,13 @@
         </LinearLayout>
 
         <View
+            android:id="@+id/scoreDivider"
             android:layout_width="1dp"
             android:layout_height="46dp"
             android:background="#55FFFFFF" />
 
         <LinearLayout
+            android:id="@+id/scoreTimerPane"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"

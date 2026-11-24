@@ -26,6 +26,8 @@ data class ChildInfo(
     val age: Int = 7,
     val quizDifficulty: String = "normal",
     val unreadLetters: Int = 0,
+    val unreadChat: Int = 0,
+    val pendingFriendRequests: Int = 0,
     val adventureXpToday: Int = 0,
     val adventureXpLimit: Int = 10
 )
@@ -259,6 +261,8 @@ object GrowthMeta {
                 age = childObj.optInt("age", 7).coerceIn(3, 14),
                 quizDifficulty = childObj.optString("quiz_difficulty", "normal").ifBlank { "normal" },
                 unreadLetters = childObj.optInt("unread_letters", 0),
+                unreadChat = childObj.optInt("unread_chat", 0),
+                pendingFriendRequests = childObj.optInt("pending_friend_requests", 0),
                 adventureXpToday = childObj.optInt("adventure_xp_today", 0),
                 adventureXpLimit = childObj.optInt("adventure_xp_limit", 10)
             ),

@@ -61,11 +61,12 @@ class PoseOverlayView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // 绘制中央站位框
+        // 绘制中央站位框（横屏平板适当收窄左右比例以匹配人体站立视野）
         boxPaint.color = if (framedOk) Color.parseColor("#6CB88C") else Color.parseColor("#E8913A")
-        val marginX = width * 0.14f
-        val topY = height * 0.18f
-        val bottomY = height * 0.84f
+        val isLand = width > height
+        val marginX = width * (if (isLand) 0.24f else 0.14f)
+        val topY = height * (if (isLand) 0.12f else 0.18f)
+        val bottomY = height * (if (isLand) 0.88f else 0.84f)
         canvas.drawRoundRect(RectF(marginX, topY, width - marginX, bottomY), 36f, 36f, boxPaint)
 
         val p = pose ?: return

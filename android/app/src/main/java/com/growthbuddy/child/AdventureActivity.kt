@@ -1,6 +1,7 @@
 package com.growthbuddy.child
 
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -8,8 +9,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -115,9 +118,58 @@ class AdventureActivity : AppCompatActivity() {
 
         updateDifficultyChips()
         updateHpUi()
+        applyResponsiveLayout()
         loadFallbackQuestions()
         showCurrentQuestion()
         fetchOnlineQuestions()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveLayout()
+    }
+
+    private fun applyResponsiveLayout() {
+        val m = ResponsiveUi.metrics(this)
+        val dp = { v: Int -> ResponsiveUi.dp(this, v) }
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.advTopBar, 1140, horizontalReserveDp = 32)
+
+        val leftLp = binding.advLeftPane.layoutParams as LinearLayout.LayoutParams
+        val rightLp = binding.advRightPane.layoutParams as LinearLayout.LayoutParams
+        val stageLp = binding.advBattleStage.layoutParams
+
+        if (m.isDesktopSplit) {
+            binding.advBodySplit.orientation = LinearLayout.HORIZONTAL
+            binding.advBodySplit.gravity = Gravity.TOP
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.advBodySplit, 1140, horizontalReserveDp = 32)
+            leftLp.width = 0
+            leftLp.weight = 0.95f
+            rightLp.width = 0
+            rightLp.weight = 1.05f
+            rightLp.marginStart = dp(18)
+            rightLp.topMargin = 0
+            stageLp.height = dp(248)
+            binding.tvQuizQuestion.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+        } else {
+            binding.advBodySplit.orientation = LinearLayout.VERTICAL
+            ResponsiveUi.applyCenteredMaxWidth(
+                this,
+                binding.advBodySplit,
+                if (m.isTablet) 680 else 1200,
+                horizontalReserveDp = 32
+            )
+            leftLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            leftLp.weight = 0f
+            rightLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            rightLp.weight = 0f
+            rightLp.marginStart = 0
+            rightLp.topMargin = dp(10)
+            stageLp.height = dp(if (m.isTablet) 196 else if (m.isLandscape) 118 else 148)
+            binding.tvQuizQuestion.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (m.isTablet) 18f else 17f)
+        }
+        binding.advLeftPane.layoutParams = leftLp
+        binding.advRightPane.layoutParams = rightLp
+        binding.advBattleStage.layoutParams = stageLp
     }
 
     override fun onResume() {

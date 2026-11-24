@@ -3,6 +3,7 @@ package com.growthbuddy.child
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -14,9 +15,13 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.SystemClock
 import android.util.Size
+import android.view.Surface
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
@@ -74,6 +79,8 @@ class RopeJumpActivity : AppCompatActivity() {
     private var lastSpokenMilestone: Int = 0
     private var usingFrontCamera: Boolean = true
     private var cameraProviderRef: ProcessCameraProvider? = null
+    private var previewUseCase: Preview? = null
+    private var analysisUseCase: ImageAnalysis? = null
     private var settlementPayload: JSONObject? = null
     private var settlementPreviewBmp: Bitmap? = null
 
@@ -140,6 +147,70 @@ class RopeJumpActivity : AppCompatActivity() {
         } else {
             cameraPermLauncher.launch(Manifest.permission.CAMERA)
         }
+        applyResponsiveLayout()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val rot = currentDisplayRotation()
+        previewUseCase?.targetRotation = rot
+        analysisUseCase?.targetRotation = rot
+        applyResponsiveLayout()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentDisplayRotation(): Int {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            display?.rotation ?: Surface.ROTATION_0
+        } else {
+            windowManager.defaultDisplay?.rotation ?: Surface.ROTATION_0
+        }
+    }
+
+    private fun applyResponsiveLayout() {
+        val m = ResponsiveUi.metrics(this)
+        val dp = { v: Int -> ResponsiveUi.dp(this, v) }
+
+        val cs = ConstraintSet()
+        cs.clone(binding.ropeRootLayout)
+
+        val divLp = binding.scoreDivider.layoutParams as LinearLayout.LayoutParams
+        if (m.isLandscape) {
+            // 横屏（平板架在桌面上）时，计数卡停靠左边缘竖向排布，完全让出中央人体识别站位视野
+            cs.clear(R.id.scoreCard, ConstraintSet.END)
+            cs.connect(R.id.scoreCard, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, dp(14))
+            cs.connect(R.id.scoreCard, ConstraintSet.TOP, R.id.topHud, ConstraintSet.BOTTOM, dp(12))
+            binding.scoreCard.orientation = LinearLayout.VERTICAL
+            binding.scoreCountPane.setPadding(0, 0, 0, 0)
+            binding.scoreTimerPane.setPadding(0, 0, 0, 0)
+            divLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            divLp.height = dp(1)
+            divLp.topMargin = dp(8)
+            divLp.bottomMargin = dp(8)
+            cs.constrainMaxWidth(R.id.bottomBar, dp(if (m.isTablet) 460 else 420))
+        } else {
+            cs.connect(R.id.scoreCard, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0)
+            cs.connect(R.id.scoreCard, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0)
+            cs.connect(R.id.scoreCard, ConstraintSet.TOP, R.id.topHud, ConstraintSet.BOTTOM, dp(10))
+            binding.scoreCard.orientation = LinearLayout.HORIZONTAL
+            binding.scoreCountPane.setPadding(0, 0, dp(18), 0)
+            binding.scoreTimerPane.setPadding(dp(18), 0, 0, 0)
+            divLp.width = dp(1)
+            divLp.height = dp(46)
+            divLp.topMargin = 0
+            divLp.bottomMargin = 0
+            cs.constrainMaxWidth(R.id.bottomBar, dp(if (m.isTablet) 560 else 1200))
+        }
+        cs.constrainMaxWidth(R.id.topHud, dp(if (m.isTablet) 1140 else 1200))
+        binding.scoreDivider.layoutParams = divLp
+        cs.applyTo(binding.ropeRootLayout)
+
+        // 结算卡片在平板大屏限宽居中，防止过宽
+        val settleCs = ConstraintSet()
+        settleCs.clone(binding.settlementOverlay)
+        settleCs.constrainMaxWidth(R.id.settlementTopPill, dp(if (m.isTablet) 720 else 1200))
+        settleCs.constrainMaxWidth(R.id.settlementBottomCard, dp(if (m.isTablet) 680 else 1200))
+        settleCs.applyTo(binding.settlementOverlay)
     }
 
     private fun parseTaskExtras() {
@@ -171,9 +242,13 @@ class RopeJumpActivity : AppCompatActivity() {
             CameraSelector.DEFAULT_BACK_CAMERA
         }
 
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(binding.previewView.surfaceProvider)
-        }
+        val targetRot = currentDisplayRotation()
+        val preview = Preview.Builder()
+            .setTargetRotation(targetRot)
+            .build()
+            .also {
+                it.setSurfaceProvider(binding.previewView.surfaceProvider)
+            }
 
         // 低分辨率 320x240/360x480 推理让 ML Kit 稳定跑满 25~30fps，显著降低快跳漏计
         val resSelector = ResolutionSelector.Builder()
@@ -186,12 +261,15 @@ class RopeJumpActivity : AppCompatActivity() {
             .build()
 
         val analysis = ImageAnalysis.Builder()
+            .setTargetRotation(targetRot)
             .setResolutionSelector(resSelector)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
             .also {
                 it.setAnalyzer(cameraExecutor, ::analyzeImage)
             }
+        previewUseCase = preview
+        analysisUseCase = analysis
 
         try {
             cameraProvider.unbindAll()

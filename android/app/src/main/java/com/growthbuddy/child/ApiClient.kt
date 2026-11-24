@@ -108,13 +108,17 @@ class ApiClient(private val context: Context) {
             callback(cached)
             return
         }
+        val token = ServerPrefs.getChildToken(context)
         executor.execute {
             var conn: HttpURLConnection? = null
             val bmp = try {
                 conn = (URL(fullUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 8000
-                    readTimeout = 10000
+                    readTimeout = 12000
+                    if (token.isNotEmpty() && fullUrl.startsWith(baseUrl)) {
+                        setRequestProperty("Authorization", "Bearer $token")
+                    }
                 }
                 if (conn.responseCode in 200..299) {
                     conn.inputStream.use { BitmapFactory.decodeStream(it) }
@@ -128,6 +132,52 @@ class ApiClient(private val context: Context) {
                 bitmapCache.put(fullUrl, bmp)
             }
             mainHandler.post { callback(bmp) }
+        }
+    }
+
+    fun fetchBinaryToFile(pathOrUrl: String, destFile: java.io.File, callback: (Boolean) -> Unit) {
+        if (pathOrUrl.isEmpty()) {
+            callback(false)
+            return
+        }
+        if (destFile.exists() && destFile.length() > 0L) {
+            callback(true)
+            return
+        }
+        val baseUrl = ServerPrefs.getServerUrl(context)
+        val fullUrl = if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+            pathOrUrl
+        } else {
+            baseUrl + pathOrUrl
+        }
+        val token = ServerPrefs.getChildToken(context)
+        executor.execute {
+            var conn: HttpURLConnection? = null
+            val ok = try {
+                conn = (URL(fullUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 8000
+                    readTimeout = 15000
+                    if (token.isNotEmpty() && fullUrl.startsWith(baseUrl)) {
+                        setRequestProperty("Authorization", "Bearer $token")
+                    }
+                }
+                if (conn.responseCode in 200..299) {
+                    destFile.parentFile?.mkdirs()
+                    val tmp = java.io.File(destFile.parentFile, destFile.name + ".tmp")
+                    conn.inputStream.use { input ->
+                        java.io.FileOutputStream(tmp).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    tmp.renameTo(destFile)
+                } else false
+            } catch (_: Exception) {
+                false
+            } finally {
+                conn?.disconnect()
+            }
+            mainHandler.post { callback(ok) }
         }
     }
 

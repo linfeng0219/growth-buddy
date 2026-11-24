@@ -9,8 +9,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+var dynIDSeq uint64
 
 // QuizQuestion 表示在线分级题库中的一道战斗题目。
 type QuizQuestion struct {
@@ -267,11 +270,11 @@ func QueryOnlineQuestionsWithExclude(age int, difficulty string, limit int, excl
 	shuffleQuizSlice(rng, boostMathFresh)
 	shuffleQuizSlice(rng, boostMathSeen)
 
-	dynMathCount := 8
-	dynVerbalCount := 6
+	dynMathCount := 7
+	dynVerbalCount := 7
 	if limit >= 32 {
 		dynMathCount = 10
-		dynVerbalCount = 8
+		dynVerbalCount = 10
 	}
 	dynamicQs := generateDynamicMathQuestions(rng, ageGroup, diff, dynMathCount)
 	dynamicQs = append(dynamicQs, generateDynamicVerbalAndScienceQuestions(rng, ageGroup, diff, dynVerbalCount)...)
@@ -341,7 +344,15 @@ func QueryOnlineQuestionsWithExclude(age int, difficulty string, limit int, excl
 		}
 		addUnique(dq, false)
 	}
-	// 若全库未做静态题已耗尽，先再多生成一批动态题补充，最后才回填旧题
+	// 若动态题去重后仍未满 limit，先继续从未做静态题补足，再按需生成额外动态题，最后回填旧题
+	for _, pool := range [][]QuizQuestion{exactFresh, nearbyFresh} {
+		for _, q := range pool {
+			if len(selected) >= limit {
+				break
+			}
+			addUnique(q, false)
+		}
+	}
 	if len(selected) < limit {
 		extraDyn := generateDynamicMathQuestions(rng, ageGroup, diff, limit-len(selected))
 		extraDyn = append(extraDyn, generateDynamicVerbalAndScienceQuestions(rng, ageGroup, diff, limit-len(selected))...)
@@ -777,7 +788,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 		}
 
 		res = append(res, QuizQuestion{
-			ID:         fmt.Sprintf("dyn_%s_%s_%d_%d", ageGroup, diff, time.Now().UnixNano()%100000, i),
+			ID:         fmt.Sprintf("dyn_%s_%s_%d_%d", ageGroup, diff, atomic.AddUint64(&dynIDSeq, 1), i),
 			Category:   cat,
 			AgeGroup:   ageGroup,
 			MinAge:     minA,
@@ -792,7 +803,7 @@ func generateDynamicMathQuestions(rng *rand.Rand, ageGroup, diff string, count i
 	return res
 }
 
-// generateDynamicVerbalAndScienceQuestions 跨学科动态组合生成器（古诗接龙、反义词、量词、地理百科及英语词库），每轮随机组合不重复。
+// generateDynamicVerbalAndScienceQuestions 跨学科动态组合生成器（古诗接龙、反义词、量词、地理百科、分龄成语及英语词库），每轮随机组合不重复。
 func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff string, count int) []QuizQuestion {
 	type poemPair struct{ upper, lower, poem string }
 	poemsEasy := []poemPair{
@@ -866,7 +877,7 @@ func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff str
 	allowEnglish := ageGroup == "9-10" || ageGroup == "11-14" || diff == "hard"
 	minA, maxA := ageBoundsForGroup(ageGroup)
 	res := make([]QuizQuestion, 0, count)
-	seedBase := time.Now().UnixNano() % 100000
+	seedBase := atomic.AddUint64(&dynIDSeq, 1)
 
 	pickDistractors := func(pool []string, ans string) []string {
 		idxList := rng.Perm(len(pool))
@@ -888,9 +899,9 @@ func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff str
 	for i := 0; i < count; i++ {
 		var cat, text string
 		var opts []string
-		mode := i % 4
+		mode := i % 5
 		if !allowEnglish && mode == 3 {
-			mode = i % 3
+			mode = 4
 		}
 
 		switch mode {
@@ -967,7 +978,7 @@ func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff str
 				text = fmt.Sprintf("中国地理小百科：%s省的省会城市是哪一座？", c[0])
 				opts = pickDistractors(capList, c[1])
 			}
-		default: // 英语词汇双向随机组题（仅 9-14岁 或 hard）
+		case 3: // 英语词汇双向随机组题（仅 9-14岁 或 hard）
 			cat = "英语"
 			idx := rng.Intn(len(enWords))
 			w := enWords[idx]
@@ -990,6 +1001,9 @@ func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff str
 				text = fmt.Sprintf("中文“%s”用下面哪个英语单词表示最准确？", w[1])
 				opts = pickDistractors(enPool, w[0])
 			}
+		default: // 分龄分级成语动态组题（填字补全 + 看释义猜成语）
+			cat = "语文"
+			text, opts = generateDynamicIdiomQuestion(rng, ageGroup, diff, pickDistractors)
 		}
 
 		if len(opts) >= 2 && text != "" {
@@ -1008,6 +1022,141 @@ func generateDynamicVerbalAndScienceQuestions(rng *rand.Rand, ageGroup, diff str
 		}
 	}
 	return res
+}
+
+type dynIdiomEntry struct {
+	idiom   string
+	blanked string
+	ansChar string
+	meaning string
+	alts    [2]string
+}
+
+// generateDynamicIdiomQuestion 根据年龄段和难度动态生成成语填字补全或看释义猜成语题目。
+func generateDynamicIdiomQuestion(rng *rand.Rand, ageGroup, diff string, pickDistractors func([]string, string) []string) (string, []string) {
+	idioms35 := []dynIdiomEntry{
+		{"五颜六色", "五（  ）六色", "颜", "颜色非常多、很好看", [2]string{"朵", "片"}},
+		{"一心一意", "一（  ）一意", "心", "心思专注、不分散", [2]string{"头", "手"}},
+		{"七上八下", "七（  ）八下", "上", "心里慌乱不踏实", [2]string{"左", "前"}},
+		{"春暖花开", "春（  ）花开", "暖", "春天到来温暖开花", [2]string{"冷", "凉"}},
+		{"鸟语花香", "鸟（  ）花香", "语", "小鸟鸣叫、花朵飘香", [2]string{"飞", "跑"}},
+		{"三心二意", "三（  ）二意", "心", "做事不专心、常变主意", [2]string{"眼", "手"}},
+		{"欢天喜地", "欢（  ）喜地", "天", "形容非常开心快乐", [2]string{"云", "山"}},
+		{"十全十美", "十（  ）十美", "全", "样样都好没有缺点", [2]string{"半", "少"}},
+		{"四面八方", "四（  ）八方", "面", "指周围各个方向", [2]string{"边", "角"}},
+		{"东张西望", "东（  ）西望", "张", "向周围到处看、不专心", [2]string{"走", "跑"}},
+	}
+	idioms67 := []dynIdiomEntry{
+		{"一举两得", "一（  ）两得", "举", "做一件事同时收获两个好处", [2]string{"走", "拿"}},
+		{"千山万水", "千（  ）万水", "山", "经过很多高山大河、路途遥远", [2]string{"风", "云"}},
+		{"手舞足蹈", "手（  ）足蹈", "舞", "高兴得拍手跳脚", [2]string{"拿", "摆"}},
+		{"大步流星", "大（  ）流星", "步", "脚步迈得大、走得极快", [2]string{"跑", "飞"}},
+		{"百花齐放", "百（  ）齐放", "花", "各种鲜花一齐盛开", [2]string{"草", "树"}},
+		{"兴高采烈", "兴（  ）采烈", "高", "兴致极高、情绪热烈", [2]string{"低", "大"}},
+		{"山清水秀", "山（  ）水秀", "清", "山水风景十分优美", [2]string{"高", "青"}},
+		{"人山人海", "人（  ）人海", "山", "聚集的人非常多、很热闹", [2]string{"水", "林"}},
+		{"津津有味", "津（  ）有味", "津", "觉得特别有趣味或很香甜", [2]string{"金", "进"}},
+		{"左顾右盼", "左（  ）右盼", "顾", "向左右两边不停看", [2]string{"看", "跑"}},
+		{"争先恐后", "争（  ）恐后", "先", "抢着向前、生怕落后", [2]string{"前", "早"}},
+		{"无边无际", "无（  ）无际", "边", "极其宽广、望不到尽头", [2]string{"处", "头"}},
+	}
+	idioms8 := []dynIdiomEntry{
+		{"名列前茅", "名列前（  ）", "茅", "成绩或名次排在最前列", [2]string{"矛", "毛"}},
+		{"专心致志", "专心（  ）志", "致", "心思集中、非常专心", [2]string{"制", "智"}},
+		{"风和日丽", "风（  ）日丽", "和", "微风温和、阳光明媚", [2]string{"高", "平"}},
+		{"天寒地冻", "天寒地（  ）", "冻", "冬天非常寒冷、大地结冰", [2]string{"动", "冷"}},
+		{"鸦雀无声", "（  ）雀无声", "鸦", "形容非常安静、一点声响都没有", [2]string{"鸭", "鸡"}},
+		{"井井有条", "井井有（  ）", "条", "做事或物品整理得很有秩序", [2]string{"理", "序"}},
+		{"迫不及待", "迫不（  ）待", "及", "心里急切得等不下去", [2]string{"急", "即"}},
+		{"胸有成竹", "胸有成（  ）", "竹", "做事之前心里早就很有把握", [2]string{"足", "书"}},
+		{"水滴石穿", "水（  ）石穿", "滴", "比喻坚持不断做小事就能攻克难关", [2]string{"流", "冲"}},
+		{"画龙点睛", "画龙点（  ）", "睛", "关键处加上精彩一笔使内容更生动", [2]string{"晴", "眼"}},
+		{"惊弓之鸟", "惊（  ）之鸟", "弓", "受过惊吓、一遇动静就害怕的人", [2]string{"风", "剑"}},
+		{"锲而不舍", "锲而不（  ）", "舍", "比喻有恒心、坚持不懈地做下去", [2]string{"弃", "停"}},
+	}
+	idioms910 := []dynIdiomEntry{
+		{"精益求精", "精（  ）求精", "益", "已经很好了还追求更好", [2]string{"意", "艺"}},
+		{"络绎不绝", "络（  ）不绝", "绎", "行人车马前后接连不断", [2]string{"译", "驿"}},
+		{"拾金不昧", "拾金不（  ）", "昧", "捡到别人钱物不私自藏起来", [2]string{"味", "妹"}},
+		{"波澜壮阔", "波（  ）壮阔", "澜", "水面波浪巨大、气势壮观", [2]string{"兰", "栏"}},
+		{"三顾茅庐", "三（  ）茅庐", "顾", "诚心诚意多次上门拜访人才", [2]string{"雇", "故"}},
+		{"破釜沉舟", "破（  ）沉舟", "釜", "下定必胜决心、不留退路", [2]string{"斧", "父"}},
+		{"韦编三绝", "（  ）编三绝", "韦", "形容勤奋读书反复研读", [2]string{"伟", "围"}},
+		{"再接再厉", "再接再（  ）", "厉", "一次又一次继续努力不松懈", [2]string{"励", "历"}},
+		{"完璧归赵", "完（  ）归赵", "璧", "把借用或托付的东西完好归还", [2]string{"壁", "碧"}},
+		{"闻鸡起舞", "闻鸡起（  ）", "舞", "有志之人及时发奋努力", [2]string{"武", "午"}},
+		{"老马识途", "老马识（  ）", "途", "有经验的人熟悉情况能作向导", [2]string{"图", "涂"}},
+		{"塞翁失马", "（  ）翁失马", "塞", "坏事在一定条件下可能变成好事", [2]string{"赛", "寒"}},
+	}
+	idioms1114 := []dynIdiomEntry{
+		{"循序渐进", "循序（  ）进", "渐", "按一定顺序步骤慢慢深入提高", [2]string{"剑", "建"}},
+		{"实事求是", "实事求（  ）", "是", "从客观实际出发探求真相和规律", [2]string{"事", "实"}},
+		{"不耻下问", "不（  ）下问", "耻", "不以向不如自己的人请教为羞耻", [2]string{"齿", "尺"}},
+		{"见贤思齐", "见贤思（  ）", "齐", "见到德才兼备的人就想向他看齐", [2]string{"奇", "期"}},
+		{"任重道远", "任（  ）道远", "重", "责任重大而且路途遥远需长期奋斗", [2]string{"众", "中"}},
+		{"废寝忘食", "废（  ）忘食", "寝", "专心学习或工作忘记睡觉和吃饭", [2]string{"睡", "清"}},
+		{"厚积薄发", "厚积（  ）发", "薄", "长期充分积累后再慢慢展现才华", [2]string{"博", "泊"}},
+		{"杞人忧天", "（  ）人忧天", "杞", "为不必要或没根据的事情白发愁", [2]string{"起", "企"}},
+		{"缘木求鱼", "（  ）木求鱼", "缘", "方法或方向不对头达不到目的", [2]string{"原", "圆"}},
+		{"班门弄斧", "班门弄（  ）", "斧", "在行家面前卖弄自己不熟练的本领", [2]string{"父", "府"}},
+		{"曲高和寡", "曲高（  ）寡", "和", "作品或言论越深奥理解附和的人越少", [2]string{"合", "河"}},
+		{"汗牛充栋", "汗牛充（  ）", "栋", "形容藏书或著作数量极其多", [2]string{"冻", "洞"}},
+		{"相濡以沫", "相（  ）以沫", "濡", "身处困境互相以微薄力量救助扶持", [2]string{"儒", "需"}},
+		{"韬光养晦", "（  ）光养晦", "韬", "隐藏才能不轻易炫耀并积蓄力量", [2]string{"滔", "涛"}},
+		{"美轮美奂", "美轮美（  ）", "奂", "形容高大华美的建筑物或装饰", [2]string{"换", "焕"}},
+		{"巧夺天工", "巧夺天（  ）", "工", "人工制作极其精巧胜过天然", [2]string{"功", "公"}},
+	}
+
+	var pool []dynIdiomEntry
+	switch ageGroup {
+	case "3-5":
+		pool = append(pool, idioms35...)
+		if diff == "hard" {
+			pool = append(pool, idioms67[:6]...)
+		}
+	case "6-7":
+		pool = append(pool, idioms67...)
+		if diff == "easy" {
+			pool = append(pool, idioms35[5:]...)
+		} else if diff == "hard" {
+			pool = append(pool, idioms8[:6]...)
+		}
+	case "8":
+		pool = append(pool, idioms8...)
+		if diff == "easy" {
+			pool = append(pool, idioms67[4:]...)
+		} else if diff == "hard" {
+			pool = append(pool, idioms910[:6]...)
+		}
+	case "9-10":
+		pool = append(pool, idioms910...)
+		if diff == "easy" {
+			pool = append(pool, idioms8[4:]...)
+		} else if diff == "hard" {
+			pool = append(pool, idioms1114[:6]...)
+		}
+	default: // 11-14
+		pool = append(pool, idioms1114...)
+		if diff == "easy" {
+			pool = append(pool, idioms910[4:]...)
+		}
+	}
+
+	e := pool[rng.Intn(len(pool))]
+	askBlank := rng.Intn(2) == 0
+	if askBlank {
+		text := fmt.Sprintf("动态成语填空：%s（意指：%s），括号里应填哪个字？", e.blanked, e.meaning)
+		opts := []string{e.ansChar, e.alts[0], e.alts[1]}
+		return text, opts
+	}
+
+	names := make([]string, len(pool))
+	for i, item := range pool {
+		names[i] = item.idiom
+	}
+	text := fmt.Sprintf("成语猜一猜：形容“%s”，最恰当的是哪个成语？", e.meaning)
+	opts := pickDistractors(names, e.idiom)
+	return text, opts
 }
 
 func ageBoundsForGroup(g string) (int, int) {

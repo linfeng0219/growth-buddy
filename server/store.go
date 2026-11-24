@@ -327,6 +327,54 @@ func (s *Store) initSchema() error {
 			created_at INTEGER NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_family_letters_child ON family_letters(child_id, created_at DESC);
+
+		CREATE TABLE IF NOT EXISTS friend_requests (
+			id TEXT PRIMARY KEY,
+			from_child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			to_child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			message TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_friend_req_to ON friend_requests(to_child_id, status, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_friend_req_from ON friend_requests(from_child_id, status);
+
+		CREATE TABLE IF NOT EXISTS friendships (
+			child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			friend_child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			group_name TEXT NOT NULL DEFAULT '朋友',
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY (child_id, friend_child_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_friendships_child ON friendships(child_id, group_name);
+
+		CREATE TABLE IF NOT EXISTS chat_media (
+			id TEXT PRIMARY KEY,
+			conv_key TEXT NOT NULL,
+			mime_type TEXT NOT NULL,
+			data_b64 TEXT NOT NULL,
+			byte_size INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_chat_media_conv ON chat_media(conv_key);
+
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id TEXT PRIMARY KEY,
+			conv_key TEXT NOT NULL,
+			sender_type TEXT NOT NULL,
+			sender_id TEXT NOT NULL,
+			receiver_type TEXT NOT NULL,
+			receiver_id TEXT NOT NULL,
+			msg_type TEXT NOT NULL,
+			text_content TEXT NOT NULL DEFAULT '',
+			media_id TEXT NOT NULL DEFAULT '',
+			duration_sec INTEGER NOT NULL DEFAULT 0,
+			is_read INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_chat_conv ON chat_messages(conv_key, created_at ASC);
+		CREATE INDEX IF NOT EXISTS idx_chat_unread ON chat_messages(receiver_type, receiver_id, is_read);
 	`
 	if err := s.db.ExecRaw(ddl); err != nil {
 		return err
@@ -349,6 +397,7 @@ func (s *Store) initSchema() error {
 		{"children", "quiz_difficulty", "quiz_difficulty TEXT NOT NULL DEFAULT 'normal'"},
 		{"children", "adventure_win_date", "adventure_win_date TEXT NOT NULL DEFAULT ''"},
 		{"children", "adventure_win_xp", "adventure_win_xp INTEGER NOT NULL DEFAULT 0"},
+		{"children", "friend_code", "friend_code TEXT NOT NULL DEFAULT ''"},
 		{"polaroids", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "icon_url", "icon_url TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},
@@ -371,8 +420,20 @@ func (s *Store) initSchema() error {
 	if err := s.db.ExecRaw("CREATE UNIQUE INDEX IF NOT EXISTS idx_children_username ON children(username) WHERE username != ''"); err != nil {
 		return err
 	}
+	if err := s.db.ExecRaw("CREATE UNIQUE INDEX IF NOT EXISTS idx_children_friend_code ON children(friend_code) WHERE friend_code != ''"); err != nil {
+		return err
+	}
 
 	return s.db.WithLock(func(tx *Tx) error {
+		var emptyIDs []string
+		_ = tx.Query("SELECT id FROM children WHERE friend_code = ''", func(r SQLiteRow) error {
+			emptyIDs = append(emptyIDs, r.String(0))
+			return nil
+		})
+		for _, cid := range emptyIDs {
+			code := s.uniqueFriendCodeLocked(tx)
+			_, _ = tx.Exec("UPDATE children SET friend_code = ? WHERE id = ?", code, cid)
+		}
 		var count int
 		_ = tx.QueryRow("SELECT COUNT(*) FROM admins", func(r SQLiteRow) error {
 			count = r.Int(0)
@@ -585,6 +646,8 @@ type ChildSummaryDTO struct {
 	Age              int     `json:"age"`
 	QuizDifficulty   string  `json:"quiz_difficulty"`
 	UnreadLetters    int     `json:"unread_letters"`
+	UnreadChat       int     `json:"unread_chat"`
+	PendingFriends   int     `json:"pending_friend_requests"`
 	AdventureXPToday int     `json:"adventure_xp_today"`
 	AdventureXPLimit int     `json:"adventure_xp_limit"`
 }
@@ -710,8 +773,8 @@ func (s *Store) RegisterFamily(in RegisterFamilyInput) (*RegisterFamilyResult, e
 			childPassPlain = in.ChildPassword
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, created_at) VALUES (?, ?, ?, 0, ?, ?, ?, '', '', 0, 0, ?)",
-			childID, familyID, firstChildName, cleanChildUser, childPassHash, childPassPlain, now,
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, friend_code, created_at) VALUES (?, ?, ?, 0, ?, ?, ?, '', '', 0, 0, ?, ?)",
+			childID, familyID, firstChildName, cleanChildUser, childPassHash, childPassPlain, s.uniqueFriendCodeLocked(tx), now,
 		); err != nil {
 			return err
 		}
@@ -982,6 +1045,24 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 		}, childID,
 	)
 	child.UnreadLetters = unreadLetters
+
+	var unreadChat, pendingFriends int
+	_ = tx.QueryRow(
+		"SELECT COUNT(*) FROM chat_messages WHERE receiver_type = 'child' AND receiver_id = ? AND is_read = 0",
+		func(r SQLiteRow) error {
+			unreadChat = r.Int(0)
+			return nil
+		}, childID,
+	)
+	_ = tx.QueryRow(
+		"SELECT COUNT(*) FROM friend_requests WHERE to_child_id = ? AND status = 'pending'",
+		func(r SQLiteRow) error {
+			pendingFriends = r.Int(0)
+			return nil
+		}, childID,
+	)
+	child.UnreadChat = unreadChat
+	child.PendingFriends = pendingFriends
 
 	var fam FamilyDTO
 	_ = tx.QueryRow("SELECT id, name, family_code FROM families WHERE id = ?", func(r SQLiteRow) error {
@@ -2270,8 +2351,8 @@ func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username,
 			passPlain = password
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, age, quiz_difficulty, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?)",
-			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, passPlain, cleanPin, normAge, normDiff, nowMs(),
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, age, quiz_difficulty, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?, ?)",
+			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, passPlain, cleanPin, normAge, normDiff, s.uniqueFriendCodeLocked(tx), nowMs(),
 		); err != nil {
 			return err
 		}

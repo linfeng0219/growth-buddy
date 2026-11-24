@@ -1,5 +1,6 @@
 package com.growthbuddy.child
 
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -42,6 +43,7 @@ class MailboxActivity : AppCompatActivity() {
     private lateinit var api: ApiClient
     private lateinit var sound: NativeSoundEngine
     private var hasChangedState = false
+    private var cachedLetters: List<LetterItem> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,7 +62,24 @@ class MailboxActivity : AppCompatActivity() {
             showComposeDialog()
         }
 
+        applyResponsiveLayout()
         loadLetters()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveLayout()
+        if (cachedLetters.isNotEmpty()) {
+            renderLetters(cachedLetters)
+        }
+    }
+
+    private fun applyResponsiveLayout() {
+        val m = ResponsiveUi.metrics(this)
+        val maxW = if (m.isDesktopSplit) 1040 else if (m.isTablet) 740 else 1200
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.mailTopBar, maxW, horizontalReserveDp = 28)
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.tvMailHint, maxW, horizontalReserveDp = 28)
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.mailScroll, maxW, horizontalReserveDp = 28)
     }
 
     private fun loadLetters() {
@@ -102,6 +121,7 @@ class MailboxActivity : AppCompatActivity() {
     }
 
     private fun renderLetters(list: List<LetterItem>) {
+        cachedLetters = list
         binding.lettersContainer.removeAllViews()
         if (list.isEmpty()) {
             val emptyTv = TextView(this).apply {
@@ -116,114 +136,141 @@ class MailboxActivity : AppCompatActivity() {
             return
         }
 
+        val cols = if (ResponsiveUi.metrics(this).isDesktopSplit) 2 else 1
         val fmt = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-        list.forEach { item ->
-            val isParent = item.senderRole == "parent"
-            val unreadParent = isParent && !item.isRead
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = GradientDrawable().apply {
-                    setColor(
-                        Color.parseColor(
-                            when {
-                                unreadParent -> "#FFFDF4"
-                                isParent -> "#F3F9F5"
-                                else -> "#FFFFFF"
-                            }
+        for (rowItems in list.chunked(cols)) {
+            val row = if (cols > 1) {
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+                }
+            } else null
+
+            for (idx in 0 until cols) {
+                val item = rowItems.getOrNull(idx)
+                if (item == null) {
+                    row?.addView(View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
+                            if (idx > 0) marginStart = dp(12)
+                        }
+                    })
+                    continue
+                }
+                val isParent = item.senderRole == "parent"
+                val unreadParent = isParent && !item.isRead
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = GradientDrawable().apply {
+                        setColor(
+                            Color.parseColor(
+                                when {
+                                    unreadParent -> "#FFFDF4"
+                                    isParent -> "#F3F9F5"
+                                    else -> "#FFFFFF"
+                                }
+                            )
                         )
-                    )
-                    cornerRadius = dp(14).toFloat()
-                    setStroke(
-                        dp(if (unreadParent) 2 else 1),
-                        Color.parseColor(if (unreadParent) "#E8913A" else if (isParent) "#C5DFCD" else "#E5DCCB")
-                    )
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(10)
-                }
-            }
-
-            // 头部：邮票 + 标题 + 未读/礼物标签
-            val headerRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            val titleTv = TextView(this).apply {
-                text = "${item.stamp} ${item.title}"
-                textSize = 15.5f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#233128"))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val badgeTv = TextView(this).apply {
-                textSize = 11.5f
-                setPadding(dp(8), dp(3), dp(8), dp(3))
-                when {
-                    unreadParent && item.bonusXp > 0 -> {
-                        text = "🎁 新信件 +${item.bonusXp}XP"
-                        setTextColor(Color.WHITE)
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#E8913A"))
-                            cornerRadius = dp(99).toFloat()
-                        }
+                        cornerRadius = dp(14).toFloat()
+                        setStroke(
+                            dp(if (unreadParent) 2 else 1),
+                            Color.parseColor(if (unreadParent) "#E8913A" else if (isParent) "#C5DFCD" else "#E5DCCB")
+                        )
                     }
-                    unreadParent -> {
-                        text = "✨ 未拆封"
-                        setTextColor(Color.WHITE)
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#E11D48"))
-                            cornerRadius = dp(99).toFloat()
+                    layoutParams = if (cols > 1) {
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                            if (idx > 0) marginStart = dp(12)
                         }
-                    }
-                    isParent -> {
-                        text = if (item.bonusXp > 0) "已领 +${item.bonusXp}XP" else "已读"
-                        setTextColor(Color.parseColor("#2F6B4F"))
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#E3F2E8"))
-                            cornerRadius = dp(99).toFloat()
-                        }
-                    }
-                    else -> {
-                        text = if (item.isRead) "爸妈已读 ✓" else "已寄给爸妈"
-                        setTextColor(Color.parseColor("#8A5A2B"))
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#FFF4DF"))
-                            cornerRadius = dp(99).toFloat()
-                        }
+                    } else {
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = dp(10) }
                     }
                 }
-            }
-            headerRow.addView(titleTv)
-            headerRow.addView(badgeTv)
 
-            val metaTv = TextView(this).apply {
-                val timeStr = if (item.createdAt > 0) fmt.format(Date(item.createdAt)) else ""
-                text = if (isParent) "来自：${item.senderName} · $timeStr" else "我寄给爸爸妈妈 · $timeStr"
-                textSize = 12f
-                setTextColor(Color.parseColor("#8A7E6E"))
-                setPadding(0, dp(3), 0, dp(6))
-            }
+                // 头部：邮票 + 标题 + 未读/礼物标签
+                val headerRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                val titleTv = TextView(this).apply {
+                    text = "${item.stamp} ${item.title}"
+                    textSize = 15.5f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#233128"))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val badgeTv = TextView(this).apply {
+                    textSize = 11.5f
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    when {
+                        unreadParent && item.bonusXp > 0 -> {
+                            text = "🎁 新信件 +${item.bonusXp}XP"
+                            setTextColor(Color.WHITE)
+                            background = GradientDrawable().apply {
+                                setColor(Color.parseColor("#E8913A"))
+                                cornerRadius = dp(99).toFloat()
+                            }
+                        }
+                        unreadParent -> {
+                            text = "✨ 未拆封"
+                            setTextColor(Color.WHITE)
+                            background = GradientDrawable().apply {
+                                setColor(Color.parseColor("#E11D48"))
+                                cornerRadius = dp(99).toFloat()
+                            }
+                        }
+                        isParent -> {
+                            text = if (item.bonusXp > 0) "已领 +${item.bonusXp}XP" else "已读"
+                            setTextColor(Color.parseColor("#2F6B4F"))
+                            background = GradientDrawable().apply {
+                                setColor(Color.parseColor("#E3F2E8"))
+                                cornerRadius = dp(99).toFloat()
+                            }
+                        }
+                        else -> {
+                            text = if (item.isRead) "爸妈已读 ✓" else "已寄给爸妈"
+                            setTextColor(Color.parseColor("#8A5A2B"))
+                            background = GradientDrawable().apply {
+                                setColor(Color.parseColor("#FFF4DF"))
+                                cornerRadius = dp(99).toFloat()
+                            }
+                        }
+                    }
+                }
+                headerRow.addView(titleTv)
+                headerRow.addView(badgeTv)
 
-            val bodyTv = TextView(this).apply {
-                text = if (unreadParent) "点击拆开这封来自${item.senderName}的信件..." else item.content
-                textSize = 14f
-                setTextColor(Color.parseColor(if (unreadParent) "#B8621B" else "#3D372E"))
-                if (unreadParent) setTypeface(null, Typeface.ITALIC)
-                setLineSpacing(6f, 1.15f)
-            }
+                val metaTv = TextView(this).apply {
+                    val timeStr = if (item.createdAt > 0) fmt.format(Date(item.createdAt)) else ""
+                    text = if (isParent) "来自：${item.senderName} · $timeStr" else "我寄给爸爸妈妈 · $timeStr"
+                    textSize = 12f
+                    setTextColor(Color.parseColor("#8A7E6E"))
+                    setPadding(0, dp(3), 0, dp(6))
+                }
 
-            card.addView(headerRow)
-            card.addView(metaTv)
-            card.addView(bodyTv)
+                val bodyTv = TextView(this).apply {
+                    text = if (unreadParent) "点击拆开这封来自${item.senderName}的信件..." else item.content
+                    textSize = 14f
+                    setTextColor(Color.parseColor(if (unreadParent) "#B8621B" else "#3D372E"))
+                    if (unreadParent) setTypeface(null, Typeface.ITALIC)
+                    setLineSpacing(6f, 1.15f)
+                }
 
-            if (isParent) {
-                card.setOnClickListener { openParentLetterDialog(item) }
+                card.addView(headerRow)
+                card.addView(metaTv)
+                card.addView(bodyTv)
+
+                if (isParent) {
+                    card.setOnClickListener { openParentLetterDialog(item) }
+                }
+                if (row != null) row.addView(card) else binding.lettersContainer.addView(card)
             }
-            binding.lettersContainer.addView(card)
+            if (row != null) binding.lettersContainer.addView(row)
         }
     }
 

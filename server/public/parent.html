@@ -189,6 +189,7 @@
       <button data-tab="logs">打卡记录与汇总</button>
       <button data-tab="studio">伙伴工作室</button>
       <button data-tab="family">家庭与档案</button>
+      <button data-tab="chat">💬 家庭聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
       <button data-tab="mailbox">📬 家长信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
     </nav>
 
@@ -584,6 +585,26 @@
         </div>
         <div class="msg" id="qMsg"></div>
         <div id="questionList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
+      </div>
+    </section>
+
+    <!-- 5.5 家庭即时聊天（同家庭自动成为好友） -->
+    <section id="tab-chat" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>💬 家庭即时聊天（文字 · 语音 · 图片）</h2>
+          <span class="pill">同家庭自动位于孩子的「家庭」分组</span>
+        </div>
+        <div class="child-filter-bar" id="chatContactsBar" style="margin-bottom:10px"></div>
+        <div id="parentChatBox" style="background:#faf6ee;border:1px solid var(--hair-2);border-radius:14px;padding:12px;height:360px;overflow-y:auto;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="pChatImgFile" accept="image/*" style="display:none">
+          <button type="button" class="sm" id="btnPChatImg">🖼️ 发图片</button>
+          <button type="button" class="sm" id="btnPChatVoice">🎤 录语音</button>
+          <input type="text" id="pChatInput" maxlength="500" placeholder="给孩子发一句暖心消息..." style="flex:1;min-width:160px">
+          <button type="button" class="primary sm" id="btnPChatSend">发送</button>
+        </div>
+        <div class="msg" id="pChatMsg"></div>
       </div>
     </section>
 
@@ -1212,8 +1233,9 @@
     document.querySelectorAll(".tabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-tab")===tg);
     });
-    ["overview","tasks","logs","studio","family","mailbox"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
+    ["overview","tasks","logs","studio","family","chat","mailbox"].forEach(function(k){$id("tab-"+k).style.display=(k===tg)?"":"none";});
     if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
+    if(tg==="chat"){loadParentChatContacts(true);}
     if(tg==="mailbox"){loadParentMailbox();}
   }
 
@@ -2266,6 +2288,143 @@
     }catch(e){note("mailMsg",e.message,true);}
   });
 
+  /* ==================== 家庭即时聊天 ==================== */
+  var activeChatChildId="";
+  var chatContacts=[];
+  var chatRecMedia=null;
+  var chatRecChunks=[];
+  var chatRecStartMs=0;
+  var chatPollTimer=null;
+
+  async function loadParentChatContacts(loadMessages){
+    try{
+      var r=await api("/api/parent/chat/contacts");
+      chatContacts=r.contacts||[];
+      var totalUnread=chatContacts.reduce(function(acc,c){return acc+(c.unread_count||0);},0);
+      var badge=$id("chatUnreadBadge");
+      if(totalUnread>0){badge.style.display="inline-block";badge.textContent=totalUnread;}
+      else{badge.style.display="none";}
+
+      var bar=$id("chatContactsBar");
+      if(!chatContacts.length){
+        bar.innerHTML='<span style="color:var(--muted);font-size:13px">暂无孩子档案</span>';
+        $id("parentChatBox").innerHTML="";
+        return;
+      }
+      if(!activeChatChildId||!chatContacts.some(function(c){return c.peer_id===activeChatChildId;})){
+        activeChatChildId=chatContacts[0].peer_id;
+      }
+      bar.innerHTML="";
+      chatContacts.forEach(function(c){
+        var b=document.createElement("button");b.type="button";
+        b.className=(c.peer_id===activeChatChildId)?"on":"";
+        b.innerHTML=GBArt.avatarHtml(c.avatar_idx,c.avatar_url,20)+" "+GBArt.esc(c.name)+(c.unread_count>0?' <span style="background:#e11d48;color:#fff;font-size:10px;padding:1px 5px;border-radius:999px">'+c.unread_count+"</span>":"");
+        b.addEventListener("click",function(){
+          activeChatChildId=c.peer_id;
+          loadParentChatContacts(true);
+        });
+        bar.appendChild(b);
+      });
+      if(loadMessages) await loadParentChatMessages();
+    }catch(e){}
+  }
+
+  async function loadParentChatMessages(){
+    if(!activeChatChildId) return;
+    try{
+      var r=await api("/api/parent/chat/messages?childId="+encodeURIComponent(activeChatChildId));
+      var msgs=r.messages||[];
+      var box=$id("parentChatBox");
+      if(!msgs.length){
+        box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 10px">还没有聊天记录，给孩子发一条文字、图片或语音消息吧~</div>';
+        return;
+      }
+      var tok=encodeURIComponent(token()||"");
+      box.innerHTML=msgs.map(function(m){
+        var mine=!!m.is_self;
+        var dt=new Date(m.created_at);
+        var tm=String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+        var inner="";
+        if(m.msg_type==="image"&&m.media_url){
+          inner='<img src="'+m.media_url+'?token='+tok+'" style="max-width:200px;max-height:220px;border-radius:10px;display:block">';
+        }else if(m.msg_type==="voice"&&m.media_url){
+          inner='<div style="font-size:12px;margin-bottom:4px">🎤 语音 '+m.duration_sec+'″</div><audio controls preload="none" src="'+m.media_url+'?token='+tok+'" style="height:34px;max-width:220px"></audio>';
+        }else{
+          inner='<div style="white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.5">'+GBArt.esc(m.text||"")+'</div>';
+        }
+        return '<div style="display:flex;flex-direction:column;align-items:'+(mine?"flex-end":"flex-start")+';margin-bottom:10px">'
+          +'<div style="max-width:78%;padding:9px 12px;border-radius:14px;background:'+(mine?"#dff2e6":"#fff")+';border:1px solid '+(mine?"#b8d9c4":"#e6dfd1")+'">'+inner+'</div>'
+          +'<span style="font-size:10.5px;color:var(--muted);margin-top:2px">'+tm+'</span>'
+          +'</div>';
+      }).join("");
+      box.scrollTop=box.scrollHeight;
+      loadParentChatContacts(false);
+    }catch(e){}
+  }
+
+  $id("btnPChatSend").addEventListener("click",async function(){
+    var txt=$id("pChatInput").value.trim();
+    if(!txt||!activeChatChildId) return;
+    try{
+      await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"text",text:txt})});
+      $id("pChatInput").value="";
+      await loadParentChatMessages();
+    }catch(e){note("pChatMsg",e.message,true);}
+  });
+  $id("pChatInput").addEventListener("keydown",function(e){if(e.key==="Enter"){$id("btnPChatSend").click();}});
+  $id("btnPChatImg").addEventListener("click",function(){$id("pChatImgFile").click();});
+  $id("pChatImgFile").addEventListener("change",function(){
+    var f=this.files&&this.files[0];this.value="";
+    if(!f||!activeChatChildId) return;
+    var reader=new FileReader();
+    reader.onload=async function(){
+      try{
+        await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"image",mediaData:reader.result,mimeType:f.type||"image/jpeg"})});
+        await loadParentChatMessages();
+      }catch(e){note("pChatMsg",e.message,true);}
+    };
+    reader.readAsDataURL(f);
+  });
+  $id("btnPChatVoice").addEventListener("click",async function(){
+    if(!activeChatChildId) return;
+    if(chatRecMedia&&chatRecMedia.state==="recording"){
+      chatRecMedia.stop();
+      return;
+    }
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||typeof MediaRecorder==="undefined"){
+      note("pChatMsg","当前浏览器不支持直接录音（孩子端 App 可随时发送语音）",true);
+      return;
+    }
+    try{
+      var stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      chatRecChunks=[];
+      chatRecStartMs=Date.now();
+      chatRecMedia=new MediaRecorder(stream);
+      chatRecMedia.ondataavailable=function(ev){if(ev.data&&ev.data.size>0) chatRecChunks.push(ev.data);};
+      chatRecMedia.onstop=function(){
+        stream.getTracks().forEach(function(t){t.stop();});
+        $id("btnPChatVoice").textContent="🎤 录语音";
+        var dur=Math.max(1,Math.round((Date.now()-chatRecStartMs)/1000));
+        var blob=new Blob(chatRecChunks,{type:chatRecMedia.mimeType||"audio/webm"});
+        var rdr=new FileReader();
+        rdr.onload=async function(){
+          try{
+            await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({childId:activeChatChildId,msgType:"voice",mediaData:rdr.result,mimeType:blob.type||"audio/webm",durationSec:dur})});
+            await loadParentChatMessages();
+          }catch(err){note("pChatMsg",err.message,true);}
+        };
+        rdr.readAsDataURL(blob);
+      };
+      chatRecMedia.start();
+      $id("btnPChatVoice").textContent="⏹️ 停止发送";
+    }catch(e){note("pChatMsg","无法打开麦克风："+e.message,true);}
+  });
+
+  chatPollTimer=setInterval(function(){
+    var sec=$id("tab-chat");
+    if(token()&&sec&&sec.style.display!=="none"&&activeChatChildId) loadParentChatMessages();
+  },4000);
+
   try{
     var hm=location.hash.match(/gb_app_token=([^&]+)/);
     if(hm&&hm[1]){
@@ -2273,7 +2432,7 @@
       if(history&&history.replaceState) history.replaceState(null,"",location.pathname+location.search);
     }
   }catch(e){}
-  if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); } else showAuth();
+  if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); loadParentChatContacts(false); } else showAuth();
 })();
 </script>
 </body>

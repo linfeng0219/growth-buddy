@@ -1,6 +1,7 @@
 package com.growthbuddy.child
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -14,6 +15,7 @@ import android.os.Bundle
 import android.util.Base64
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -202,6 +204,7 @@ class MainActivity : AppCompatActivity() {
 
         setupLoginUi()
         setupAppUi()
+        applyResponsiveLayout()
 
         val activeRole = ServerPrefs.getActiveRole(this)
         if (activeRole == "parent" && ServerPrefs.getParentToken(this).isNotEmpty()) {
@@ -220,6 +223,85 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updater.resumePendingInstallIfAllowed()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyResponsiveLayout()
+        state?.let {
+            renderDex(it)
+            renderPolaroids(it)
+        }
+    }
+
+    private fun applyResponsiveLayout() {
+        val m = ResponsiveUi.metrics(this)
+
+        // 登录页：平板横屏左右双栏（左宠物萌态介绍 / 右登录表单），平板竖屏居中限宽 500dp
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.loginTopBar, 940, horizontalReserveDp = 40)
+        val loginHeroLp = binding.loginHeroPane.layoutParams as LinearLayout.LayoutParams
+        val loginFormLp = binding.loginFormPane.layoutParams as LinearLayout.LayoutParams
+        val previewLp = binding.loginPetPreview.layoutParams
+        if (m.isDesktopSplit) {
+            binding.loginSplitRow.orientation = LinearLayout.HORIZONTAL
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.loginSplitRow, 920, horizontalReserveDp = 40)
+            loginHeroLp.width = 0
+            loginHeroLp.weight = 0.9f
+            loginFormLp.width = 0
+            loginFormLp.weight = 1.1f
+            loginFormLp.marginStart = dp(28)
+            previewLp.width = dp(244)
+            previewLp.height = dp(204)
+        } else {
+            binding.loginSplitRow.orientation = LinearLayout.VERTICAL
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.loginSplitRow, if (m.isTablet) 500 else 1000, horizontalReserveDp = 40)
+            loginHeroLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            loginHeroLp.weight = 0f
+            loginFormLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            loginFormLp.weight = 0f
+            loginFormLp.marginStart = 0
+            previewLp.width = dp(if (m.isTablet) 230 else 210)
+            previewLp.height = dp(if (m.isTablet) 190 else 175)
+        }
+        binding.loginHeroPane.layoutParams = loginHeroLp
+        binding.loginFormPane.layoutParams = loginFormLp
+        binding.loginPetPreview.layoutParams = previewLp
+
+        // 首页 & 图鉴页：平板横屏左右双栏（左宠物舞台+快捷胶囊 / 右今日专属任务）
+        val leftLp = binding.homeLeftPane.layoutParams as LinearLayout.LayoutParams
+        val rightLp = binding.homeRightPane.layoutParams as LinearLayout.LayoutParams
+        val stageLp = binding.petStageView.layoutParams
+        if (m.isDesktopSplit) {
+            binding.homeSection.orientation = LinearLayout.HORIZONTAL
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.homeSection, 1140, horizontalReserveDp = 28)
+            leftLp.width = 0
+            leftLp.weight = 0.92f
+            rightLp.width = 0
+            rightLp.weight = 1.08f
+            rightLp.topMargin = 0
+            rightLp.marginStart = dp(16)
+            stageLp.height = dp(244)
+        } else {
+            binding.homeSection.orientation = LinearLayout.VERTICAL
+            ResponsiveUi.applyCenteredMaxWidth(this, binding.homeSection, if (m.isTablet) 680 else 1200, horizontalReserveDp = 28)
+            leftLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            leftLp.weight = 0f
+            rightLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            rightLp.weight = 0f
+            rightLp.topMargin = dp(14)
+            rightLp.marginStart = 0
+            stageLp.height = dp(if (m.isTablet) 232 else if (m.isLandscape) 156 else 196)
+        }
+        binding.homeLeftPane.layoutParams = leftLp
+        binding.homeRightPane.layoutParams = rightLp
+        binding.petStageView.layoutParams = stageLp
+
+        ResponsiveUi.applyCenteredMaxWidth(
+            this,
+            binding.dexSection,
+            if (m.isDesktopSplit) 1140 else if (m.isTablet) 760 else 1200,
+            horizontalReserveDp = 28
+        )
     }
 
     private fun setupLoginUi() {
@@ -308,6 +390,10 @@ class MainActivity : AppCompatActivity() {
                 if (activeComp != null) putExtra(AdventureActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
             adventureLauncher.launch(intent)
+        }
+        binding.btnOpenFriends.setOnClickListener {
+            sound.playPat()
+            mailboxLauncher.launch(Intent(this, FriendsActivity::class.java))
         }
         binding.btnOpenMailbox.setOnClickListener {
             sound.playPat()
@@ -765,6 +851,17 @@ class MainActivity : AppCompatActivity() {
             else -> lvSpec.talk
         }
         binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
+
+        val socialBadge = c.unreadChat + c.pendingFriendRequests
+        if (socialBadge > 0) {
+            binding.btnOpenFriends.text = "💬 好友($socialBadge)"
+            binding.btnOpenFriends.setTextColor(0xFFB86511.toInt())
+            binding.btnOpenFriends.setBackgroundColor(0xFFFFF7EA.toInt())
+        } else {
+            binding.btnOpenFriends.text = "💬 好友"
+            binding.btnOpenFriends.setTextColor(0xFF2F6B4F.toInt())
+            binding.btnOpenFriends.setBackgroundColor(0xFFFFFDF9.toInt())
+        }
 
         if (c.unreadLetters > 0) {
             binding.btnOpenMailbox.text = "📬 ${c.unreadLetters}封新信"
@@ -1422,7 +1519,8 @@ class MainActivity : AppCompatActivity() {
         } + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
         binding.dexContainer.removeAllViews()
 
-        val pairs = st.catalog.chunked(2)
+        val cols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
+        val pairs = st.catalog.chunked(cols)
         for (rowItems in pairs) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1431,11 +1529,13 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(10) }
             }
-            for (idx in 0 until 2) {
+            for (idx in 0 until cols) {
                 val sp = rowItems.getOrNull(idx)
                 if (sp == null) {
                     val spacer = View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = dp(10) }
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
+                            if (idx > 0) marginStart = dp(10)
+                        }
                     }
                     row.addView(spacer)
                     continue
@@ -1453,7 +1553,7 @@ class MainActivity : AppCompatActivity() {
                         setStroke(dp(1), if (isOwned) 0xFFBED6C7.toInt() else 0xFFEAE2D3.toInt())
                     }
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (idx == 1) marginStart = dp(10)
+                        if (idx > 0) marginStart = dp(10)
                     }
                 }
 
@@ -1620,7 +1720,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        for (rowItems in st.polaroids.chunked(2)) {
+        val wallCols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
+        for (rowItems in st.polaroids.chunked(wallCols)) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
@@ -1628,11 +1729,13 @@ class MainActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(10) }
             }
-            for (idx in 0 until 2) {
+            for (idx in 0 until wallCols) {
                 val p = rowItems.getOrNull(idx)
                 if (p == null) {
                     row.addView(View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = dp(10) }
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
+                            if (idx > 0) marginStart = dp(10)
+                        }
                     })
                     continue
                 }
@@ -1646,7 +1749,7 @@ class MainActivity : AppCompatActivity() {
                         setStroke(dp(1), 0xFFE5DCCB.toInt())
                     }
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (idx == 1) marginStart = dp(10)
+                        if (idx > 0) marginStart = dp(10)
                     }
                 }
                 val photoBox = LinearLayout(this).apply {
