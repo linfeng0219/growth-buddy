@@ -223,7 +223,7 @@ func TestGroupChatAndFamilyDefaultGroupFlow(t *testing.T) {
 	if st != 201 {
 		t.Fatalf("create sibling failed: %d", st)
 	}
-	idEr := erCreated["child"].(map[string]any)["id"].(string)
+	idEr := erCreated["id"].(string)
 
 	st, regB := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
 		"familyName": "快乐家", "displayName": "爸爸", "username": "dad_grp", "password": "pass1234",
