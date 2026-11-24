@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -21,35 +22,28 @@ const (
 	idHotkeyBoss = 1
 	idTrayIcon   = 1
 
-	idBtnLogin        = 101
-	idBtnSettings     = 102
-	idBtnLogout       = 103
-	idBtnSend         = 104
-	idBtnPickBg       = 109
-	idChkBgTrans      = 114
-	idBtnAlpha25      = 115
-	idBtnAlpha50      = 116
-	idBtnAlpha75      = 117
-	idBtnAlpha90      = 118
-	idBtnAlpha100     = 119
-	idBtnPickFont     = 120
-	idBtnFontSize13   = 125
-	idBtnFontSize15   = 126
-	idBtnFontSize18   = 127
-	idBtnCloseSetting = 128
-	idEditMsg         = 129
-	idEditPass        = 130
-	idBtnHide         = 131
-	idBtnHKAltH       = 132
-	idBtnHKAltQ       = 133
-	idBtnHKCtrlAltH   = 134
-	idBtnHKF9         = 135
-	idBtnQuit         = 136
-	idBtnCheckUpdate  = 137
+	idBtnLogin = 101
+	idBtnSend  = 104
+	idEditMsg  = 129
+	idEditPass = 130
+	idBtnQuit  = 136
 
-	idMenuToggle   = 201
-	idMenuSettings = 202
-	idMenuQuit     = 203
+	idMenuToggle            = 201
+	idMenuPickFontColor     = 202
+	idMenuFont12            = 203
+	idMenuFont14            = 204
+	idMenuFont15            = 205
+	idMenuFont18            = 206
+	idMenuFont20            = 207
+	idMenuToggleTransparent = 208
+	idMenuPickBgColor       = 209
+	idMenuHKAltH            = 210
+	idMenuHKAltQ            = 211
+	idMenuHKCtrlAltH        = 212
+	idMenuHKF9              = 213
+	idMenuCheckUpdate       = 214
+	idMenuLogout            = 215
+	idMenuQuit              = 216
 )
 
 const chromaKeyRef uint32 = 0x00030201 // RGB(1, 2, 3)
@@ -57,25 +51,23 @@ const chromaKeyRef uint32 = 0x00030201 // RGB(1, 2, 3)
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
 
 type appState struct {
-	mu           sync.Mutex
-	hwnd         uintptr
-	hInst        uintptr
-	hIcon        uintptr
-	trayAdded    bool
-	cfg          FishConfig
-	custColors   [16]uint32
-	loggedIn     bool
-	showSettings bool
-	loggingIn    bool
-	polling      bool
-	sending      bool
-	loginStatus  string
-	messages     []ChatMsg
-	seenIDs      map[string]bool
-	lastMsgTs    int64
-	scrollY      int32
-	maxScrollY   int32
-	atBottom     bool
+	mu          sync.Mutex
+	hwnd        uintptr
+	hInst       uintptr
+	hIcon       uintptr
+	trayAdded   bool
+	cfg         FishConfig
+	loggedIn    bool
+	loggingIn   bool
+	polling     bool
+	sending     bool
+	loginStatus string
+	messages    []ChatMsg
+	seenIDs     map[string]bool
+	lastMsgTs   int64
+	scrollY     int32
+	maxScrollY  int32
+	atBottom    bool
 
 	uiFont   uintptr
 	boldFont uintptr
@@ -86,28 +78,14 @@ type appState struct {
 	// Login controls
 	hLblTitle, hBtnLoginQuit, hLblSrv, hEditSrv, hLblUser, hEditUser, hLblPass, hEditPass, hBtnLogin, hLblLoginStatus uintptr
 
-	// Chat controls
-	hLblGroup, hBtnHide, hBtnSettings, hBtnLogout, hEditMsg, hBtnSend uintptr
-
-	// Settings controls
-	hLblSetHead                                                  uintptr
-	hLblSizeHint                                                 uintptr
-	hLblBg, hBtnPickBg, hChkBgTrans                              uintptr
-	hLblAlpha, hBtnA25, hBtnA50, hBtnA75, hBtnA90, hBtnA100      uintptr
-	hLblFont, hBtnPickFont, hBtnFS13, hBtnFS15, hBtnFS18         uintptr
-	hLblHotkey, hBtnHKAltH, hBtnHKAltQ, hBtnHKCtrlAltH, hBtnHKF9 uintptr
-	hLblHKStatus                                                 uintptr
-	hLblVersion, hBtnCheckUpdate                                 uintptr
-	hBtnCloseSet, hBtnQuit                                       uintptr
+	// Chat controls (minimal: no hide/settings/logout buttons in window)
+	hLblGroup, hEditMsg, hBtnSend uintptr
 
 	checkingUpdate   bool
 	pendingUpdateRes *FishVersionResponse
 	pendingUpdateErr string
 	pendingUpdateMan bool
 
-	hotkeyStatus     string
-	bgSwatchRc       RECT
-	fgSwatchRc       RECT
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
 }
@@ -165,21 +143,13 @@ func (a *appState) refreshResources() {
 
 	allCtrls := []uintptr{
 		a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus,
-		a.hLblGroup, a.hBtnHide, a.hBtnSettings, a.hBtnLogout, a.hEditMsg, a.hBtnSend,
-		a.hLblSetHead, a.hLblSizeHint,
-		a.hLblBg, a.hBtnPickBg, a.hChkBgTrans,
-		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
-		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
-		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
-		a.hLblVersion, a.hBtnCheckUpdate,
-		a.hBtnCloseSet, a.hBtnQuit,
+		a.hLblGroup, a.hEditMsg, a.hBtnSend,
 	}
 	for _, h := range allCtrls {
 		setFont(h, a.uiFont)
 	}
 	setFont(a.hLblTitle, a.boldFont)
 	setFont(a.hLblGroup, a.boldFont)
-	setFont(a.hLblSetHead, a.boldFont)
 	setFont(a.hEditMsg, a.chatFont)
 
 	if a.hwnd != 0 {
@@ -187,7 +157,7 @@ func (a *appState) refreshResources() {
 		if a.cfg.BgTransparent {
 			flags |= LWA_COLORKEY
 		}
-		pSetLayeredWindowAttrs.Call(a.hwnd, uintptr(chromaKeyRef), uintptr(byte(a.cfg.Alpha)), uintptr(flags))
+		pSetLayeredWindowAttrs.Call(a.hwnd, uintptr(chromaKeyRef), 255, uintptr(flags))
 	}
 }
 
@@ -205,7 +175,6 @@ func (a *appState) createAllControls() {
 	stLbl := uint32(WS_CHILD)
 	stEdit := uint32(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_LEFT | ES_AUTOHSCROLL)
 	stBtn := uint32(WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON)
-	stChk := uint32(WS_CHILD | WS_TABSTOP | BS_AUTOCHECKBOX)
 
 	// Login UI
 	a.hLblTitle = createCtrl("STATIC", "🐟 fish", stLbl, 0, 0, 0, 100, 24, h, 0, inst)
@@ -219,48 +188,10 @@ func (a *appState) createAllControls() {
 	a.hBtnLogin = createCtrl("BUTTON", "登录家庭群", stBtn, 0, 0, 0, 120, 32, h, idBtnLogin, inst)
 	a.hLblLoginStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 240, 36, h, 0, inst)
 
-	// Chat UI
-	a.hLblGroup = createCtrl("STATIC", "🐟 家庭群", stLbl, 0, 0, 0, 180, 22, h, 0, inst)
-	a.hBtnHide = createCtrl("BUTTON", "隐藏", stBtn, 0, 0, 0, 44, 24, h, idBtnHide, inst)
-	a.hBtnSettings = createCtrl("BUTTON", "设置", stBtn, 0, 0, 0, 44, 24, h, idBtnSettings, inst)
-	a.hBtnLogout = createCtrl("BUTTON", "注销", stBtn, 0, 0, 0, 44, 24, h, idBtnLogout, inst)
+	// Chat UI (no Hide/Settings/Logout buttons on page)
+	a.hLblGroup = createCtrl("STATIC", "🐟 家庭群", stLbl, 0, 0, 0, 220, 22, h, 0, inst)
 	a.hEditMsg = createCtrl("EDIT", "", stEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
 	a.hBtnSend = createCtrl("BUTTON", "发送", stBtn, 0, 0, 0, 56, 28, h, idBtnSend, inst)
-
-	// Settings UI
-	a.hLblSetHead = createCtrl("STATIC", "外观与热键设置", stLbl, 0, 0, 0, 180, 22, h, 0, inst)
-	a.hLblSizeHint = createCtrl("STATIC", "窗口大小：鼠标拖动窗口四边或四角缩放", stLbl, 0, 0, 0, 260, 20, h, 0, inst)
-
-	a.hLblBg = createCtrl("STATIC", "背景颜色：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
-	a.hBtnPickBg = createCtrl("BUTTON", "打开取色器...", stBtn, 0, 0, 0, 110, 24, h, idBtnPickBg, inst)
-	a.hChkBgTrans = createCtrl("BUTTON", "背景全透明（仅保留文字）", stChk, 0, 0, 0, 210, 22, h, idChkBgTrans, inst)
-
-	a.hLblAlpha = createCtrl("STATIC", "透明度：", stLbl, 0, 0, 0, 64, 22, h, 0, inst)
-	a.hBtnA25 = createCtrl("BUTTON", "25%", stBtn, 0, 0, 0, 40, 24, h, idBtnAlpha25, inst)
-	a.hBtnA50 = createCtrl("BUTTON", "50%", stBtn, 0, 0, 0, 40, 24, h, idBtnAlpha50, inst)
-	a.hBtnA75 = createCtrl("BUTTON", "75%", stBtn, 0, 0, 0, 40, 24, h, idBtnAlpha75, inst)
-	a.hBtnA90 = createCtrl("BUTTON", "90%", stBtn, 0, 0, 0, 40, 24, h, idBtnAlpha90, inst)
-	a.hBtnA100 = createCtrl("BUTTON", "100%", stBtn, 0, 0, 0, 46, 24, h, idBtnAlpha100, inst)
-
-	a.hLblFont = createCtrl("STATIC", "字体颜色：", stLbl, 0, 0, 0, 74, 22, h, 0, inst)
-	a.hBtnPickFont = createCtrl("BUTTON", "打开取色器...", stBtn, 0, 0, 0, 110, 24, h, idBtnPickFont, inst)
-	a.hBtnFS13 = createCtrl("BUTTON", "小字", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize13, inst)
-	a.hBtnFS15 = createCtrl("BUTTON", "标准", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize15, inst)
-	a.hBtnFS18 = createCtrl("BUTTON", "大字", stBtn, 0, 0, 0, 48, 24, h, idBtnFontSize18, inst)
-
-	a.hLblHotkey = createCtrl("STATIC", "隐藏热键：", stLbl, 0, 0, 0, 68, 22, h, 0, inst)
-	a.hBtnHKAltH = createCtrl("BUTTON", "Alt+H", stBtn, 0, 0, 0, 48, 24, h, idBtnHKAltH, inst)
-	a.hBtnHKAltQ = createCtrl("BUTTON", "Alt+Q", stBtn, 0, 0, 0, 48, 24, h, idBtnHKAltQ, inst)
-	a.hBtnHKCtrlAltH = createCtrl("BUTTON", "Ctrl+Alt+H", stBtn, 0, 0, 0, 74, 24, h, idBtnHKCtrlAltH, inst)
-	a.hBtnHKF9 = createCtrl("BUTTON", "F9", stBtn, 0, 0, 0, 34, 24, h, idBtnHKF9, inst)
-	a.hLblHKStatus = createCtrl("STATIC", "", stLbl, 0, 0, 0, 260, 18, h, 0, inst)
-
-	verName, _ := currentFishVersion()
-	a.hLblVersion = createCtrl("STATIC", "版本：v"+verName, stLbl, 0, 0, 0, 170, 20, h, 0, inst)
-	a.hBtnCheckUpdate = createCtrl("BUTTON", "检查更新", stBtn, 0, 0, 0, 82, 24, h, idBtnCheckUpdate, inst)
-
-	a.hBtnCloseSet = createCtrl("BUTTON", "返回群聊", stBtn, 0, 0, 0, 120, 28, h, idBtnCloseSetting, inst)
-	a.hBtnQuit = createCtrl("BUTTON", "退出程序", stBtn, 0, 0, 0, 90, 28, h, idBtnQuit, inst)
 
 	// Subclass Enter key on message & password inputs
 	msgCb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
@@ -302,28 +233,13 @@ func (a *appState) layoutControls() {
 	pad := s(12)
 
 	showLogin := !a.loggedIn
-	showChat := a.loggedIn && !a.showSettings
-	showSet := a.loggedIn && a.showSettings
+	showChat := a.loggedIn
 
 	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblSrv, a.hEditSrv, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
 		showCtrl(h, showLogin)
 	}
-	for _, h := range []uintptr{a.hLblGroup, a.hBtnHide, a.hBtnSettings, a.hBtnLogout} {
-		showCtrl(h, a.loggedIn)
-	}
-	for _, h := range []uintptr{a.hEditMsg, a.hBtnSend} {
+	for _, h := range []uintptr{a.hLblGroup, a.hEditMsg, a.hBtnSend} {
 		showCtrl(h, showChat)
-	}
-	for _, h := range []uintptr{
-		a.hLblSetHead, a.hLblSizeHint,
-		a.hLblBg, a.hBtnPickBg, a.hChkBgTrans,
-		a.hLblAlpha, a.hBtnA25, a.hBtnA50, a.hBtnA75, a.hBtnA90, a.hBtnA100,
-		a.hLblFont, a.hBtnPickFont, a.hBtnFS13, a.hBtnFS15, a.hBtnFS18,
-		a.hLblHotkey, a.hBtnHKAltH, a.hBtnHKAltQ, a.hBtnHKCtrlAltH, a.hBtnHKF9, a.hLblHKStatus,
-		a.hLblVersion, a.hBtnCheckUpdate,
-		a.hBtnCloseSet, a.hBtnQuit,
-	} {
-		showCtrl(h, showSet)
 	}
 
 	if showLogin {
@@ -354,86 +270,17 @@ func (a *appState) layoutControls() {
 		return
 	}
 
-	// Top bar
-	btnW := s(42)
-	topH := s(25)
-	gap := s(5)
-	moveCtrl(a.hBtnLogout, cw-pad-btnW, s(8), btnW, topH)
-	moveCtrl(a.hBtnSettings, cw-pad-btnW*2-gap, s(8), btnW, topH)
-	moveCtrl(a.hBtnHide, cw-pad-btnW*3-gap*2, s(8), btnW, topH)
-	moveCtrl(a.hLblGroup, pad, s(10), cw-pad*2-btnW*3-gap*3, s(22))
-
+	moveCtrl(a.hLblGroup, pad, s(10), cw-pad*2, s(22))
 	if a.cfg.GroupName != "" {
 		setCtrlText(a.hLblGroup, "🐟 "+a.cfg.GroupName)
 	}
 
-	if showChat {
-		sendW := s(58)
-		inH := s(30)
-		inY := ch - pad - inH
-		moveCtrl(a.hEditMsg, pad, inY, cw-pad*2-sendW-gap, inH)
-		moveCtrl(a.hBtnSend, cw-pad-sendW, inY, sendW, inH)
-		return
-	}
-
-	if showSet {
-		x := pad
-		y := s(40)
-		moveCtrl(a.hLblSetHead, x, y, cw-pad*2, s(20))
-		y += s(24)
-
-		moveCtrl(a.hLblSizeHint, x, y, cw-pad*2, s(20))
-		y += s(26)
-
-		moveCtrl(a.hLblBg, x, y+s(3), s(66), s(18))
-		moveCtrl(a.hBtnPickBg, x+s(68), y, s(104), s(24))
-		a.bgSwatchRc = RECT{Left: x + s(178), Top: y + s(2), Right: x + s(206), Bottom: y + s(22)}
-		y += s(28)
-
-		moveCtrl(a.hChkBgTrans, x, y, cw-pad*2, s(20))
-		checked := uintptr(0)
-		if a.cfg.BgTransparent {
-			checked = 1
-		}
-		pSendMessageW.Call(a.hChkBgTrans, BM_SETCHECK, checked, 0)
-		y += s(26)
-
-		moveCtrl(a.hLblAlpha, x, y+s(2), s(58), s(18))
-		moveCtrl(a.hBtnA25, x+s(60), y, s(36), s(22))
-		moveCtrl(a.hBtnA50, x+s(99), y, s(36), s(22))
-		moveCtrl(a.hBtnA75, x+s(138), y, s(36), s(22))
-		moveCtrl(a.hBtnA90, x+s(177), y, s(36), s(22))
-		moveCtrl(a.hBtnA100, x+s(216), y, s(42), s(22))
-		y += s(28)
-
-		moveCtrl(a.hLblFont, x, y+s(3), s(66), s(18))
-		moveCtrl(a.hBtnPickFont, x+s(68), y, s(104), s(24))
-		a.fgSwatchRc = RECT{Left: x + s(178), Top: y + s(2), Right: x + s(206), Bottom: y + s(22)}
-		y += s(28)
-
-		moveCtrl(a.hBtnFS13, x+s(68), y, s(48), s(22))
-		moveCtrl(a.hBtnFS15, x+s(120), y, s(48), s(22))
-		moveCtrl(a.hBtnFS18, x+s(172), y, s(48), s(22))
-		y += s(28)
-
-		moveCtrl(a.hLblHotkey, x, y+s(2), s(64), s(18))
-		moveCtrl(a.hBtnHKAltH, x+s(66), y, s(46), s(22))
-		moveCtrl(a.hBtnHKAltQ, x+s(115), y, s(46), s(22))
-		moveCtrl(a.hBtnHKCtrlAltH, x+s(164), y, s(70), s(22))
-		moveCtrl(a.hBtnHKF9, x+s(237), y, s(32), s(22))
-		y += s(24)
-		moveCtrl(a.hLblHKStatus, x, y, cw-pad*2, s(18))
-		setCtrlText(a.hLblHKStatus, a.hotkeyStatus)
-		y += s(22)
-
-		moveCtrl(a.hLblVersion, x, y+s(3), s(166), s(18))
-		moveCtrl(a.hBtnCheckUpdate, x+s(170), y, s(82), s(24))
-		y += s(28)
-
-		quitW := s(84)
-		moveCtrl(a.hBtnCloseSet, x, y, cw-pad*2-quitW-s(8), s(28))
-		moveCtrl(a.hBtnQuit, cw-pad-quitW, y, quitW, s(28))
-	}
+	sendW := s(58)
+	inH := s(30)
+	inY := ch - pad - inH
+	gap := s(5)
+	moveCtrl(a.hEditMsg, pad, inY, cw-pad*2-sendW-gap, inH)
+	moveCtrl(a.hBtnSend, cw-pad-sendW, inY, sendW, inH)
 }
 
 func (a *appState) chatRect(rc RECT) RECT {
@@ -489,12 +336,11 @@ func (a *appState) paintWindow() {
 
 	a.mu.Lock()
 	loggedIn := a.loggedIn
-	showSettings := a.showSettings
 	msgs := make([]ChatMsg, len(a.messages))
 	copy(msgs, a.messages)
 	a.mu.Unlock()
 
-	if loggedIn && !showSettings {
+	if loggedIn {
 		cr := a.chatRect(rc)
 		viewW := cr.Right - cr.Left
 		viewH := cr.Bottom - cr.Top
@@ -570,33 +416,12 @@ func (a *appState) paintWindow() {
 	}
 
 	// Re-fill header & input padding with bgBrush so scrolled text never bleeds outside chat viewport
-	if loggedIn && !showSettings {
+	if loggedIn {
 		cr := a.chatRect(rc)
 		topClip := RECT{Left: 0, Top: 0, Right: cw, Bottom: cr.Top}
 		botClip := RECT{Left: 0, Top: cr.Bottom, Right: cw, Bottom: ch}
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&topClip)), a.bgBrush)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
-	}
-
-	// Draw live color swatches in Settings view
-	if loggedIn && showSettings {
-		drawSwatch := func(swRc RECT, ref uint32) {
-			if swRc.Right <= swRc.Left {
-				return
-			}
-			br, _, _ := pCreateSolidBrush.Call(uintptr(ref))
-			if br != 0 {
-				pFillRect.Call(memDC, uintptr(unsafe.Pointer(&swRc)), br)
-				pDeleteObject.Call(br)
-			}
-			borderBr, _, _ := pCreateSolidBrush.Call(0x00888888)
-			if borderBr != 0 {
-				pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&swRc)), borderBr)
-				pDeleteObject.Call(borderBr)
-			}
-		}
-		drawSwatch(a.bgSwatchRc, hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
-		drawSwatch(a.fgSwatchRc, hexToCOLORREF(a.cfg.FontColor, 0x00283123))
 	}
 
 	// Draw crisp 1px outer frame when background is not chroma-keyed transparent
@@ -668,7 +493,6 @@ func (a *appState) handleLoginClick() {
 			a.cfg.GroupName = grp.Name
 			saveConfig(a.cfg)
 			a.loggedIn = true
-			a.showSettings = false
 			a.messages = nil
 			a.seenIDs = make(map[string]bool)
 			a.lastMsgTs = 0
@@ -740,7 +564,7 @@ func (a *appState) pollMessagesAsync() {
 }
 
 func (a *appState) handleSendMessage() {
-	if !a.loggedIn || a.showSettings {
+	if !a.loggedIn {
 		return
 	}
 	txt := strings.TrimSpace(getCtrlText(a.hEditMsg))
@@ -821,22 +645,80 @@ func (a *appState) removeTrayIcon() {
 	a.trayAdded = false
 }
 
+func menuFlags(checked bool) uintptr {
+	if checked {
+		return MF_STRING | MF_CHECKED
+	}
+	return MF_STRING
+}
+
 func (a *appState) showTrayMenu() {
 	menu, _, _ := pCreatePopupMenu.Call()
 	if menu == 0 {
 		return
 	}
-	defer pDestroyMenu.Call(menu)
-	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16("显示 / 隐藏 ("+a.cfg.Hotkey+")"))))
+
+	vis, _, _ := pIsWindowVisible.Call(a.hwnd)
+	toggleLabel := "显示窗口 (" + a.cfg.Hotkey + ")"
+	if vis != 0 {
+		toggleLabel = "隐藏窗口 (" + a.cfg.Hotkey + ")"
+	}
+	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16(toggleLabel))))
+	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
+
+	pAppendMenuW.Call(menu, MF_STRING, idMenuPickFontColor, uintptr(unsafe.Pointer(u16("字体颜色（屏幕吸管） ["+a.cfg.FontColor+"]"))))
+
+	fontMenu, _, _ := pCreatePopupMenu.Call()
+	if fontMenu != 0 {
+		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 12), idMenuFont12, uintptr(unsafe.Pointer(u16("12 px（超小）"))))
+		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 14), idMenuFont14, uintptr(unsafe.Pointer(u16("14 px（较小）"))))
+		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 15), idMenuFont15, uintptr(unsafe.Pointer(u16("15 px（标准）"))))
+		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 18), idMenuFont18, uintptr(unsafe.Pointer(u16("18 px（大字）"))))
+		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 20), idMenuFont20, uintptr(unsafe.Pointer(u16("20 px（超大）"))))
+		pAppendMenuW.Call(menu, MF_POPUP, fontMenu, uintptr(unsafe.Pointer(u16(fmt.Sprintf("字体大小 (%dpx)", a.cfg.FontSize)))))
+	}
+
+	bgMenu, _, _ := pCreatePopupMenu.Call()
+	if bgMenu != 0 {
+		pAppendMenuW.Call(bgMenu, menuFlags(a.cfg.BgTransparent), idMenuToggleTransparent, uintptr(unsafe.Pointer(u16("开启透明背景（仅保留文字）"))))
+		pAppendMenuW.Call(bgMenu, MF_STRING, idMenuPickBgColor, uintptr(unsafe.Pointer(u16("背景颜色（屏幕吸管） ["+a.cfg.BgColor+"]"))))
+		bgSummary := "背景设置 (" + a.cfg.BgColor + ")"
+		if a.cfg.BgTransparent {
+			bgSummary = "背景设置 (透明已开启)"
+		}
+		pAppendMenuW.Call(menu, MF_POPUP, bgMenu, uintptr(unsafe.Pointer(u16(bgSummary))))
+	}
+
+	hkMenu, _, _ := pCreatePopupMenu.Call()
+	if hkMenu != 0 {
+		pAppendMenuW.Call(hkMenu, menuFlags(a.cfg.Hotkey == "Alt+H"), idMenuHKAltH, uintptr(unsafe.Pointer(u16("Alt+H"))))
+		pAppendMenuW.Call(hkMenu, menuFlags(a.cfg.Hotkey == "Alt+Q"), idMenuHKAltQ, uintptr(unsafe.Pointer(u16("Alt+Q"))))
+		pAppendMenuW.Call(hkMenu, menuFlags(a.cfg.Hotkey == "Ctrl+Alt+H"), idMenuHKCtrlAltH, uintptr(unsafe.Pointer(u16("Ctrl+Alt+H"))))
+		pAppendMenuW.Call(hkMenu, menuFlags(a.cfg.Hotkey == "F9"), idMenuHKF9, uintptr(unsafe.Pointer(u16("F9"))))
+		pAppendMenuW.Call(menu, MF_POPUP, hkMenu, uintptr(unsafe.Pointer(u16("隐藏热键 ("+a.cfg.Hotkey+")"))))
+	}
+
+	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
+	verName, _ := currentFishVersion()
+	pAppendMenuW.Call(menu, MF_STRING, idMenuCheckUpdate, uintptr(unsafe.Pointer(u16("检查更新 (v"+verName+")"))))
 	if a.loggedIn {
-		pAppendMenuW.Call(menu, MF_STRING, idMenuSettings, uintptr(unsafe.Pointer(u16("外观设置"))))
+		pAppendMenuW.Call(menu, MF_STRING, idMenuLogout, uintptr(unsafe.Pointer(u16("注销账号"))))
 	}
 	pAppendMenuW.Call(menu, MF_STRING, idMenuQuit, uintptr(unsafe.Pointer(u16("退出程序"))))
 
 	var pt POINT
 	pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	pSetForegroundWindow.Call(a.hwnd)
-	pTrackPopupMenu.Call(menu, TPM_LEFTALIGN|TPM_BOTTOMALIGN, uintptr(pt.X), uintptr(pt.Y), 0, a.hwnd, 0)
+	cmd, _, _ := pTrackPopupMenu.Call(menu, TPM_LEFTALIGN|TPM_BOTTOMALIGN|TPM_RETURNCMD, uintptr(pt.X), uintptr(pt.Y), 0, a.hwnd, 0)
+	pDestroyMenu.Call(menu)
+
+	if cmd != 0 {
+		if cmd == idMenuPickFontColor || cmd == idMenuPickBgColor {
+			// Allow popup menu fade animation to finish before capturing screen pixels
+			time.Sleep(80 * time.Millisecond)
+		}
+		a.handleCommand(int(cmd))
+	}
 }
 
 func (a *appState) registerBossHotkey() {
@@ -846,15 +728,7 @@ func (a *appState) registerBossHotkey() {
 	pUnregisterHotKey.Call(a.hwnd, idHotkeyBoss)
 	mods, vk, label := parseHotkey(a.cfg.Hotkey)
 	a.cfg.Hotkey = label
-	r, _, _ := pRegisterHotKey.Call(a.hwnd, idHotkeyBoss, uintptr(mods|MOD_NOREPEAT), uintptr(vk))
-	if r != 0 {
-		a.hotkeyStatus = "全局快捷键已生效：" + label + "（任意界面隐藏/呼出）"
-	} else {
-		a.hotkeyStatus = "快捷键 " + label + " 可能被其他软件占用，请换一个"
-	}
-	if a.hLblHKStatus != 0 {
-		setCtrlText(a.hLblHKStatus, a.hotkeyStatus)
-	}
+	_, _, _ = pRegisterHotKey.Call(a.hwnd, idHotkeyBoss, uintptr(mods|MOD_NOREPEAT), uintptr(vk))
 }
 
 func (a *appState) toggleBossHide() {
@@ -867,7 +741,7 @@ func (a *appState) toggleBossHide() {
 	} else {
 		pShowWindow.Call(a.hwnd, SW_SHOW)
 		pSetForegroundWindow.Call(a.hwnd)
-		if a.loggedIn && !a.showSettings && a.hEditMsg != 0 {
+		if a.loggedIn && a.hEditMsg != 0 {
 			pSetFocus.Call(a.hEditMsg)
 		}
 	}
@@ -884,20 +758,60 @@ func (a *appState) handleCommand(id int) {
 	switch id {
 	case idBtnLogin:
 		a.handleLoginClick()
-	case idBtnHide:
+	case idBtnSend:
+		a.handleSendMessage()
+	case idMenuToggle:
 		a.toggleBossHide()
-	case idBtnSettings:
-		a.showSettings = !a.showSettings
-		a.layoutControls()
-		a.triggerRepaint()
-	case idBtnCloseSetting:
-		a.showSettings = false
-		a.layoutControls()
-		a.triggerRepaint()
-	case idBtnLogout:
+	case idMenuPickFontColor:
+		if c, ok := a.pickScreenColor("字体"); ok {
+			a.cfg.FontColor = colorrefToHex(c)
+			a.updateAppearance()
+		}
+	case idMenuPickBgColor:
+		if c, ok := a.pickScreenColor("背景"); ok {
+			a.cfg.BgColor = colorrefToHex(c)
+			a.cfg.BgTransparent = false
+			a.updateAppearance()
+		}
+	case idMenuToggleTransparent:
+		a.cfg.BgTransparent = !a.cfg.BgTransparent
+		a.updateAppearance()
+	case idMenuFont12:
+		a.cfg.FontSize = 12
+		a.updateAppearance()
+	case idMenuFont14:
+		a.cfg.FontSize = 14
+		a.updateAppearance()
+	case idMenuFont15:
+		a.cfg.FontSize = 15
+		a.updateAppearance()
+	case idMenuFont18:
+		a.cfg.FontSize = 18
+		a.updateAppearance()
+	case idMenuFont20:
+		a.cfg.FontSize = 20
+		a.updateAppearance()
+	case idMenuHKAltH:
+		a.cfg.Hotkey = "Alt+H"
+		saveConfig(a.cfg)
+		a.registerBossHotkey()
+	case idMenuHKAltQ:
+		a.cfg.Hotkey = "Alt+Q"
+		saveConfig(a.cfg)
+		a.registerBossHotkey()
+	case idMenuHKCtrlAltH:
+		a.cfg.Hotkey = "Ctrl+Alt+H"
+		saveConfig(a.cfg)
+		a.registerBossHotkey()
+	case idMenuHKF9:
+		a.cfg.Hotkey = "F9"
+		saveConfig(a.cfg)
+		a.registerBossHotkey()
+	case idMenuCheckUpdate:
+		a.checkUpdateAsync(true)
+	case idMenuLogout:
 		a.mu.Lock()
 		a.loggedIn = false
-		a.showSettings = false
 		a.cfg.Token = ""
 		a.cfg.GroupID = ""
 		a.messages = nil
@@ -908,77 +822,8 @@ func (a *appState) handleCommand(id int) {
 		setCtrlText(a.hLblLoginStatus, "")
 		a.layoutControls()
 		a.triggerRepaint()
-	case idBtnSend:
-		a.handleSendMessage()
-	case idBtnPickBg:
-		if c, ok := pickColorDialog(a.hwnd, hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6), &a.custColors); ok {
-			a.cfg.BgColor = colorrefToHex(c)
-			a.cfg.BgTransparent = false
-			a.updateAppearance()
-		}
-	case idChkBgTrans:
-		chk, _, _ := pSendMessageW.Call(a.hChkBgTrans, BM_GETCHECK, 0, 0)
-		a.cfg.BgTransparent = chk != 0
-		a.updateAppearance()
-	case idBtnAlpha25:
-		a.cfg.Alpha = 64
-		a.updateAppearance()
-	case idBtnAlpha50:
-		a.cfg.Alpha = 128
-		a.updateAppearance()
-	case idBtnAlpha75:
-		a.cfg.Alpha = 192
-		a.updateAppearance()
-	case idBtnAlpha90:
-		a.cfg.Alpha = 230
-		a.updateAppearance()
-	case idBtnAlpha100:
-		a.cfg.Alpha = 255
-		a.updateAppearance()
-	case idBtnPickFont:
-		if c, ok := pickColorDialog(a.hwnd, hexToCOLORREF(a.cfg.FontColor, 0), &a.custColors); ok {
-			a.cfg.FontColor = colorrefToHex(c)
-			a.updateAppearance()
-		}
-	case idBtnFontSize13:
-		a.cfg.FontSize = 13
-		a.updateAppearance()
-	case idBtnFontSize15:
-		a.cfg.FontSize = 15
-		a.updateAppearance()
-	case idBtnFontSize18:
-		a.cfg.FontSize = 18
-		a.updateAppearance()
-	case idBtnHKAltH:
-		a.cfg.Hotkey = "Alt+H"
-		saveConfig(a.cfg)
-		a.registerBossHotkey()
-	case idBtnHKAltQ:
-		a.cfg.Hotkey = "Alt+Q"
-		saveConfig(a.cfg)
-		a.registerBossHotkey()
-	case idBtnHKCtrlAltH:
-		a.cfg.Hotkey = "Ctrl+Alt+H"
-		saveConfig(a.cfg)
-		a.registerBossHotkey()
-	case idBtnHKF9:
-		a.cfg.Hotkey = "F9"
-		saveConfig(a.cfg)
-		a.registerBossHotkey()
-	case idBtnCheckUpdate:
-		a.checkUpdateAsync(true)
 	case idBtnQuit, idMenuQuit:
 		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
-	case idMenuToggle:
-		a.toggleBossHide()
-	case idMenuSettings:
-		pShowWindow.Call(a.hwnd, SW_SHOW)
-		pSetForegroundWindow.Call(a.hwnd)
-		if a.loggedIn {
-			a.showSettings = true
-			a.layoutControls()
-			a.triggerRepaint()
-		}
 	}
 }
 
@@ -1053,7 +898,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		case onBottom:
 			return HTBOTTOM
 		}
-		if sy-wr.Top < a.dpiScale(38) || !a.loggedIn || a.showSettings {
+		if sy-wr.Top < a.dpiScale(38) || !a.loggedIn {
 			return HTCAPTION
 		}
 		return 1 // HTCLIENT
@@ -1084,7 +929,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		return 0
 
 	case WM_MOUSEWHEEL:
-		if a.loggedIn && !a.showSettings {
+		if a.loggedIn {
 			delta := int16(wParam >> 16)
 			step := a.dpiScale(44)
 			a.mu.Lock()
@@ -1173,7 +1018,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case wmAppShow:
 		pShowWindow.Call(hwnd, SW_SHOW)
 		pSetForegroundWindow.Call(hwnd)
-		if a.loggedIn && !a.showSettings && a.hEditMsg != 0 {
+		if a.loggedIn && a.hEditMsg != 0 {
 			pSetFocus.Call(a.hEditMsg)
 		}
 		return 0
@@ -1223,10 +1068,6 @@ func (a *appState) checkUpdateAsync(manual bool) {
 	}
 	a.mu.Unlock()
 
-	if manual && a.hBtnCheckUpdate != 0 {
-		setCtrlText(a.hBtnCheckUpdate, "检查中...")
-	}
-
 	_, verCode := currentFishVersion()
 	go func() {
 		res, err := checkFishUpdate(srv, verCode)
@@ -1251,9 +1092,6 @@ func (a *appState) handleUpdateMessage(kind uintptr) {
 	if kind == 2 {
 		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
 		return
-	}
-	if a.hBtnCheckUpdate != 0 {
-		setCtrlText(a.hBtnCheckUpdate, "检查更新")
 	}
 
 	a.mu.Lock()
@@ -1299,9 +1137,6 @@ func (a *appState) handleUpdateMessage(kind uintptr) {
 	}
 	a.checkingUpdate = true
 	a.mu.Unlock()
-	if a.hBtnCheckUpdate != 0 {
-		setCtrlText(a.hBtnCheckUpdate, "更新中...")
-	}
 
 	go func() {
 		err := downloadAndApplyFishUpdate(srv, rel)
@@ -1336,9 +1171,6 @@ func main() {
 		loggedIn: cfg.Token != "" && cfg.GroupID != "",
 		atBottom: true,
 		seenIDs:  make(map[string]bool),
-	}
-	for i := range gApp.custColors {
-		gApp.custColors[i] = 0x00FFFFFF
 	}
 
 	clsName := u16("GrowthBuddyFishWnd")

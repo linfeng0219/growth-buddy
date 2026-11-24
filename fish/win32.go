@@ -10,7 +10,6 @@ import (
 var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
-	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
@@ -59,6 +58,11 @@ var (
 	pSetTimer               = user32.NewProc("SetTimer")
 	pKillTimer              = user32.NewProc("KillTimer")
 	pLoadCursorW            = user32.NewProc("LoadCursorW")
+	pSetCursor              = user32.NewProc("SetCursor")
+	pSetCapture             = user32.NewProc("SetCapture")
+	pReleaseCapture         = user32.NewProc("ReleaseCapture")
+	pGetDC                  = user32.NewProc("GetDC")
+	pReleaseDC              = user32.NewProc("ReleaseDC")
 	pMessageBoxW            = user32.NewProc("MessageBoxW")
 	pSetWindowLongPtrW      = user32.NewProc("SetWindowLongPtrW")
 	pCallWindowProcW        = user32.NewProc("CallWindowProcW")
@@ -73,10 +77,10 @@ var (
 	pCreateBitmap           = gdi32.NewProc("CreateBitmap")
 	pSelectObject           = gdi32.NewProc("SelectObject")
 	pBitBlt                 = gdi32.NewProc("BitBlt")
+	pGetPixel               = gdi32.NewProc("GetPixel")
 	pSetTextColor           = gdi32.NewProc("SetTextColor")
 	pSetBkColor             = gdi32.NewProc("SetBkColor")
 	pSetBkMode              = gdi32.NewProc("SetBkMode")
-	pChooseColorW           = comdlg32.NewProc("ChooseColorW")
 )
 
 const (
@@ -88,8 +92,11 @@ const (
 	WS_BORDER           = 0x00800000
 	WS_VSCROLL          = 0x00200000
 	WS_CLIPCHILDREN     = 0x02000000
+	WS_EX_TRANSPARENT   = 0x00000020
 	WS_EX_TOOLWINDOW    = 0x00000080
+	WS_EX_TOPMOST       = 0x00000008
 	WS_EX_LAYERED       = 0x00080000
+	WS_EX_NOACTIVATE    = 0x08000000
 
 	ES_LEFT         = 0x0000
 	ES_AUTOHSCROLL  = 0x0080
@@ -122,8 +129,11 @@ const (
 	WM_CTLCOLORSTATIC = 0x0138
 	WM_MOUSEWHEEL     = 0x020A
 	WM_NCHITTEST      = 0x0084
+	WM_MOUSEMOVE      = 0x0200
+	WM_LBUTTONDOWN    = 0x0201
 	WM_LBUTTONUP      = 0x0202
 	WM_LBUTTONDBLCLK  = 0x0203
+	WM_RBUTTONDOWN    = 0x0204
 	WM_RBUTTONUP      = 0x0205
 	WM_HOTKEY         = 0x0312
 	WM_APP            = 0x8000
@@ -146,8 +156,12 @@ const (
 	NIF_TIP     = 0x00000004
 
 	MF_STRING       = 0x00000000
+	MF_CHECKED      = 0x00000008
+	MF_POPUP        = 0x00000010
+	MF_SEPARATOR    = 0x00000800
 	TPM_LEFTALIGN   = 0x0000
 	TPM_BOTTOMALIGN = 0x0020
+	TPM_RETURNCMD   = 0x0100
 
 	MOD_NOREPEAT = 0x4000
 
@@ -157,12 +171,16 @@ const (
 
 	SW_SHOW        = 5
 	SW_HIDE        = 0
+	SWP_NOSIZE     = 0x0001
 	SWP_NOMOVE     = 0x0002
 	SWP_NOZORDER   = 0x0004
 	SWP_NOACTIVATE = 0x0010
 
 	DT_LEFT        = 0x00000000
+	DT_CENTER      = 0x00000001
+	DT_VCENTER     = 0x00000004
 	DT_WORDBREAK   = 0x00000010
+	DT_SINGLELINE  = 0x00000020
 	DT_CALCRECT    = 0x00000400
 	DT_NOPREFIX    = 0x00000800
 	DT_EDITCONTROL = 0x00002000
@@ -176,24 +194,28 @@ const (
 	IDYES              = 6
 
 	SRCCOPY     = 0x00CC0020
+	CAPTUREBLT  = 0x40000000
 	TRANSPARENT = 1
 	OPAQUE      = 2
 
 	VK_RETURN = 0x0D
+	VK_ESCAPE = 0x1B
 
 	IDC_ARROW              = 32512
+	IDC_CROSS              = 32515
 	DEFAULT_CHARSET        = 1
 	FW_NORMAL              = 400
 	FW_BOLD                = 700
 	NONANTIALIASED_QUALITY = 3
 	CLEARTYPE_QUALITY      = 5
 
-	CC_RGBINIT  = 0x00000001
-	CC_FULLOPEN = 0x00000002
-
-	GWLP_WNDPROC = ^uintptr(3) // -4 as uintptr
-	SM_CXSCREEN  = 0
-	SM_CYSCREEN  = 1
+	GWLP_WNDPROC       = ^uintptr(3) // -4 as uintptr
+	SM_CXSCREEN        = 0
+	SM_CYSCREEN        = 1
+	SM_XVIRTUALSCREEN  = 76
+	SM_YVIRTUALSCREEN  = 77
+	SM_CXVIRTUALSCREEN = 78
+	SM_CYVIRTUALSCREEN = 79
 )
 
 type POINT struct {
@@ -243,18 +265,6 @@ type MINMAXINFO struct {
 	PtMaxPosition  POINT
 	PtMinTrackSize POINT
 	PtMaxTrackSize POINT
-}
-
-type CHOOSECOLORW struct {
-	LStructSize    uint32
-	HwndOwner      uintptr
-	HInstance      uintptr
-	RgbResult      uint32
-	LpCustColors   *uint32
-	Flags          uint32
-	LCustData      uintptr
-	LpfnHook       uintptr
-	LpTemplateName *uint16
 }
 
 type NOTIFYICONDATAW struct {
@@ -402,16 +412,4 @@ func createUIFont(height int32, bold bool, quality uint32) uintptr {
 		uintptr(unsafe.Pointer(u16("Microsoft YaHei UI"))),
 	)
 	return f
-}
-
-func pickColorDialog(owner uintptr, initial uint32, cust *[16]uint32) (uint32, bool) {
-	cc := CHOOSECOLORW{
-		LStructSize:  uint32(unsafe.Sizeof(CHOOSECOLORW{})),
-		HwndOwner:    owner,
-		RgbResult:    initial,
-		LpCustColors: &cust[0],
-		Flags:        CC_RGBINIT | CC_FULLOPEN,
-	}
-	r, _, _ := pChooseColorW.Call(uintptr(unsafe.Pointer(&cc)))
-	return cc.RgbResult, r != 0
 }

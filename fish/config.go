@@ -25,7 +25,6 @@ type FishConfig struct {
 	HasPos        bool   `json:"has_pos"`
 	BgColor       string `json:"bg_color"`
 	BgTransparent bool   `json:"bg_transparent"`
-	Alpha         int    `json:"alpha"` // 40..255
 	FontColor     string `json:"font_color"`
 	FontSize      int    `json:"font_size"`
 	Hotkey        string `json:"hotkey"`
@@ -38,7 +37,6 @@ func defaultConfig() FishConfig {
 		Height:        520,
 		BgColor:       "#FAF6EE",
 		BgTransparent: false,
-		Alpha:         245,
 		FontColor:     "#233128",
 		FontSize:      15,
 		Hotkey:        "Alt+H",
@@ -68,12 +66,6 @@ func loadConfig() FishConfig {
 	}
 	if cfg.Height < 240 {
 		cfg.Height = 520
-	}
-	if cfg.Alpha < 45 {
-		cfg.Alpha = 45
-	}
-	if cfg.Alpha > 255 {
-		cfg.Alpha = 255
 	}
 	if cfg.FontSize < 12 || cfg.FontSize > 26 {
 		cfg.FontSize = 15
