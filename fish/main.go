@@ -90,7 +90,7 @@ type appState struct {
 	backdropH    int32
 	backdropSig  uint64
 	autoHeaderFg uint32
-	altDarkFill  bool
+	inputBgColor uint32
 
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
@@ -134,7 +134,7 @@ func (a *appState) refreshResources() {
 	if a.bgBrush != 0 {
 		pDeleteObject.Call(a.bgBrush)
 	}
-	if a.altBrush != 0 {
+	if a.altBrush != 0 && a.altBrush != a.bgBrush {
 		pDeleteObject.Call(a.altBrush)
 	}
 
@@ -149,17 +149,20 @@ func (a *appState) refreshResources() {
 	bgRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 	if a.cfg.BgTransparent {
 		a.bgBrush, _, _ = pCreateSolidBrush.Call(uintptr(chromaKeyRef))
-		// Subtle non-chroma surface so child inputs remain visible & clickable in transparent mode
-		altRef := uint32(0x0024201E)
-		a.altDarkFill = true
-		if isDarkColor(a.effectiveTextColor()) {
-			altRef = 0x00F4EFE6
-			a.altDarkFill = false
+		// Default initial fill to bgRef (never chromaKeyRef so input stays clickable) until backdrop sample refreshes it
+		initBoxBg := a.inputBgColor
+		if initBoxBg == 0 || initBoxBg == chromaKeyRef {
+			initBoxBg = bgRef
+			if initBoxBg == chromaKeyRef {
+				initBoxBg = 0x001E1E1E
+			}
 		}
-		a.altBrush, _, _ = pCreateSolidBrush.Call(uintptr(altRef))
+		a.inputBgColor = initBoxBg
+		a.altBrush, _, _ = pCreateSolidBrush.Call(uintptr(initBoxBg))
 	} else {
 		a.bgBrush, _, _ = pCreateSolidBrush.Call(uintptr(bgRef))
-		a.altBrush, _, _ = pCreateSolidBrush.Call(uintptr(bgRef))
+		a.altBrush = a.bgBrush
+		a.inputBgColor = bgRef
 	}
 
 	allCtrls := []uintptr{
@@ -183,7 +186,7 @@ func (a *appState) refreshResources() {
 }
 
 func (a *appState) sampleUnderWindow(force bool) {
-	if a.hwnd == 0 || !a.cfg.BgTransparent || !a.cfg.AutoInvertText {
+	if a.hwnd == 0 || !a.cfg.BgTransparent {
 		return
 	}
 	vis, _, _ := pIsWindowVisible.Call(a.hwnd)
@@ -191,8 +194,8 @@ func (a *appState) sampleUnderWindow(force bool) {
 		return
 	}
 	var wr, rc RECT
-	pGetWindowRect.Call(a.hwnd, uintptr(unsafe.Pointer(&wr)))
-	pGetClientRect.Call(a.hwnd, uintptr(unsafe.Pointer(&rc)))
+	pGetWindowRect.Call(hwndPtr(a.hwnd), uintptr(unsafe.Pointer(&wr)))
+	pGetClientRect.Call(hwndPtr(a.hwnd), uintptr(unsafe.Pointer(&rc)))
 	cw := rc.Right - rc.Left
 	ch := rc.Bottom - rc.Top
 	if cw <= 0 || ch <= 0 {
@@ -213,14 +216,47 @@ func (a *appState) sampleUnderWindow(force bool) {
 	} else {
 		newHdrFg = invertTextColorForBg(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
 	}
+
+	bx := a.inputBoxRect(rc)
+	newBoxBg := a.inputBgColor
+	if sampledBoxBg, ok := averageBGRAStripColor(buf, cw, ch, bx.Top, bx.Bottom); ok {
+		if sampledBoxBg == chromaKeyRef {
+			sampledBoxBg = 0x00020202
+		}
+		newBoxBg = sampledBoxBg
+	}
+
 	hdrChanged := newHdrFg != a.autoHeaderFg
+	boxChanged := newBoxBg != a.inputBgColor
 	sigChanged := sig != a.backdropSig || a.backdropW != cw || a.backdropH != ch
+
 	a.backdropBuf = buf
 	a.backdropW = cw
 	a.backdropH = ch
 	a.backdropSig = sig
 	a.autoHeaderFg = newHdrFg
-	if hdrChanged {
+
+	if boxChanged {
+		a.inputBgColor = newBoxBg
+		if newBr, _, _ := pCreateSolidBrush.Call(uintptr(newBoxBg)); newBr != 0 {
+			if a.altBrush != 0 && a.altBrush != a.bgBrush {
+				pDeleteObject.Call(a.altBrush)
+			}
+			a.altBrush = newBr
+		}
+		if a.hEditMsg != 0 {
+			pInvalidateRect.Call(a.hEditMsg, 0, 1)
+		}
+		if !a.loggedIn {
+			for _, h := range []uintptr{a.hEditUser, a.hEditPass} {
+				if h != 0 {
+					pInvalidateRect.Call(h, 0, 1)
+				}
+			}
+		}
+	}
+
+	if hdrChanged && a.cfg.AutoInvertText {
 		if a.hLblGroup != 0 {
 			pInvalidateRect.Call(a.hLblGroup, 0, 1)
 		}
@@ -228,10 +264,12 @@ func (a *appState) sampleUnderWindow(force bool) {
 			pInvalidateRect.Call(a.hwnd, 0, 1)
 		}
 	}
-	if force || sigChanged || hdrChanged {
+	if force || sigChanged || boxChanged || (hdrChanged && a.cfg.AutoInvertText) {
 		a.triggerRepaint()
 	}
 }
+
+func hwndPtr(h uintptr) uintptr { return h }
 
 func (a *appState) createAllControls() {
 	h := a.hwnd
@@ -509,12 +547,8 @@ func (a *appState) paintWindow() {
 		bx := a.inputBoxRect(rc)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), a.altBrush)
 		surfaceRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
-		if a.cfg.BgTransparent {
-			if a.altDarkFill {
-				surfaceRef = 0x0024201E
-			} else {
-				surfaceRef = 0x00F4EFE6
-			}
+		if a.cfg.BgTransparent && a.inputBgColor != 0 {
+			surfaceRef = a.inputBgColor
 		}
 		borderRef := brightenColor(surfaceRef, 28)
 		if borderBr, _, _ := pCreateSolidBrush.Call(uintptr(borderRef)); borderBr != 0 {
@@ -784,21 +818,30 @@ func (a *appState) showTrayMenu() {
 	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16(toggleLabel))))
 	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
 
-	fontLabel := "字体颜色（屏幕吸管） [" + a.cfg.FontColor + "]"
-	if a.cfg.AutoInvertText {
-		fontLabel = "字体颜色（屏幕吸管） [已开反显]"
-	}
-	pAppendMenuW.Call(menu, MF_STRING, idMenuPickFontColor, uintptr(unsafe.Pointer(u16(fontLabel))))
-	pAppendMenuW.Call(menu, menuFlags(a.cfg.AutoInvertText), idMenuToggleInvert, uintptr(unsafe.Pointer(u16("文字反显（随背景自动取反）"))))
+	fontSettingsMenu, _, _ := pCreatePopupMenu.Call()
+	if fontSettingsMenu != 0 {
+		fontLabel := "字体颜色（屏幕吸管） [" + a.cfg.FontColor + "]"
+		if a.cfg.AutoInvertText {
+			fontLabel = "字体颜色（屏幕吸管） [已开反显]"
+		}
+		pAppendMenuW.Call(fontSettingsMenu, MF_STRING, idMenuPickFontColor, uintptr(unsafe.Pointer(u16(fontLabel))))
+		pAppendMenuW.Call(fontSettingsMenu, menuFlags(a.cfg.AutoInvertText), idMenuToggleInvert, uintptr(unsafe.Pointer(u16("文字反显（随背景自动取反）"))))
 
-	fontMenu, _, _ := pCreatePopupMenu.Call()
-	if fontMenu != 0 {
-		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 12), idMenuFont12, uintptr(unsafe.Pointer(u16("12 px（超小）"))))
-		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 14), idMenuFont14, uintptr(unsafe.Pointer(u16("14 px（较小）"))))
-		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 15), idMenuFont15, uintptr(unsafe.Pointer(u16("15 px（标准）"))))
-		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 18), idMenuFont18, uintptr(unsafe.Pointer(u16("18 px（大字）"))))
-		pAppendMenuW.Call(fontMenu, menuFlags(a.cfg.FontSize == 20), idMenuFont20, uintptr(unsafe.Pointer(u16("20 px（超大）"))))
-		pAppendMenuW.Call(menu, MF_POPUP, fontMenu, uintptr(unsafe.Pointer(u16(fmt.Sprintf("字体大小 (%dpx)", a.cfg.FontSize)))))
+		fontSizeMenu, _, _ := pCreatePopupMenu.Call()
+		if fontSizeMenu != 0 {
+			pAppendMenuW.Call(fontSizeMenu, menuFlags(a.cfg.FontSize == 12), idMenuFont12, uintptr(unsafe.Pointer(u16("12 px（超小）"))))
+			pAppendMenuW.Call(fontSizeMenu, menuFlags(a.cfg.FontSize == 14), idMenuFont14, uintptr(unsafe.Pointer(u16("14 px（较小）"))))
+			pAppendMenuW.Call(fontSizeMenu, menuFlags(a.cfg.FontSize == 15), idMenuFont15, uintptr(unsafe.Pointer(u16("15 px（标准）"))))
+			pAppendMenuW.Call(fontSizeMenu, menuFlags(a.cfg.FontSize == 18), idMenuFont18, uintptr(unsafe.Pointer(u16("18 px（大字）"))))
+			pAppendMenuW.Call(fontSizeMenu, menuFlags(a.cfg.FontSize == 20), idMenuFont20, uintptr(unsafe.Pointer(u16("20 px（超大）"))))
+			pAppendMenuW.Call(fontSettingsMenu, MF_POPUP, fontSizeMenu, uintptr(unsafe.Pointer(u16(fmt.Sprintf("字体大小 (%dpx)", a.cfg.FontSize)))))
+		}
+
+		fontSummary := fmt.Sprintf("字体设置 (%s / %dpx)", a.cfg.FontColor, a.cfg.FontSize)
+		if a.cfg.AutoInvertText {
+			fontSummary = fmt.Sprintf("字体设置 (反显 / %dpx)", a.cfg.FontSize)
+		}
+		pAppendMenuW.Call(menu, MF_POPUP, fontSettingsMenu, uintptr(unsafe.Pointer(u16(fontSummary))))
 	}
 
 	bgMenu, _, _ := pCreatePopupMenu.Call()
@@ -904,10 +947,10 @@ func (a *appState) handleCommand(id int) {
 		}
 	case idMenuToggleTransparent:
 		a.cfg.BgTransparent = !a.cfg.BgTransparent
-		if a.cfg.BgTransparent && a.cfg.AutoInvertText {
+		a.updateAppearance()
+		if a.cfg.BgTransparent {
 			a.sampleUnderWindow(true)
 		}
-		a.updateAppearance()
 	case idMenuFont12:
 		a.cfg.FontSize = 12
 		a.updateAppearance()
@@ -1101,7 +1144,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_TIMER:
 		if wParam == idTimerPoll && a.loggedIn {
 			a.pollMessagesAsync()
-		} else if wParam == idTimerContrast && a.cfg.BgTransparent && a.cfg.AutoInvertText {
+		} else if wParam == idTimerContrast && a.cfg.BgTransparent {
 			a.sampleUnderWindow(false)
 		}
 		return 0
@@ -1153,13 +1196,12 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_CTLCOLOREDIT:
 		hdc := wParam
 		if a.cfg.BgTransparent {
-			if a.altDarkFill {
-				pSetTextColor.Call(hdc, 0x00FFFFFF)
-				pSetBkColor.Call(hdc, 0x0024201E)
-			} else {
-				pSetTextColor.Call(hdc, 0x00233128)
-				pSetBkColor.Call(hdc, 0x00F4EFE6)
+			txtCol := hexToCOLORREF(a.cfg.FontColor, 0x00283123)
+			if a.cfg.AutoInvertText {
+				txtCol = invertTextColorForBg(a.inputBgColor)
 			}
+			pSetTextColor.Call(hdc, uintptr(txtCol))
+			pSetBkColor.Call(hdc, uintptr(a.inputBgColor))
 			return a.altBrush
 		}
 		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
