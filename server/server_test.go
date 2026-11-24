@@ -588,8 +588,8 @@ func TestAppOTAReleaseLifecycle(t *testing.T) {
 		t.Fatalf("auto release notes create failed: %d %+v", st, autoRel)
 	}
 	notes, _ := autoRel["release_notes"].(string)
-	if !strings.Contains(notes, "成语") || !strings.Contains(notes, "• ") {
-		t.Fatalf("expected auto-filled release_notes from 2026-11-24 changelog, got %q", notes)
+	if !strings.Contains(notes, "好友") || !strings.Contains(notes, "• ") || strings.Contains(notes, "732 题") {
+		t.Fatalf("expected auto-filled App-only release_notes from 2026-11-24 changelog, got %q", notes)
 	}
 }
 

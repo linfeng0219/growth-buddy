@@ -77,9 +77,13 @@ func NewAppServer(store *Store, publicDir string) *AppServer {
 }
 
 type changelogEntry struct {
-	Date  string   `json:"date"`
-	Title string   `json:"title"`
-	Items []string `json:"items"`
+	Date        string   `json:"date"`
+	Title       string   `json:"title"`
+	AppTitle    string   `json:"app_title,omitempty"`
+	AppItems    []string `json:"app_items,omitempty"`
+	ServerTitle string   `json:"server_title,omitempty"`
+	ServerItems []string `json:"server_items,omitempty"`
+	Items       []string `json:"items,omitempty"`
 }
 
 func (a *AppServer) loadChangelogEntries() []changelogEntry {
@@ -108,25 +112,45 @@ func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
 	if len(entries) == 0 {
 		return ""
 	}
-	picked := entries[0]
+	var picked *changelogEntry
 	if m := verDateRegexp.FindStringSubmatch(strings.TrimSpace(vName)); len(m) == 4 {
 		targetDate := m[1] + "-" + m[2] + "-" + m[3]
-		for _, e := range entries {
-			if strings.TrimSpace(e.Date) == targetDate {
-				picked = e
+		for i := range entries {
+			if strings.TrimSpace(entries[i].Date) == targetDate && len(entries[i].AppItems) > 0 {
+				picked = &entries[i]
 				break
 			}
 		}
 	}
+	if picked == nil {
+		for i := range entries {
+			if len(entries[i].AppItems) > 0 {
+				picked = &entries[i]
+				break
+			}
+		}
+	}
+	if picked == nil {
+		picked = &entries[0]
+	}
+
+	title := strings.TrimSpace(picked.AppTitle)
+	items := picked.AppItems
+	if len(items) == 0 {
+		if title == "" {
+			title = strings.TrimSpace(picked.Title)
+		}
+		items = picked.Items
+	}
 	var lines []string
-	if t := strings.TrimSpace(picked.Title); t != "" {
-		lines = append(lines, t)
+	if title != "" {
+		lines = append(lines, title)
 	}
-	limit := len(picked.Items)
-	if limit > 4 {
-		limit = 4
+	limit := len(items)
+	if limit > 5 {
+		limit = 5
 	}
-	for _, it := range picked.Items[:limit] {
+	for _, it := range items[:limit] {
 		s := strings.TrimSpace(it)
 		if s != "" {
 			lines = append(lines, "• "+s)

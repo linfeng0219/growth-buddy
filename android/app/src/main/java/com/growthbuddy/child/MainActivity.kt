@@ -435,19 +435,19 @@ class MainActivity : AppCompatActivity() {
                 for (i in 0 until arr.length()) {
                     val entry = arr.getJSONObject(i)
                     val dt = entry.optString("date", "")
-                    val title = entry.optString("title", "")
-                    sb.append("📅 ").append(dt)
+                    val appItems = entry.optJSONArray("app_items")
+                    val useItems = if (appItems != null && appItems.length() > 0) appItems else entry.optJSONArray("items")
+                    if (useItems == null || useItems.length() == 0) continue
+                    val title = entry.optString("app_title", "").ifBlank { entry.optString("title", "") }
+                    sb.append("📱 ").append(dt)
                     if (title.isNotEmpty()) sb.append(" · ").append(title)
                     sb.append("\n")
-                    val items = entry.optJSONArray("items")
-                    if (items != null) {
-                        for (j in 0 until items.length()) {
-                            sb.append("  • ").append(items.optString(j, "")).append("\n")
-                        }
+                    for (j in 0 until useItems.length()) {
+                        sb.append("  • ").append(useItems.optString(j, "")).append("\n")
                     }
                     if (i + 1 < arr.length()) sb.append("\n")
                 }
-                tv.text = sb.toString().trim()
+                tv.text = sb.toString().trim().ifEmpty { fallback }
             } else {
                 tv.text = fallback
             }

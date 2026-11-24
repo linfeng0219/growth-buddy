@@ -115,10 +115,10 @@
           <input type="text" id="relVerName" placeholder="留空自动按时间生成，如 2026.11.20-1710">
         </div>
         <div class="field">
-          <label>更新日志（打开页面或选完 APK 时已自动填入最新系统日志，可自行修改）</label>
-          <textarea id="relNotes" rows="4" placeholder="自动读取系统更新日志，或手动输入新版说明"></textarea>
+          <label>更新日志（打开页面或选完 APK 时已自动填入最新 App 更新内容，可自行修改）</label>
+          <textarea id="relNotes" rows="4" placeholder="自动读取 App 专属更新日志，或手动输入新版说明"></textarea>
           <div class="quick-chips">
-            <button type="button" class="qchip" id="btnFillLatestChangelog">✨ 填入最新系统日志</button>
+            <button type="button" class="qchip" id="btnFillLatestChangelog">✨ 填入最新 App 日志</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="常规体验优化与已知问题修复">常规优化与修复</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="新增在线趣味题库与战斗动画升级">题库与战斗升级</button>
             <button type="button" class="qchip" data-qtarget="relNotes" data-qval="界面交互优化与稳定性提升">交互与稳定性提升</button>
@@ -319,9 +319,18 @@
     autoFillReleaseNotes(false);
     if(!list.length){if(body)body.textContent="暂无更新日志";return;}
     if(body){
+      var escHtml=function(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");};
+      var subCard=function(label,bg,bd,col,title,arr){
+        if(!arr||!arr.length) return "";
+        var lis=arr.map(function(x){return '<li style="margin:2px 0">'+escHtml(x)+'</li>';}).join("");
+        return '<div style="background:'+bg+';border:1px solid '+bd+';border-radius:10px;padding:7px 10px;margin-top:6px"><div style="font-weight:700;font-size:12px;color:'+col+'">'+label+(title?(' · '+escHtml(title)):"")+'</div><ul style="padding-left:18px;margin-top:3px;margin-bottom:0">'+lis+'</ul></div>';
+      };
       body.innerHTML=list.slice(0,5).map(function(entry){
-        var items=(entry.items||[]).map(function(x){return '<li style="margin:2px 0">'+String(x).replace(/&/g,"&amp;").replace(/</g,"&lt;")+'</li>';}).join("");
-        return '<div style="margin-bottom:10px"><div style="font-weight:700;color:var(--ink)">📅 '+String(entry.date||"").replace(/</g,"&lt;")+(entry.title?(' · '+String(entry.title).replace(/</g,"&lt;")):"")+'</div><ul style="padding-left:18px;margin-top:4px">'+items+'</ul></div>';
+        var hasSplit=(entry.app_items&&entry.app_items.length)||(entry.server_items&&entry.server_items.length);
+        var inner=hasSplit
+          ? (subCard("📱 App 客户端","#f4fbf7","#cbe4d4","#2F6B4F",entry.app_title,entry.app_items)+subCard("🖥️ 后台与服务端","#fff9ef","#eed5ae","#9a5b13",entry.server_title,entry.server_items))
+          : ('<ul style="padding-left:18px;margin-top:4px">'+(entry.items||[]).map(function(x){return '<li style="margin:2px 0">'+escHtml(x)+'</li>';}).join("")+'</ul>');
+        return '<div style="margin-bottom:12px"><div style="font-weight:700;color:var(--ink)">📅 '+escHtml(entry.date)+(entry.title?(' · '+escHtml(entry.title)):"")+'</div>'+inner+'</div>';
       }).join("");
     }
   }).catch(function(){});
@@ -774,16 +783,20 @@
   }
   function formatChangelogForVersion(vName){
     if(!cachedChangelog||!cachedChangelog.length) return "";
-    var picked=cachedChangelog[0];
+    var picked=null;
     var m=(vName||"").match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
     if(m){
       var dStr=m[1]+"-"+m[2]+"-"+m[3];
-      var found=cachedChangelog.find(function(x){return (x.date||"").trim()===dStr;});
-      if(found) picked=found;
+      picked=cachedChangelog.find(function(x){return (x.date||"").trim()===dStr&&x.app_items&&x.app_items.length;})||null;
     }
+    if(!picked){
+      picked=cachedChangelog.find(function(x){return x.app_items&&x.app_items.length;})||cachedChangelog[0];
+    }
+    var appItems=(picked.app_items&&picked.app_items.length)?picked.app_items:(picked.items||[]);
+    var title=(picked.app_items&&picked.app_items.length&&picked.app_title)?picked.app_title:(picked.title||"");
     var lines=[];
-    if(picked.title) lines.push(String(picked.title).trim());
-    (picked.items||[]).slice(0,4).forEach(function(it){
+    if(title) lines.push(String(title).trim());
+    appItems.slice(0,5).forEach(function(it){
       var s=String(it||"").trim();
       if(s) lines.push("• "+s);
     });
