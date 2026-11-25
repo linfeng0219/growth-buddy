@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func base64Encode(b []byte) string {
@@ -929,7 +930,7 @@ func TestPetHealthRecoveryBeforeGrowth(t *testing.T) {
 	if st != 201 {
 		t.Fatalf("create task1 failed: %d %+v", st, t1Res)
 	}
-	t1ID := t1Res["task"].(map[string]any)["id"].(string)
+	t1ID := t1Res["id"].(string)
 
 	st, t2Res := doJSON(t, ts, "POST", "/api/parent/tasks", momTok, map[string]any{
 		"label": "朗读", "pts": 8, "emoji": "📖", "scope": "all",
@@ -937,9 +938,9 @@ func TestPetHealthRecoveryBeforeGrowth(t *testing.T) {
 	if st != 201 {
 		t.Fatalf("create task2 failed: %d %+v", st, t2Res)
 	}
-	t2ID := t2Res["task"].(map[string]any)["id"].(string)
+	t2ID := t2Res["id"].(string)
 
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().In(time.FixedZone("CST", 8*3600)).Format("2006-01-02")
 	// 设为虚弱状态(需10点恢复)，初始 XP = 5
 	if err := store.db.WithTx(func(tx *Tx) error {
 		_, err := tx.Exec("UPDATE children SET xp = 5, pet_health = 'weak', heal_progress = 0, last_health_date = ? WHERE id = ?", today, childID)

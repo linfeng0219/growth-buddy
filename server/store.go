@@ -1488,9 +1488,7 @@ func (s *Store) UndoLastCheckin(familyID, childID, todayStr string) (*CheckinLog
 
 func (s *Store) ParentCheckin(familyID, childID, taskID, todayStr string) error {
 	return s.db.WithTx(func(tx *Tx) error {
-		var curXP int
-		if err := tx.QueryRow("SELECT xp FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			curXP = r.Int(0)
+		if err := tx.QueryRow("SELECT 1 FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
 			return nil
 		}, childID, familyID); err != nil {
 			return errors.New("孩子档案不存在")
