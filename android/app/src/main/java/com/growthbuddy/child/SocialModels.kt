@@ -1,7 +1,11 @@
 package com.growthbuddy.child
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.view.Gravity
+import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -295,4 +299,38 @@ fun SpeciesThumbView.loadAvatar(api: ApiClient, avatarIdx: Int, avatarUrl: Strin
             }
         }
     }
+}
+
+fun Context.showAvatarPreviewDialog(
+    api: ApiClient,
+    title: String,
+    avatarIdx: Int,
+    avatarUrl: String,
+    overrideBmp: Bitmap? = null
+) {
+    val wrap = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(
+            ResponsiveUi.dp(this@showAvatarPreviewDialog, 20),
+            ResponsiveUi.dp(this@showAvatarPreviewDialog, 18),
+            ResponsiveUi.dp(this@showAvatarPreviewDialog, 20),
+            ResponsiveUi.dp(this@showAvatarPreviewDialog, 10)
+        )
+    }
+    val bigView = SpeciesThumbView(this).apply {
+        val sz = ResponsiveUi.dp(this@showAvatarPreviewDialog, 220)
+        layoutParams = LinearLayout.LayoutParams(sz, sz)
+        if (overrideBmp != null) {
+            setAvatar(avatarIdx, overrideBmp)
+        } else {
+            loadAvatar(api, avatarIdx, avatarUrl)
+        }
+    }
+    wrap.addView(bigView)
+    AlertDialog.Builder(this)
+        .setTitle(title.ifBlank { "头像预览" })
+        .setView(wrap)
+        .setPositiveButton("关闭", null)
+        .show()
 }

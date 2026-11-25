@@ -169,6 +169,9 @@ class ChatActivity : AppCompatActivity() {
             val roleTag = if (peerRole.isNotBlank()) " · $peerRole" else ""
             binding.tvChatPeerMeta.text = "$peerGroup 分组$roleTag · 文字 / 语音 / 图片"
             binding.ivChatPeerAvatar.loadAvatar(api, avIdx, avUrl)
+            binding.ivChatPeerAvatar.setOnClickListener {
+                showAvatarPreviewDialog(api, "${peerName} 的头像", avIdx, avUrl)
+            }
         }
 
         binding.btnChatBack.setOnClickListener { finish() }
@@ -289,6 +292,9 @@ class ChatActivity : AppCompatActivity() {
             val senderAv = SpeciesThumbView(this).apply {
                 loadAvatar(api, msg.senderAvatarIdx, msg.senderAvatarUrl)
                 layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(5) }
+                setOnClickListener {
+                    showAvatarPreviewDialog(api, "${msg.senderName.ifBlank { "群成员" }} 的头像", msg.senderAvatarIdx, msg.senderAvatarUrl)
+                }
             }
             val senderTv = TextView(this).apply {
                 text = msg.senderName.ifBlank { "群成员" }
@@ -702,6 +708,9 @@ class ChatActivity : AppCompatActivity() {
                 val av = SpeciesThumbView(this).apply {
                     loadAvatar(api, m.avatarIdx, m.avatarUrl)
                     layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(10) }
+                    setOnClickListener {
+                        showAvatarPreviewDialog(api, "${m.name} 的头像", m.avatarIdx, m.avatarUrl)
+                    }
                 }
                 val nm = TextView(this).apply {
                     val ownerTag = if (m.role == "owner" && !grp.isFamilyDefault) " · 群主" else ""

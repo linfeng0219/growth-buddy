@@ -185,6 +185,7 @@ class FriendsActivity : AppCompatActivity() {
             val av = SpeciesThumbView(this).apply {
                 loadAvatar(api, req.avatarIdx, req.avatarUrl)
                 layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(10) }
+                setOnClickListener { showAvatarPreviewDialog(api, "${req.name} 的头像", req.avatarIdx, req.avatarUrl) }
             }
             val infoCol = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -516,6 +517,7 @@ class FriendsActivity : AppCompatActivity() {
                 val av = SpeciesThumbView(this).apply {
                     loadAvatar(api, f.avatarIdx, f.avatarUrl)
                     layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(12) }
+                    setOnClickListener { showAvatarPreviewDialog(api, "${f.name} 的头像", f.avatarIdx, f.avatarUrl) }
                 }
 
                 val centerCol = LinearLayout(this).apply {
@@ -872,6 +874,7 @@ class FriendsActivity : AppCompatActivity() {
             val av = SpeciesThumbView(this).apply {
                 loadAvatar(api, cand.avatarIdx, cand.avatarUrl)
                 layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+                setOnClickListener { showAvatarPreviewDialog(api, "${cand.name} 的头像", cand.avatarIdx, cand.avatarUrl) }
             }
             val titleTv = TextView(this).apply {
                 val lvName = GrowthMeta.LEVELS.getOrNull(cand.petLevel)?.name ?: "成长蛋"

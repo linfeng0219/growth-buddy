@@ -83,36 +83,42 @@
   }
   .qchip:hover{background:#e4f1e9;border-color:var(--accent)}
   .gb-toast{
-    position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(16px);
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);
     background:#2b2620;color:#fff;padding:10px 18px;border-radius:999px;
     font-size:13px;font-weight:500;box-shadow:0 10px 26px rgba(0,0,0,.22);
     opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:99;max-width:90vw;text-align:center;
   }
   .gb-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .gb-toast.err{background:#c0392b}
-  body{padding:14px 12px calc(86px + env(safe-area-inset-bottom));overflow-x:hidden}
+  body{padding:14px 12px 28px;overflow-x:hidden}
   .wrap,.wrap.wide{width:100%;max-width:860px}
-  #mainView header{margin-bottom:8px}
-  #mainView .top-bar{margin-bottom:2px}
-  #mainView nav.tabs{
-    position:fixed;left:0;right:0;bottom:0;z-index:45;margin:0;
-    border-radius:0;border-top:1px solid var(--hair);
-    background:rgba(255,253,249,.97);backdrop-filter:blur(10px);
-    padding:6px 8px calc(6px + env(safe-area-inset-bottom));
-    box-shadow:0 -4px 18px rgba(58,47,34,.08);
+  #parentTopDock{
+    position:fixed;top:0;left:0;right:0;z-index:45;
+    background:rgba(250,247,242,.97);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--hair);
+    box-shadow:0 4px 16px rgba(58,47,34,.06);
+    padding:calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+  #parentTopDock .top-dock-inner{max-width:860px;margin:0 auto;width:100%}
+  #parentTopDock header{margin:0 0 6px}
+  #parentTopDock .top-bar{margin:0}
+  #parentTopDock nav.tabs{
+    margin:0;padding:4px;border-radius:12px;
     display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;
     -webkit-overflow-scrolling:touch;
   }
-  #mainView nav.tabs::-webkit-scrollbar{display:none}
-  #mainView nav.tabs button{
-    flex:1 0 auto;white-space:nowrap;padding:8px 10px;font-size:12.5px;border-radius:10px;
+  #parentTopDock nav.tabs::-webkit-scrollbar{display:none}
+  #parentTopDock nav.tabs button{
+    flex:0 0 auto;white-space:nowrap;padding:7px 11px;font-size:12.5px;border-radius:9px;
   }
   @media(min-width:760px){
-    body{padding:22px 16px 92px}
-    #mainView nav.tabs{justify-content:center;padding-left:16px;padding-right:16px}
-    #mainView nav.tabs button{flex:0 1 auto;padding:8px 14px;font-size:13.5px}
+    body{padding:20px 16px 36px}
+    #parentTopDock{padding:10px 16px 8px}
+    #parentTopDock nav.tabs{justify-content:center}
+    #parentTopDock nav.tabs button{flex:1 1 auto;padding:8px 10px;font-size:13.5px}
   }
-  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;touch-action:pan-y}
+  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;touch-action:pan-y;padding-top:96px}
+  .gb-av{cursor:pointer}
   @keyframes tabSlideFromRight{0%{opacity:.45;transform:translateX(26px)}100%{opacity:1;transform:translateX(0)}}
   @keyframes tabSlideFromLeft{0%{opacity:.45;transform:translateX(-26px)}100%{opacity:1;transform:translateX(0)}}
   .tab-slide-left{animation:tabSlideFromRight .22s ease-out}
@@ -234,19 +240,32 @@
 
   <!-- 家长端主界面 -->
   <div id="mainView" style="display:none">
-    <header>
-      <div class="top-bar">
-        <button class="user-avatar-chip" id="btnParentAvatarChip" type="button" title="点击设置/上传我的头像">
-          <span id="parentAvatarSlot"></span>
-          <span id="parentGreeting">家长</span>
-          <span style="font-size:11px;color:var(--muted)">✎</span>
-        </button>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button type="button" class="pill ghost" id="btnParentRefreshPage" title="刷新数据">🔄 刷新</button>
-          <button class="pill ghost" id="btnLogout">退出登录</button>
-        </div>
+    <div id="parentTopDock">
+      <div class="top-dock-inner">
+        <header>
+          <div class="top-bar">
+            <button class="user-avatar-chip" id="btnParentAvatarChip" type="button" title="点击设置/上传我的头像">
+              <span id="parentAvatarSlot"></span>
+              <span id="parentGreeting">家长</span>
+              <span style="font-size:11px;color:var(--muted)">✎</span>
+            </button>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="pill ghost" id="btnParentRefreshPage" title="刷新数据">🔄 刷新</button>
+              <button class="pill ghost" id="btnLogout">退出登录</button>
+            </div>
+          </div>
+        </header>
+        <nav class="tabs" id="parentTopTabs">
+          <button data-tab="overview" class="on">👶 总览</button>
+          <button data-tab="tasks">📋 任务</button>
+          <button data-tab="logs">📊 记录</button>
+          <button data-tab="studio">✨ 伙伴</button>
+          <button data-tab="family">🏡 家庭</button>
+          <button data-tab="chat">💬 聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
+          <button data-tab="mailbox">📬 信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
+        </nav>
       </div>
-    </header>
+    </div>
 
     <div id="tabSwipeViewport">
     <!-- 1. 孩子总览 -->
@@ -788,16 +807,6 @@
       </div>
     </section>
     </div>
-
-    <nav class="tabs" id="parentBottomTabs">
-      <button data-tab="overview" class="on">👶 总览</button>
-      <button data-tab="tasks">📋 任务</button>
-      <button data-tab="logs">📊 记录</button>
-      <button data-tab="studio">✨ 伙伴</button>
-      <button data-tab="family">🏡 家庭</button>
-      <button data-tab="chat">💬 聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
-      <button data-tab="mailbox">📬 信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
-    </nav>
   </div>
 </div>
 
@@ -1013,13 +1022,14 @@
   </div>
 </div>
 
-<!-- 打卡照片大图查看弹窗 -->
+<!-- 照片 / 头像大图查看弹窗 -->
 <div class="modal-backdrop" id="photoPreviewModal">
   <div class="modal-card" style="max-width:480px">
-    <h3 id="ppTitle" style="font-family:var(--serif);margin-bottom:4px">打卡完成照片</h3>
+    <h3 id="ppTitle" style="font-family:var(--serif);margin-bottom:4px">照片预览</h3>
     <p id="ppSub" style="font-size:12.5px;color:var(--muted);margin-bottom:10px"></p>
-    <div style="background:#f6f2ea;border:1px solid var(--hair);border-radius:14px;padding:6px;margin-bottom:12px">
-      <img id="ppImg" src="" alt="打卡照片" style="width:100%;max-height:62vh;object-fit:contain;border-radius:10px;display:block">
+    <div style="background:#f6f2ea;border:1px solid var(--hair);border-radius:14px;padding:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:center">
+      <img id="ppImg" src="" alt="预览照片" style="width:100%;max-height:62vh;object-fit:contain;border-radius:10px;display:block">
+      <div id="ppSvgBox" style="display:none;width:220px;height:220px;border-radius:50%;overflow:hidden;border:2px solid #e4d8c4;background:#fdf8ef;align-items:center;justify-content:center"></div>
     </div>
     <button class="primary" id="btnClosePhotoPreview" style="width:100%">关闭预览</button>
   </div>
@@ -1116,18 +1126,70 @@
     $id("ppTitle").textContent=kidName+" · "+taskLabel;
     var tm=fmtTime(createdAt);
     $id("ppSub").textContent="打卡时间："+dateStr+(tm?(" "+tm):"");
-    $id("ppImg").src=url;
+    $id("ppSvgBox").style.display="none";
+    $id("ppSvgBox").innerHTML="";
+    var img=$id("ppImg");
+    img.style.display="block";
+    img.style.width="100%";
+    img.style.height="auto";
+    img.style.maxHeight="62vh";
+    img.style.objectFit="contain";
+    img.style.borderRadius="10px";
+    img.src=url;
     $id("photoPreviewModal").classList.add("show");
   }
-  $id("btnClosePhotoPreview").addEventListener("click",function(){
+  function openAvatarPreview(title, avIdx, avUrl){
+    $id("ppTitle").textContent=title||"头像预览";
+    $id("ppSub").textContent=avUrl?"高清头像预览":"默认卡通头像预览";
+    var img=$id("ppImg"), svgBox=$id("ppSvgBox");
+    if(avUrl){
+      svgBox.style.display="none";
+      svgBox.innerHTML="";
+      img.style.display="block";
+      img.style.width="220px";
+      img.style.height="220px";
+      img.style.maxHeight="62vh";
+      img.style.objectFit="cover";
+      img.style.borderRadius="50%";
+      img.src=avUrl;
+    }else{
+      img.style.display="none";
+      img.src="";
+      svgBox.innerHTML=GBArt.avatarSVG(avIdx||0,{w:220});
+      svgBox.style.display="flex";
+    }
+    $id("photoPreviewModal").classList.add("show");
+  }
+  document.addEventListener("click",function(e){
+    var av=e.target&&e.target.closest?e.target.closest(".gb-av[data-gb-av-idx]"):null;
+    if(!av) return;
+    if(av.closest("#btnParentAvatarChip, #avModalGrid, .check-pill, #pOversightChildBar")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var idx=parseInt(av.getAttribute("data-gb-av-idx")||"0",10)||0;
+    var url=av.getAttribute("data-gb-av-url")||"";
+    var title="";
+    var row=av.closest(".social-row, .kid-box, .task-item");
+    if(row){
+      var nm=row.querySelector(".sr-name, h3, strong");
+      if(nm) title=(nm.textContent||"").trim();
+    }
+    if(!title&&av.closest("#avModalPreview")){
+      title=($id("avModalTitle").textContent||"头像预览").replace(/^设置\s*/,"");
+    }
+    if(!title&&av.closest("#pChatHeadAvatar")){
+      title=($id("pChatHeadTitle").textContent||"好友头像");
+    }
+    openAvatarPreview(title||"头像预览", idx, url);
+  });
+  function closePhotoPreview(){
     $id("photoPreviewModal").classList.remove("show");
     $id("ppImg").src="";
-  });
+    $id("ppSvgBox").innerHTML="";
+  }
+  $id("btnClosePhotoPreview").addEventListener("click",closePhotoPreview);
   $id("photoPreviewModal").addEventListener("click",function(e){
-    if(e.target===$id("photoPreviewModal")){
-      $id("photoPreviewModal").classList.remove("show");
-      $id("ppImg").src="";
-    }
+    if(e.target===$id("photoPreviewModal")) closePhotoPreview();
   });
 
   async function api(path,opts){
@@ -1254,16 +1316,27 @@
     showAuth();
   });
 
+  function syncTopDockOffset(){
+    var dock=$id("parentTopDock"), vp=$id("tabSwipeViewport");
+    if(!dock||!vp||$id("mainView").style.display==="none") return;
+    var bodyTop=parseFloat(getComputedStyle(document.body).paddingTop)||0;
+    var h=dock.offsetHeight;
+    if(h>0) vp.style.paddingTop=Math.max(0,h-bodyTop+8)+"px";
+  }
+  window.addEventListener("resize",syncTopDockOffset);
+
   async function loadOverview(){
     try{
       data=await api("/api/parent/overview?date="+encodeURIComponent(today()));
       $id("authView").style.display="none";
       $id("mainView").style.display="block";
+      syncTopDockOffset();
       if(!previewKidId&&data.children.length) previewKidId=data.children[0].id;
       if(previewKidId&&!data.children.some(function(c){return c.id===previewKidId;})){
         previewKidId=data.children.length?data.children[0].id:null;
       }
       renderAll();
+      syncTopDockOffset();
       loadQuestions();
     }catch(e){showAuth();}
   }
@@ -1427,7 +1500,7 @@
     if(mainTabOrder.indexOf(tg)<0) tg="overview";
     activeMainTab=tg;
     var activeBtn=null;
-    document.querySelectorAll("#parentBottomTabs button").forEach(function(x){
+    document.querySelectorAll("#parentTopTabs button").forEach(function(x){
       var isOn=x.getAttribute("data-tab")===tg;
       x.classList.toggle("on",isOn);
       if(isOn) activeBtn=x;
@@ -1441,6 +1514,7 @@
         sec.classList.add(dir>0?"tab-slide-left":"tab-slide-right");
       }
     });
+    syncTopDockOffset();
     if(activeBtn&&activeBtn.scrollIntoView){
       try{activeBtn.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});}catch(e){}
     }
@@ -2062,7 +2136,7 @@
     }catch(e){note("coMsg",e.message,true);}
   });
 
-  document.querySelectorAll("#parentBottomTabs button").forEach(function(t){
+  document.querySelectorAll("#parentTopTabs button").forEach(function(t){
     t.addEventListener("click",function(){
       var nextTab=t.getAttribute("data-tab");
       var curIdx=mainTabOrder.indexOf(activeMainTab), nextIdx=mainTabOrder.indexOf(nextTab);

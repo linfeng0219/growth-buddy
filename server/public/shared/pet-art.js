@@ -176,11 +176,14 @@
 
   function avatarHtml(idx, url, size, extraClass) {
     var sz = size || 32;
-    var cls = extraClass ? (' class="' + esc(extraClass) + '"') : "";
+    var avIdx = idx || 0;
+    var clsName = extraClass ? ("gb-av " + extraClass) : "gb-av";
+    var cls = ' class="' + esc(clsName) + '"';
+    var attrs = ' data-gb-av-idx="' + avIdx + '" data-gb-av-url="' + esc(url || "") + '"';
     if (url) {
-      return '<img src="' + esc(url) + '"' + cls + ' alt="头像" style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;object-fit:cover;display:inline-block;vertical-align:middle;border:1.5px solid #e4d8c4;background:#fff">';
+      return '<img src="' + esc(url) + '"' + cls + attrs + ' alt="头像" style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;object-fit:cover;display:inline-block;vertical-align:middle;border:1.5px solid #e4d8c4;background:#fff">';
     }
-    return '<span' + cls + ' style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:#fdf8ef;border:1.5px solid #e4d8c4">' + avatarSVG(idx || 0, { w: sz }) + '</span>';
+    return '<span' + cls + attrs + ' style="width:' + sz + 'px;height:' + sz + 'px;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;background:#fdf8ef;border:1.5px solid #e4d8c4">' + avatarSVG(avIdx, { w: sz }) + '</span>';
   }
 
   function compressAvatarFile(file, cb) {

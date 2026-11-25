@@ -1688,7 +1688,7 @@ class MainActivity : AppCompatActivity() {
         val curAv = SpeciesThumbView(this).apply {
             bindAvatarView(this, c.avatarIdx, c.avatarUrl)
             layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
-            setOnClickListener { showAvatarPickerDialog() }
+            setOnClickListener { showAvatarPreviewDialog(api, "${c.name} 的头像", c.avatarIdx, c.avatarUrl) }
         }
         val infoTv = TextView(this).apply {
             text = "拍立得将直接使用你当前的头像"
@@ -1801,10 +1801,82 @@ class MainActivity : AppCompatActivity() {
                     }
                     frame.addView(noteTv)
                 }
+                frame.setOnClickListener {
+                    showPolaroidPreviewDialog(p, st.catalog)
+                }
                 row.addView(frame)
             }
             binding.wallContainer.addView(row)
         }
+    }
+
+    private fun showPolaroidPreviewDialog(p: PolaroidItem, catalog: List<SpeciesItem>) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(18), dp(16), dp(18), dp(12))
+        }
+        val frame = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(12), dp(12), dp(12), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.WHITE)
+                setStroke(dp(1), 0xFFE5DCCB.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(276), LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val photoBox = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(14), dp(8), dp(12))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(0xFFFBF2E3.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(196))
+        }
+        val kidView = SpeciesThumbView(this).apply {
+            bindAvatarView(this, p.avatarIdx, p.avatarUrl)
+            layoutParams = LinearLayout.LayoutParams(dp(108), dp(108))
+            setOnClickListener {
+                showAvatarPreviewDialog(api, "合影中的头像", p.avatarIdx, p.avatarUrl)
+            }
+        }
+        val petView = SpeciesThumbView(this).apply {
+            val sp = catalog.find { it.id == p.petRef }
+            if (sp != null) setSpecies(sp, isSilhouette = false)
+            else setMainPet(p.petLv)
+            layoutParams = LinearLayout.LayoutParams(dp(132), dp(124))
+        }
+        photoBox.addView(kidView)
+        photoBox.addView(petView)
+        frame.addView(photoBox)
+
+        val dateTv = TextView(this).apply {
+            text = "📅 ${p.photoDate}"
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(0xFF5C5347.toInt())
+            setPadding(0, dp(10), 0, 0)
+        }
+        frame.addView(dateTv)
+        if (p.note.isNotEmpty()) {
+            frame.addView(TextView(this).apply {
+                text = p.note
+                textSize = 13f
+                setTextColor(0xFF8A7E6E.toInt())
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+        root.addView(frame)
+
+        AlertDialog.Builder(this)
+            .setTitle("📸 纪念墙合影放大预览")
+            .setView(root)
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
     private fun performTakePolaroid() {
@@ -1943,6 +2015,9 @@ class MainActivity : AppCompatActivity() {
         val previewAvatar = SpeciesThumbView(this).apply {
             bindAvatarView(this, c.avatarIdx, c.avatarUrl)
             layoutParams = LinearLayout.LayoutParams(dp(58), dp(58))
+            setOnClickListener {
+                showAvatarPreviewDialog(api, "${c.name} 的头像", c.avatarIdx, c.avatarUrl)
+            }
         }
         val previewText = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
