@@ -1396,7 +1396,17 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "🪢 跳绳 ${actualCount} 个达标！喂宠成功！", Toast.LENGTH_LONG).show()
                     } else {
                         val photoNote = if (!photoData.isNullOrEmpty()) "（📷 照片已传给爸妈）" else ""
-                        Toast.makeText(this, "打卡成功！成长值 +${res.json.optInt("pts", 0)}$photoNote", Toast.LENGTH_SHORT).show()
+                        val healUsed = res.json.optInt("healUsed", 0)
+                        val grownXp = res.json.optInt("grownXp", res.json.optInt("pts", 0))
+                        val tip = when {
+                            healUsed > 0 && grownXp == 0 ->
+                                "💚 已用 $healUsed 点成长值帮小伙伴恢复健康$photoNote"
+                            healUsed > 0 && grownXp > 0 ->
+                                "💚 小伙伴已恢复健康！剩余 +$grownXp 用于成长$photoNote"
+                            else ->
+                                "打卡成功！成长值 +${res.json.optInt("pts", 0)}$photoNote"
+                        }
+                        Toast.makeText(this, tip, Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     loadChildState()

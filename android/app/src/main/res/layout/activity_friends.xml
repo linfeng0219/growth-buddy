@@ -106,101 +106,12 @@
             android:orientation="vertical"
             android:paddingBottom="18dp">
 
-            <!-- 左侧桌面栏（手机位于上方）：快捷加好友 + 好友申请 + 我的名片摘要 -->
+            <!-- 左侧桌面栏（手机位于上方）：仅在存在好友申请时显示 -->
             <LinearLayout
                 android:id="@+id/friendsLeftPane"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
-
-                <!-- 快捷添加方式条：扫一扫 / 分享码或账号 / 我的名片 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_card"
-                    android:orientation="vertical"
-                    android:padding="12dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/tvSelfShareInfo"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:ellipsize="end"
-                            android:singleLine="true"
-                            android:text="🔑 我的分享码：加载中..."
-                            android:textColor="#2F6B4F"
-                            android:textSize="12.5sp"
-                            android:textStyle="bold" />
-
-                        <Button
-                            android:id="@+id/btnCopyShareCode"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:minWidth="0dp"
-                            android:minHeight="0dp"
-                            android:paddingHorizontal="8dp"
-                            android:paddingVertical="0dp"
-                            android:singleLine="true"
-                            android:text="复制"
-                            android:textColor="#E8913A"
-                            android:textSize="12.5sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="horizontal">
-
-                        <Button
-                            android:id="@+id/btnQuickScan"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="38dp"
-                            android:layout_weight="1"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:minHeight="0dp"
-                            android:paddingHorizontal="6dp"
-                            android:paddingVertical="0dp"
-                            android:singleLine="true"
-                            android:text="📷 扫二维码"
-                            android:textColor="#2F6B4F"
-                            android:textSize="12.5sp"
-                            app:cornerRadius="18dp"
-                            app:strokeColor="#C5DFCD" />
-
-                        <Button
-                            android:id="@+id/btnQuickSearch"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="38dp"
-                            android:layout_marginStart="8dp"
-                            android:layout_weight="1"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
-                            android:minHeight="0dp"
-                            android:paddingHorizontal="6dp"
-                            android:paddingVertical="0dp"
-                            android:singleLine="true"
-                            android:text="🔎 账号/分享码"
-                            android:textColor="#B8621B"
-                            android:textSize="12.5sp"
-                            app:cornerRadius="18dp"
-                            app:strokeColor="#E8C89B" />
-                    </LinearLayout>
-                </LinearLayout>
 
                 <!-- 新的好友申请容器（无申请时隐藏） -->
                 <LinearLayout

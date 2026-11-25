@@ -101,6 +101,25 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if got := invertTextColorForBg(0x00FFFFFF); got != 0x00000000 {
 		t.Fatalf("expected black on white, got 0x%08x", got)
 	}
+	// 滞回稳定测试：轻微亮度波动(126 <-> 130)保持当前明暗极性，不反复黑白闪烁
+	fg1, ref1 := invertTextColorStable(0x007E7E7E, 0, 0, false) // lum ~126 -> 0x00FFFFFF
+	if fg1 != 0x00FFFFFF {
+		t.Fatalf("expected white on 126 gray, got 0x%08x", fg1)
+	}
+	fg2, _ := invertTextColorStable(0x00828282, ref1, fg1, true) // lum ~130 -> 仍在死区/滞回区间内，维持白色
+	if fg2 != 0x00FFFFFF {
+		t.Fatalf("expected stable white across mid-gray ripple 126->130, got 0x%08x", fg2)
+	}
+	// 真正切到浅色背景 (>152) 才切换为深色文字
+	fg3, ref3 := invertTextColorStable(0x00B8B8B8, ref1, fg2, true)
+	if colorLuminance(fg3) >= 128 {
+		t.Fatalf("expected dark text on bright gray bg, got 0x%08x", fg3)
+	}
+	// 从浅色回退到中灰 (130) 时维持深色，不再抖回白色
+	fg4, _ := invertTextColorStable(0x007E7E7E, ref3, fg3, true)
+	if colorLuminance(fg4) >= 128 {
+		t.Fatalf("expected dark text to hold inside hysteresis band, got 0x%08x", fg4)
+	}
 	// Mid-gray (#808080) should avoid gray-on-gray and produce high contrast
 	grayInv := invertTextColorForBg(0x00808080)
 	if absInt(colorLuminance(0x00808080)-colorLuminance(grayInv)) < 85 {

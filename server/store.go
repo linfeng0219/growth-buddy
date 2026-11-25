@@ -1247,6 +1247,8 @@ type CheckinResult struct {
 	LogID          string         `json:"logId"`
 	Task           TaskDTO        `json:"task"`
 	Pts            int            `json:"pts"`
+	HealUsed       int            `json:"healUsed"`
+	GrownXP        int            `json:"grownXp"`
 	PrevLv         int            `json:"prevLv"`
 	NewLv          int            `json:"newLv"`
 	NewXP          int            `json:"newXp"`
@@ -1403,7 +1405,11 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 		}
 
 		prevLv := LevelForXP(curXP)
-		newXP := curXP + task.Pts
+		s.syncChildHealthLocked(tx, childID, todayStr)
+		newXP, healUsed, grownXP, _, _, err := s.applyEarnedPointsLocked(tx, childID, task.Pts)
+		if err != nil {
+			return err
+		}
 		newLv := LevelForXP(newXP)
 		logID := GenID("log_")
 
@@ -1413,11 +1419,6 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 		); err != nil {
 			return err
 		}
-		if _, err := tx.Exec("UPDATE children SET xp = ? WHERE id = ?", newXP, childID); err != nil {
-			return err
-		}
-		s.syncChildHealthLocked(tx, childID, todayStr)
-		s.applyHealProgressLocked(tx, childID, task.Pts)
 
 		st, err := s.getChildStateLocked(tx, familyID, childID, todayStr)
 		if err != nil {
@@ -1431,6 +1432,8 @@ func (s *Store) CheckinTask(familyID, childID, taskID, todayStr string, actualCo
 			LogID:          logID,
 			Task:           task,
 			Pts:            task.Pts,
+			HealUsed:       healUsed,
+			GrownXP:        grownXP,
 			PrevLv:         prevLv,
 			NewLv:          newLv,
 			NewXP:          newXP,
@@ -1471,7 +1474,7 @@ func (s *Store) UndoLastCheckin(familyID, childID, todayStr string) (*CheckinLog
 		if _, err := tx.Exec("DELETE FROM checkin_logs WHERE id = ?", last.ID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec("UPDATE children SET xp = MAX(0, xp - ?) WHERE id = ?", last.Pts, childID); err != nil {
+		if err := s.revertEarnedPointsLocked(tx, childID, last.Pts); err != nil {
 			return err
 		}
 		undone = &last
@@ -1523,11 +1526,10 @@ func (s *Store) ParentCheckin(familyID, childID, taskID, todayStr string) error 
 		); err != nil {
 			return err
 		}
-		if _, err := tx.Exec("UPDATE children SET xp = ? WHERE id = ?", curXP+pts, childID); err != nil {
+		s.syncChildHealthLocked(tx, childID, todayStr)
+		if _, _, _, _, _, err := s.applyEarnedPointsLocked(tx, childID, pts); err != nil {
 			return err
 		}
-		s.syncChildHealthLocked(tx, childID, todayStr)
-		s.applyHealProgressLocked(tx, childID, pts)
 		return nil
 	})
 }
@@ -1555,7 +1557,7 @@ func (s *Store) UndoTaskCheckin(familyID, childID, taskID, todayStr string) (*Ch
 		if _, err := tx.Exec("DELETE FROM checkin_logs WHERE id = ?", last.ID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec("UPDATE children SET xp = MAX(0, xp - ?) WHERE id = ?", last.Pts, childID); err != nil {
+		if err := s.revertEarnedPointsLocked(tx, childID, last.Pts); err != nil {
 			return err
 		}
 		undone = &last
@@ -3743,12 +3745,8 @@ func (s *Store) MarkChildLetterReadAndClaim(familyID, childID, letterID string) 
 	newXP := 0
 	err := s.db.WithTx(func(tx *Tx) error {
 		var xp int
-		var health string
-		var healProg int
-		if err := tx.QueryRow("SELECT xp, pet_health, heal_progress FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+		if err := tx.QueryRow("SELECT xp FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
 			xp = r.Int(0)
-			health = r.String(1)
-			healProg = r.Int(2)
 			return nil
 		}, childID, familyID); err != nil {
 			return ErrNotFound
@@ -3786,21 +3784,11 @@ func (s *Store) MarkChildLetterReadAndClaim(familyID, childID, letterID string) 
 			}
 		}
 		if claimedXP > 0 {
-			newXP = xp + claimedXP
-			if health != "" && health != "normal" {
-				healProg += claimedXP
-				target := healTargetForHealth(health)
-				if target > 0 && healProg >= target {
-					health = "normal"
-					healProg = 0
-				}
-			}
-			if _, err := tx.Exec(
-				"UPDATE children SET xp = ?, pet_health = ?, heal_progress = ? WHERE id = ? AND family_id = ?",
-				newXP, health, healProg, childID, familyID,
-			); err != nil {
+			updatedXP, _, _, _, _, err := s.applyEarnedPointsLocked(tx, childID, claimedXP)
+			if err != nil {
 				return err
 			}
+			newXP = updatedXP
 		}
 		return nil
 	})
@@ -3817,15 +3805,20 @@ func (s *Store) RecordAdventureWin(familyID, childID, todayStr string) (map[stri
 	}
 	var out map[string]any
 	err := s.db.WithTx(func(tx *Tx) error {
+		s.syncChildHealthLocked(tx, childID, todayStr)
 		var xp int
 		var winDate string
 		var winXP int
+		var health string
+		var healProg int
 		if err := tx.QueryRow(
-			"SELECT xp, adventure_win_date, adventure_win_xp FROM children WHERE id = ? AND family_id = ?",
+			"SELECT xp, adventure_win_date, adventure_win_xp, pet_health, heal_progress FROM children WHERE id = ? AND family_id = ?",
 			func(r SQLiteRow) error {
 				xp = r.Int(0)
 				winDate = r.String(1)
 				winXP = r.Int(2)
+				health = r.String(3)
+				healProg = r.Int(4)
 				return nil
 			}, childID, familyID,
 		); err != nil {
@@ -3838,18 +3831,27 @@ func (s *Store) RecordAdventureWin(familyID, childID, todayStr string) (map[stri
 		}
 
 		earned := 0
+		healUsed := 0
+		grownXP := 0
 		newXP := xp
 		if winXP < DailyAdventureXPLimit {
 			earned = 1
 			winXP += 1
-			newXP = xp + 1
 			if _, err := tx.Exec(
-				"UPDATE children SET xp = ?, adventure_win_date = ?, adventure_win_xp = ? WHERE id = ? AND family_id = ?",
-				newXP, winDate, winXP, childID, familyID,
+				"UPDATE children SET adventure_win_date = ?, adventure_win_xp = ? WHERE id = ? AND family_id = ?",
+				winDate, winXP, childID, familyID,
 			); err != nil {
 				return err
 			}
-			s.applyHealProgressLocked(tx, childID, earned)
+			updatedXP, hUsed, gXP, hNew, hpNew, err := s.applyEarnedPointsLocked(tx, childID, earned)
+			if err != nil {
+				return err
+			}
+			newXP = updatedXP
+			healUsed = hUsed
+			grownXP = gXP
+			health = hNew
+			healProg = hpNew
 		} else if _, err := tx.Exec(
 			"UPDATE children SET adventure_win_date = ?, adventure_win_xp = ? WHERE id = ? AND family_id = ?",
 			winDate, winXP, childID, familyID,
@@ -3864,7 +3866,12 @@ func (s *Store) RecordAdventureWin(familyID, childID, todayStr string) (map[stri
 		out = map[string]any{
 			"ok":                 true,
 			"earned_xp":          earned,
+			"heal_used":          healUsed,
+			"grown_xp":           grownXP,
 			"new_xp":             newXP,
+			"pet_health":         health,
+			"heal_progress":      healProg,
+			"heal_target":        healTargetForHealth(health),
 			"today_adventure_xp": winXP,
 			"daily_limit":        DailyAdventureXPLimit,
 			"remaining":          remaining,

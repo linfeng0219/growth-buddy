@@ -57,6 +57,11 @@ const (
 
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
 
+type contrastSample struct {
+	bg uint32
+	fg uint32
+}
+
 type appState struct {
 	mu              sync.Mutex
 	hwnd            uintptr
@@ -101,12 +106,17 @@ type appState struct {
 	pendingUpdateErr string
 	pendingUpdateMan bool
 
-	backdropBuf  []uint32
-	backdropW    int32
-	backdropH    int32
-	backdropSig  uint64
-	autoHeaderFg uint32
-	inputBgColor uint32
+	backdropBuf    []uint32
+	backdropW      int32
+	backdropH      int32
+	backdropSig    uint64
+	autoHeaderFg   uint32
+	autoHeaderBg   uint32
+	hasHdrSample   bool
+	inputBgColor   uint32
+	inputTextFg    uint32
+	hasInputSample bool
+	lineContrast   map[int32]contrastSample
 
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
@@ -220,43 +230,83 @@ func (a *appState) sampleUnderWindow(force bool) {
 	if hdrEnd > ch {
 		hdrEnd = ch
 	}
-	var newHdrFg uint32
+	var rawHdrBg uint32
 	if hdrBg, ok := averageBGRAStripColor(buf, cw, ch, 4, hdrEnd); ok {
-		newHdrFg = invertTextColorForBg(hdrBg)
+		rawHdrBg = hdrBg
 	} else {
-		newHdrFg = invertTextColorForBg(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
+		rawHdrBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 	}
+	newHdrFg, newHdrBg := invertTextColorStable(rawHdrBg, a.autoHeaderBg, a.autoHeaderFg, a.hasHdrSample)
 
 	bx := a.inputBoxRect(rc)
-	newBoxBg := a.inputBgColor
-	if sampledBoxBg, ok := averageBGRAStripColor(buf, cw, ch, bx.Top, bx.Bottom); ok {
+	bxTop, bxBot := bx.Top+a.dpiScale(3), bx.Bottom-a.dpiScale(3)
+	if bxBot <= bxTop {
+		bxTop, bxBot = bx.Top, bx.Bottom
+	}
+	rawBoxBg := a.inputBgColor
+	if rawBoxBg == 0 {
+		rawBoxBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+	}
+	if sampledBoxBg, ok := averageBGRAStripColor(buf, cw, ch, bxTop, bxBot); ok {
 		if sampledBoxBg == chromaKeyRef {
 			sampledBoxBg = 0x00020202
 		}
-		newBoxBg = sampledBoxBg
+		rawBoxBg = sampledBoxBg
 	}
+	prevBoxFg := a.inputTextFg
+	prevBoxBg := a.inputBgColor
+	wasInputSampled := a.hasInputSample
+	newBoxFg, newBoxBg := invertTextColorStable(rawBoxBg, prevBoxBg, prevBoxFg, wasInputSampled)
 
-	hdrChanged := newHdrFg != a.autoHeaderFg
-	boxChanged := newBoxBg != a.inputBgColor
-	sigChanged := sig != a.backdropSig || a.backdropW != cw || a.backdropH != ch
+	hdrChanged := !a.hasHdrSample || newHdrFg != a.autoHeaderFg
+	boxTextChanged := !wasInputSampled || newBoxFg != prevBoxFg
+	boxBorderChanged := !wasInputSampled || colorChannelMaxDiff(newBoxBg, prevBoxBg) >= 18
+
+	cr := a.chatRect(rc)
+	chatColorsChanged := force || a.backdropW != cw || a.backdropH != ch
+	if !chatColorsChanged && a.cfg.AutoInvertText {
+		bandH := a.dpiScale(16)
+		if bandH < 12 {
+			bandH = 12
+		}
+		for y := cr.Top; y < cr.Bottom; y += bandH {
+			yEnd := y + bandH
+			if yEnd > cr.Bottom {
+				yEnd = cr.Bottom
+			}
+			if stripBg, ok := averageBGRAStripColor(buf, cw, ch, y, yEnd); ok {
+				bucket := ((y + yEnd) / 2) / 16
+				prev, hasPrev := a.lineContrast[bucket]
+				fg, _ := invertTextColorStable(stripBg, prev.bg, prev.fg, hasPrev)
+				if !hasPrev || fg != prev.fg {
+					chatColorsChanged = true
+					break
+				}
+			}
+		}
+	}
 
 	a.backdropBuf = buf
 	a.backdropW = cw
 	a.backdropH = ch
 	a.backdropSig = sig
 	a.autoHeaderFg = newHdrFg
-
-	if boxChanged {
+	a.autoHeaderBg = newHdrBg
+	a.hasHdrSample = true
+	if boxBorderChanged || boxTextChanged {
 		a.inputBgColor = newBoxBg
-		if a.cfg.AutoInvertText {
-			if a.hEditMsg != 0 {
-				pInvalidateRect.Call(a.hEditMsg, 0, 1)
-			}
-			if !a.loggedIn {
-				for _, h := range []uintptr{a.hEditUser, a.hEditPass} {
-					if h != 0 {
-						pInvalidateRect.Call(h, 0, 1)
-					}
+		a.inputTextFg = newBoxFg
+		a.hasInputSample = true
+	}
+
+	if boxTextChanged && a.cfg.AutoInvertText {
+		if a.hEditMsg != 0 {
+			pInvalidateRect.Call(a.hEditMsg, 0, 1)
+		}
+		if !a.loggedIn {
+			for _, h := range []uintptr{a.hEditUser, a.hEditPass} {
+				if h != 0 {
+					pInvalidateRect.Call(h, 0, 1)
 				}
 			}
 		}
@@ -270,7 +320,7 @@ func (a *appState) sampleUnderWindow(force bool) {
 			pInvalidateRect.Call(a.hwnd, 0, 1)
 		}
 	}
-	if force || sigChanged || boxChanged || (hdrChanged && a.cfg.AutoInvertText) {
+	if force || boxBorderChanged || boxTextChanged || ((hdrChanged || chatColorsChanged) && a.cfg.AutoInvertText) {
 		a.triggerRepaint()
 	}
 }
@@ -561,7 +611,14 @@ func (a *appState) paintWindow() {
 				lineFg := baseFg
 				if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
 					if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, clipTop, clipBottom); ok {
-						lineFg = invertTextColorForBg(stripBg)
+						if a.lineContrast == nil {
+							a.lineContrast = make(map[int32]contrastSample)
+						}
+						bucket := ((clipTop + clipBottom) / 2) / 16
+						prev, hasPrev := a.lineContrast[bucket]
+						stableFg, stableBg := invertTextColorStable(stripBg, prev.bg, prev.fg, hasPrev)
+						a.lineContrast[bucket] = contrastSample{bg: stableBg, fg: stableFg}
+						lineFg = stableFg
 					}
 				}
 				drawVisualLine(memDC, ln, cr.Left, screenY, cr.Top, cr.Bottom, lineFg, hasSel, selLo, selHi, li)
@@ -1404,7 +1461,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.addTrayIcon()
 		a.layoutControls()
 		pSetTimer.Call(hwnd, idTimerPoll, 2500, 0)
-		pSetTimer.Call(hwnd, idTimerContrast, 260, 0)
+		pSetTimer.Call(hwnd, idTimerContrast, 500, 0)
 		a.checkUpdateAsync(false)
 		if a.loggedIn {
 			a.pollMessagesAsync()
@@ -1752,11 +1809,15 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if a.cfg.BgTransparent {
 			txtCol := hexToCOLORREF(a.cfg.FontColor, 0x00283123)
 			if a.cfg.AutoInvertText {
-				baseBg := a.inputBgColor
-				if baseBg == 0 {
-					baseBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+				if a.inputTextFg != 0 {
+					txtCol = a.inputTextFg
+				} else {
+					baseBg := a.inputBgColor
+					if baseBg == 0 {
+						baseBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+					}
+					txtCol = invertTextColorForBg(baseBg)
 				}
-				txtCol = invertTextColorForBg(baseBg)
 			}
 			pSetTextColor.Call(hdc, uintptr(txtCol))
 			pSetBkColor.Call(hdc, uintptr(chromaKeyRef))

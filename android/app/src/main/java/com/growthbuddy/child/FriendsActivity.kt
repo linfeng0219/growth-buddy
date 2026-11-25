@@ -72,14 +72,6 @@ class FriendsActivity : AppCompatActivity() {
         }
         binding.btnMyCard.setOnClickListener { showMyQrCardDialog() }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
-        binding.btnQuickScan.setOnClickListener { launchQrScanner() }
-        binding.btnQuickSearch.setOnClickListener { showSearchAccountOrCodeDialog() }
-        binding.btnCopyShareCode.setOnClickListener {
-            val code = overview?.self?.friendCode.orEmpty()
-            if (code.isNotEmpty()) {
-                copyText("我的成长好友分享码", code)
-            }
-        }
 
         binding.btnGroupAll.setOnClickListener { selectGroup("all") }
         binding.btnGroupChats.setOnClickListener { selectGroup("群聊") }
@@ -111,8 +103,10 @@ class FriendsActivity : AppCompatActivity() {
 
         val leftLp = binding.friendsLeftPane.layoutParams as LinearLayout.LayoutParams
         val rightLp = binding.friendsRightPane.layoutParams as LinearLayout.LayoutParams
-        if (m.isDesktopSplit) {
+        val hasReqs = !overview?.incomingRequests.isNullOrEmpty()
+        if (m.isDesktopSplit && hasReqs) {
             binding.friendsBodySplit.orientation = LinearLayout.HORIZONTAL
+            binding.friendsLeftPane.visibility = View.VISIBLE
             leftLp.width = 0
             leftLp.weight = 0.85f
             rightLp.width = 0
@@ -121,11 +115,12 @@ class FriendsActivity : AppCompatActivity() {
             rightLp.marginStart = dp(16)
         } else {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
+            binding.friendsLeftPane.visibility = if (hasReqs) View.VISIBLE else View.GONE
             leftLp.width = ViewGroup.LayoutParams.MATCH_PARENT
             leftLp.weight = 0f
             rightLp.width = ViewGroup.LayoutParams.MATCH_PARENT
             rightLp.weight = 0f
-            rightLp.topMargin = dp(10)
+            rightLp.topMargin = 0
             rightLp.marginStart = 0
         }
         binding.friendsLeftPane.layoutParams = leftLp
@@ -153,8 +148,8 @@ class FriendsActivity : AppCompatActivity() {
             }
             val parsed = SocialParser.parseOverview(res.json)
             overview = parsed
-            binding.tvSelfShareInfo.text = "🔑 我的分享码：${parsed.self.friendCode}  ·  账号：${parsed.self.username.ifBlank { "未设" }}"
             renderRequests(parsed.incomingRequests)
+            applyResponsiveLayout()
             renderFriendsList(parsed)
         }
     }
@@ -480,7 +475,7 @@ class FriendsActivity : AppCompatActivity() {
                     text = if (grp == "家庭") {
                         "当前家庭暂无其他成员档案"
                     } else {
-                        "「朋友」分组暂时空空如也，点上方「📷 扫二维码」或「🔎 账号/分享码」邀请好朋友吧！"
+                        "「朋友」分组暂时空空如也，点上方「➕ 加好友」邀请好朋友吧！"
                     }
                     textSize = 12.5f
                     setTextColor(Color.parseColor("#8A7E6E"))

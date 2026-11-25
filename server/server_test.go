@@ -900,3 +900,96 @@ func TestGroupChatHistoryLimitParam(t *testing.T) {
 		t.Fatalf("expected all 5 messages with limit=all, got %d", len(arrAll))
 	}
 }
+
+func TestPetHealthRecoveryBeforeGrowth(t *testing.T) {
+	ts, store, _ := newTestServer(t)
+
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "康复成长之家", "displayName": "妈妈", "username": "heal_mom", "password": "pass1234",
+		"childName": "糖糖", "childUsername": "heal_kid", "childPassword": "pass1234",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d %+v", st, reg)
+	}
+	momTok := reg["token"].(string)
+	childID := reg["firstChildId"].(string)
+
+	st, cLogin := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{
+		"username": "heal_kid", "password": "pass1234",
+	})
+	if st != 200 {
+		t.Fatalf("child login failed: %d", st)
+	}
+	kidTok := cLogin["token"].(string)
+
+	// 创建两个任务：6 分、8 分
+	st, t1Res := doJSON(t, ts, "POST", "/api/parent/tasks", momTok, map[string]any{
+		"label": "练字", "pts": 6, "emoji": "✍️", "scope": "all",
+	})
+	if st != 201 {
+		t.Fatalf("create task1 failed: %d %+v", st, t1Res)
+	}
+	t1ID := t1Res["task"].(map[string]any)["id"].(string)
+
+	st, t2Res := doJSON(t, ts, "POST", "/api/parent/tasks", momTok, map[string]any{
+		"label": "朗读", "pts": 8, "emoji": "📖", "scope": "all",
+	})
+	if st != 201 {
+		t.Fatalf("create task2 failed: %d %+v", st, t2Res)
+	}
+	t2ID := t2Res["task"].(map[string]any)["id"].(string)
+
+	today := time.Now().Format("2006-01-02")
+	// 设为虚弱状态(需10点恢复)，初始 XP = 5
+	if err := store.db.WithTx(func(tx *Tx) error {
+		_, err := tx.Exec("UPDATE children SET xp = 5, pet_health = 'weak', heal_progress = 0, last_health_date = ? WHERE id = ?", today, childID)
+		return err
+	}); err != nil {
+		t.Fatalf("seed weak state failed: %v", err)
+	}
+
+	// 1. 完成 6 分任务：应全部用于恢复 (0->6/10)，XP 仍为 5
+	st, c1 := doJSON(t, ts, "POST", "/api/child/checkin", kidTok, map[string]any{
+		"taskId": t1ID, "date": today,
+	})
+	if st != 200 {
+		t.Fatalf("checkin1 failed: %d %+v", st, c1)
+	}
+	if int(c1["healUsed"].(float64)) != 6 || int(c1["grownXp"].(float64)) != 0 || int(c1["newXp"].(float64)) != 5 {
+		t.Fatalf("expected 6 heal / 0 growth / 5 xp, got %+v", c1)
+	}
+	ch1 := c1["state"].(map[string]any)["child"].(map[string]any)
+	if ch1["pet_health"] != "weak" || int(ch1["heal_progress"].(float64)) != 6 || int(ch1["xp"].(float64)) != 5 {
+		t.Fatalf("expected still weak 6/10 with xp=5, got %+v", ch1)
+	}
+
+	// 2. 完成 8 分任务：前 4 点恢复健康 (6->10->normal)，剩余 4 点用于成长 (5->9)
+	st, c2 := doJSON(t, ts, "POST", "/api/child/checkin", kidTok, map[string]any{
+		"taskId": t2ID, "date": today,
+	})
+	if st != 200 {
+		t.Fatalf("checkin2 failed: %d %+v", st, c2)
+	}
+	if int(c2["healUsed"].(float64)) != 4 || int(c2["grownXp"].(float64)) != 4 || int(c2["newXp"].(float64)) != 9 {
+		t.Fatalf("expected 4 heal / 4 growth / 9 xp, got %+v", c2)
+	}
+	ch2 := c2["state"].(map[string]any)["child"].(map[string]any)
+	if ch2["pet_health"] != "normal" || int(ch2["heal_progress"].(float64)) != 0 || int(ch2["xp"].(float64)) != 9 {
+		t.Fatalf("expected recovered normal with xp=9, got %+v", ch2)
+	}
+
+	// 3. 设回生病状态(需20点恢复，已有进度19)，冒险胜利(+1)：恰好恢复健康，XP不额外增加
+	if err := store.db.WithTx(func(tx *Tx) error {
+		_, err := tx.Exec("UPDATE children SET xp = 9, pet_health = 'sick', heal_progress = 19, last_health_date = ? WHERE id = ?", today, childID)
+		return err
+	}); err != nil {
+		t.Fatalf("seed sick state failed: %v", err)
+	}
+	st, adv := doJSON(t, ts, "POST", "/api/child/adventure-win", kidTok, map[string]any{"date": today})
+	if st != 200 {
+		t.Fatalf("adventure-win failed: %d %+v", st, adv)
+	}
+	if int(adv["heal_used"].(float64)) != 1 || int(adv["grown_xp"].(float64)) != 0 || int(adv["new_xp"].(float64)) != 9 || adv["pet_health"] != "normal" {
+		t.Fatalf("expected adventure 1pt to finish healing sick pet with xp=9, got %+v", adv)
+	}
+}

@@ -97,6 +97,47 @@ func invertTextColorForBg(bg uint32) uint32 {
 	return inv
 }
 
+func colorChannelMaxDiff(a, b uint32) int {
+	dr := absInt(int(a&0xFF) - int(b&0xFF))
+	dg := absInt(int((a>>8)&0xFF) - int((b>>8)&0xFF))
+	db := absInt(int((a>>16)&0xFF) - int((b>>16)&0xFF))
+	m := dr
+	if dg > m {
+		m = dg
+	}
+	if db > m {
+		m = db
+	}
+	return m
+}
+
+// invertTextColorStable 在 invertTextColorForBg 基础上增加色差死区与中灰滞回区间，
+// 防止透明背景采样轻微抖动或桌面亮度接近 128 时反显文字反复黑白闪烁。
+func invertTextColorStable(bg, prevBg, prevFg uint32, hasPrev bool) (uint32, uint32) {
+	if hasPrev && prevFg != 0 && colorChannelMaxDiff(bg, prevBg) <= 14 {
+		return prevFg, prevBg
+	}
+	bgLum := colorLuminance(bg)
+	inv := invertTextColorForBg(bg)
+	if hasPrev && prevFg != 0 {
+		prevIsLight := colorLuminance(prevFg) >= 128
+		// 中灰过渡区 [104, 152] 内维持当前明暗极性，避免在亮度 128 临界点来回跳变
+		if bgLum >= 104 && bgLum <= 152 {
+			if absInt(bgLum-colorLuminance(inv)) < 85 || (colorLuminance(inv) >= 128) != prevIsLight {
+				if prevIsLight {
+					inv = 0x00FFFFFF
+				} else {
+					inv = 0x00101010
+				}
+			}
+		}
+		if inv == prevFg {
+			return prevFg, bg
+		}
+	}
+	return inv, bg
+}
+
 // brightenColor 返回比指定 COLORREF (0x00BBGGRR) 稍亮一点的颜色（用于输入框外框）。
 func brightenColor(c uint32, delta int) uint32 {
 	if delta < 0 {

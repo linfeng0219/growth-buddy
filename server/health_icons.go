@@ -88,30 +88,98 @@ func (s *Store) syncChildHealthLocked(tx *Tx, childID, todayStr string) {
 	)
 }
 
-// applyHealProgressLocked 在孩子打卡获得成长值时累计恢复进度。
-func (s *Store) applyHealProgressLocked(tx *Tx, childID string, earnedXP int) {
-	if earnedXP <= 0 {
-		return
-	}
+// applyEarnedPointsLocked 在孩子获得成长值时按规则结算：
+// 若宠物处于虚弱(weak)或生病(sick)状态，须先消耗成长值恢复到健康(normal)，
+// 超出恢复所需的成长值才累计到宠物的成长 XP 中；健康状态则全部用于成长。
+func (s *Store) applyEarnedPointsLocked(tx *Tx, childID string, earnedXP int) (newXP, healUsed, grownXP int, newHealth string, newHealProg int, err error) {
+	var curXP int
 	var health string
 	var healProg int
-	if err := tx.QueryRow(
-		"SELECT pet_health, heal_progress FROM children WHERE id = ?",
+	if err = tx.QueryRow(
+		"SELECT xp, pet_health, heal_progress FROM children WHERE id = ?",
 		func(r SQLiteRow) error {
-			health = r.String(0)
-			healProg = r.Int(1)
+			curXP = r.Int(0)
+			health = r.String(1)
+			healProg = r.Int(2)
 			return nil
 		}, childID,
-	); err != nil || health == "normal" || health == "" {
-		return
+	); err != nil {
+		return 0, 0, 0, "", 0, err
 	}
-	healProg += earnedXP
-	target := healTargetForHealth(health)
-	if target > 0 && healProg >= target {
+	if health == "" {
 		health = "normal"
-		healProg = 0
 	}
-	_, _ = tx.Exec("UPDATE children SET pet_health = ?, heal_progress = ? WHERE id = ?", health, healProg, childID)
+	newXP = curXP
+	newHealth = health
+	newHealProg = healProg
+	if earnedXP <= 0 {
+		return newXP, 0, 0, newHealth, newHealProg, nil
+	}
+
+	target := healTargetForHealth(health)
+	if (health == "weak" || health == "sick") && target > 0 {
+		needed := target - healProg
+		if needed < 0 {
+			needed = 0
+		}
+		if earnedXP < needed {
+			healUsed = earnedXP
+			newHealProg = healProg + earnedXP
+			grownXP = 0
+		} else {
+			healUsed = needed
+			newHealth = "normal"
+			newHealProg = 0
+			grownXP = earnedXP - needed
+			newXP = curXP + grownXP
+		}
+	} else {
+		grownXP = earnedXP
+		newXP = curXP + earnedXP
+	}
+
+	if _, err = tx.Exec(
+		"UPDATE children SET xp = ?, pet_health = ?, heal_progress = ? WHERE id = ?",
+		newXP, newHealth, newHealProg, childID,
+	); err != nil {
+		return 0, 0, 0, "", 0, err
+	}
+	return newXP, healUsed, grownXP, newHealth, newHealProg, nil
+}
+
+// revertEarnedPointsLocked 在撤销打卡时优先扣减恢复进度，再扣减成长 XP。
+func (s *Store) revertEarnedPointsLocked(tx *Tx, childID string, pts int) error {
+	if pts <= 0 {
+		return nil
+	}
+	var curXP, healProg int
+	var health string
+	if err := tx.QueryRow(
+		"SELECT xp, pet_health, heal_progress FROM children WHERE id = ?",
+		func(r SQLiteRow) error {
+			curXP = r.Int(0)
+			health = r.String(1)
+			healProg = r.Int(2)
+			return nil
+		}, childID,
+	); err != nil {
+		return err
+	}
+	rem := pts
+	if (health == "weak" || health == "sick") && healProg > 0 {
+		deductHeal := rem
+		if deductHeal > healProg {
+			deductHeal = healProg
+		}
+		healProg -= deductHeal
+		rem -= deductHeal
+	}
+	newXP := curXP - rem
+	if newXP < 0 {
+		newXP = 0
+	}
+	_, err := tx.Exec("UPDATE children SET xp = ?, heal_progress = ? WHERE id = ?", newXP, healProg, childID)
+	return err
 }
 
 func (s *Store) ListFamilyTaskIcons(familyID string) ([]TaskIconDTO, error) {
