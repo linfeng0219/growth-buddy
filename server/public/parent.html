@@ -94,9 +94,9 @@
   .wrap,.wrap.wide{width:100%;max-width:860px}
   #parentTopDock{
     position:fixed;top:0;left:0;right:0;z-index:45;
-    background:rgba(250,247,242,.97);backdrop-filter:blur(10px);
+    background:#faf7f2;
     border-bottom:1px solid var(--hair);
-    box-shadow:0 4px 16px rgba(58,47,34,.06);
+    box-shadow:0 3px 12px rgba(58,47,34,.06);
     padding:calc(8px + env(safe-area-inset-top)) 12px 8px;
   }
   #parentTopDock .top-dock-inner{max-width:860px;margin:0 auto;width:100%}
@@ -117,12 +117,13 @@
     #parentTopDock nav.tabs{justify-content:center}
     #parentTopDock nav.tabs button{flex:1 1 auto;padding:8px 10px;font-size:13.5px}
   }
-  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;touch-action:pan-y;padding-top:96px}
+  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;touch-action:pan-y;padding-top:96px;overflow-x:hidden}
+  #tabSwipeViewport>section{contain:layout style}
   .gb-av{cursor:pointer}
-  @keyframes tabSlideFromRight{0%{opacity:.45;transform:translateX(26px)}100%{opacity:1;transform:translateX(0)}}
-  @keyframes tabSlideFromLeft{0%{opacity:.45;transform:translateX(-26px)}100%{opacity:1;transform:translateX(0)}}
-  .tab-slide-left{animation:tabSlideFromRight .22s ease-out}
-  .tab-slide-right{animation:tabSlideFromLeft .22s ease-out}
+  @keyframes tabSlideFromRight{0%{opacity:.55;transform:translate3d(28px,0,0)}100%{opacity:1;transform:translate3d(0,0,0)}}
+  @keyframes tabSlideFromLeft{0%{opacity:.55;transform:translate3d(-28px,0,0)}100%{opacity:1;transform:translate3d(0,0,0)}}
+  .tab-slide-left{animation:tabSlideFromRight .18s cubic-bezier(.22,.8,.32,1);will-change:transform,opacity}
+  .tab-slide-right{animation:tabSlideFromLeft .18s cubic-bezier(.22,.8,.32,1);will-change:transform,opacity}
   #tab-chat,#tab-chat *{box-sizing:border-box}
   #tab-chat .chat-panel-flush{
     background:transparent;border:none;box-shadow:none;border-radius:0;
@@ -1316,14 +1317,19 @@
     showAuth();
   });
 
+  var _lastDockPad=-1;
   function syncTopDockOffset(){
     var dock=$id("parentTopDock"), vp=$id("tabSwipeViewport");
     if(!dock||!vp||$id("mainView").style.display==="none") return;
     var bodyTop=parseFloat(getComputedStyle(document.body).paddingTop)||0;
     var h=dock.offsetHeight;
-    if(h>0) vp.style.paddingTop=Math.max(0,h-bodyTop+8)+"px";
+    var nextPad=Math.max(0,h-bodyTop+8);
+    if(h>0&&nextPad!==_lastDockPad){
+      _lastDockPad=nextPad;
+      vp.style.paddingTop=nextPad+"px";
+    }
   }
-  window.addEventListener("resize",syncTopDockOffset);
+  window.addEventListener("resize",function(){_lastDockPad=-1;syncTopDockOffset();});
 
   async function loadOverview(){
     try{
@@ -1496,8 +1502,10 @@
   });
   var mainTabOrder=["overview","tasks","logs","studio","family","chat","mailbox"];
   var activeMainTab="overview";
+  var _tabLoadTimer=null;
   function switchMainTab(tg, dir){
     if(mainTabOrder.indexOf(tg)<0) tg="overview";
+    var prevTab=activeMainTab;
     activeMainTab=tg;
     var activeBtn=null;
     document.querySelectorAll("#parentTopTabs button").forEach(function(x){
@@ -1507,25 +1515,37 @@
     });
     mainTabOrder.forEach(function(k){
       var sec=$id("tab-"+k);
-      sec.style.display=(k===tg)?"":"none";
+      sec.style.transition="";
+      sec.style.transform="";
       sec.classList.remove("tab-slide-left","tab-slide-right");
-      if(k===tg&&dir){
-        void sec.offsetWidth;
-        sec.classList.add(dir>0?"tab-slide-left":"tab-slide-right");
-      }
+      sec.style.display=(k===tg)?"":"none";
     });
-    syncTopDockOffset();
-    if(activeBtn&&activeBtn.scrollIntoView){
-      try{activeBtn.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});}catch(e){}
+    if(dir&&prevTab!==tg){
+      var inSec=$id("tab-"+tg);
+      requestAnimationFrame(function(){
+        inSec.classList.add(dir>0?"tab-slide-left":"tab-slide-right");
+      });
     }
-    if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
-    if(tg==="chat"){loadParentChatContacts(true);}
-    if(tg==="mailbox"){loadParentMailbox();}
+    if(activeBtn&&activeBtn.scrollIntoView){
+      try{activeBtn.scrollIntoView({behavior:"auto",inline:"center",block:"nearest"});}catch(e){}
+    }
+    clearTimeout(_tabLoadTimer);
+    var runTabData=function(){
+      if(activeMainTab!==tg) return;
+      if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
+      if(tg==="chat"){loadParentChatContacts(true);}
+      if(tg==="mailbox"){loadParentMailbox();}
+    };
+    if(dir){
+      _tabLoadTimer=setTimeout(runTabData, 190);
+    }else{
+      runTabData();
+    }
   }
   (function setupTabSwipe(){
     var vp=$id("tabSwipeViewport");
     if(!vp) return;
-    var sx=0, sy=0, st=0, tracking=false;
+    var sx=0, sy=0, st=0, mode="", lastDx=0, activeSec=null;
     function shouldIgnoreSwipe(target){
       if(document.querySelector(".modal-backdrop.show")) return true;
       var el=target;
@@ -1533,29 +1553,85 @@
         var tag=(el.tagName||"").toUpperCase();
         if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||tag==="AUDIO"||el.isContentEditable) return true;
         if(el.classList&&(el.classList.contains("tabs")||el.classList.contains("child-filter-bar")||el.classList.contains("seg-switch"))) return true;
-        if(el.scrollWidth>el.clientWidth+6&&getComputedStyle(el).overflowX!=="visible"&&getComputedStyle(el).overflowX!=="hidden") return true;
+        if(el.scrollWidth>el.clientWidth+8) return true;
         el=el.parentElement;
       }
       return false;
     }
+    function resetDrag(animateBack){
+      if(!activeSec) return;
+      var sec=activeSec;
+      activeSec=null;
+      if(animateBack&&Math.abs(lastDx)>2){
+        sec.style.transition="transform .15s ease-out";
+        sec.style.transform="translate3d(0,0,0)";
+        setTimeout(function(){sec.style.transition="";sec.style.transform="";},160);
+      }else{
+        sec.style.transition="";
+        sec.style.transform="";
+      }
+    }
     vp.addEventListener("touchstart",function(e){
-      if(!e.touches||e.touches.length!==1||shouldIgnoreSwipe(e.target)){tracking=false;return;}
-      tracking=true;
+      if(!e.touches||e.touches.length!==1||shouldIgnoreSwipe(e.target)){mode="off";return;}
+      mode="";
+      lastDx=0;
       sx=e.touches[0].clientX;
       sy=e.touches[0].clientY;
       st=Date.now();
+      activeSec=$id("tab-"+activeMainTab);
+      if(activeSec){
+        activeSec.style.transition="";
+        activeSec.classList.remove("tab-slide-left","tab-slide-right");
+      }
+    },{passive:true});
+    vp.addEventListener("touchmove",function(e){
+      if(mode==="off"||mode==="v"||!e.touches||e.touches.length!==1||!activeSec) return;
+      var dx=e.touches[0].clientX-sx;
+      var dy=e.touches[0].clientY-sy;
+      if(mode===""){
+        if(Math.abs(dx)<10&&Math.abs(dy)<10) return;
+        if(Math.abs(dy)>Math.abs(dx)*0.95){
+          mode="v";
+          resetDrag(false);
+          return;
+        }
+        mode="h";
+      }
+      var idx=mainTabOrder.indexOf(activeMainTab);
+      if((dx>0&&idx===0)||(dx<0&&idx===mainTabOrder.length-1)){
+        dx*=0.25;
+      }else{
+        dx*=0.48;
+      }
+      if(dx>90) dx=90;
+      if(dx<-90) dx=-90;
+      lastDx=dx;
+      activeSec.style.transform="translate3d("+dx.toFixed(1)+"px,0,0)";
     },{passive:true});
     vp.addEventListener("touchend",function(e){
-      if(!tracking||!e.changedTouches||!e.changedTouches.length) return;
-      tracking=false;
-      var dx=e.changedTouches[0].clientX-sx;
-      var dy=e.changedTouches[0].clientY-sy;
-      var dt=Date.now()-st;
-      if(dt<650&&Math.abs(dx)>54&&Math.abs(dx)>Math.abs(dy)*1.35){
-        var idx=mainTabOrder.indexOf(activeMainTab);
-        if(dx<0&&idx<mainTabOrder.length-1) switchMainTab(mainTabOrder[idx+1],1);
-        else if(dx>0&&idx>0) switchMainTab(mainTabOrder[idx-1],-1);
+      if(mode!=="h"||!e.changedTouches||!e.changedTouches.length){
+        resetDrag(false);
+        mode="";
+        return;
       }
+      var dx=e.changedTouches[0].clientX-sx;
+      var dt=Date.now()-st;
+      var idx=mainTabOrder.indexOf(activeMainTab);
+      var trig=(Math.abs(dx)>44)||(dt<280&&Math.abs(dx)>24);
+      if(trig&&dx<0&&idx<mainTabOrder.length-1){
+        resetDrag(false);
+        switchMainTab(mainTabOrder[idx+1],1);
+      }else if(trig&&dx>0&&idx>0){
+        resetDrag(false);
+        switchMainTab(mainTabOrder[idx-1],-1);
+      }else{
+        resetDrag(true);
+      }
+      mode="";
+    },{passive:true});
+    vp.addEventListener("touchcancel",function(){
+      resetDrag(true);
+      mode="";
     },{passive:true});
   })();
 
