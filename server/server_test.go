@@ -671,8 +671,38 @@ func TestChangelogLatestDate(t *testing.T) {
 		t.Fatalf("expected at least 2 changelog entries, got %+v", res["changelog"])
 	}
 	first, ok := arr[0].(map[string]any)
-	if !ok || first["date"] != "2026-11-24" {
-		t.Fatalf("expected newest changelog entry date 2026-11-24, got %+v", arr[0])
+	if !ok || first["date"] != "2026-11-25" {
+		t.Fatalf("expected newest changelog entry date 2026-11-25, got %+v", arr[0])
+	}
+	if _, hasFish := first["fish_items"].([]any); !hasFish {
+		t.Fatalf("expected fish_items in latest changelog entry: %+v", first)
+	}
+	latestNotes, _ := res["latest_notes"].(map[string]any)
+	if latestNotes == nil || latestNotes["android"] == "" || latestNotes["fish"] == "" {
+		t.Fatalf("expected unified latest_notes for android & fish, got %+v", res["latest_notes"])
+	}
+
+	// Verify fish blank releaseNotes also auto-fills from changelog.json fish_items
+	st, aLogin := doJSON(t, ts, "POST", "/api/auth/admin-login", "", map[string]any{
+		"username": "admin", "password": "admin1234",
+	})
+	if st != 200 {
+		t.Fatalf("admin login failed: %d", st)
+	}
+	adminTok := aLogin["token"].(string)
+	st, fishAuto := doJSON(t, ts, "POST", "/api/admin/releases", adminTok, map[string]any{
+		"platform":     "fish",
+		"versionName":  "2026.11.25-1537",
+		"releaseNotes": "",
+		"forceUpdate":  false,
+		"downloadUrl":  "https://example.com/fish-auto.exe",
+	})
+	if st != 201 {
+		t.Fatalf("auto fish release notes create failed: %d %+v", st, fishAuto)
+	}
+	fNotes, _ := fishAuto["release_notes"].(string)
+	if !strings.Contains(fNotes, "清屏") || !strings.Contains(fNotes, "• ") {
+		t.Fatalf("expected fish release_notes auto-filled from changelog.json, got %q", fNotes)
 	}
 }
 

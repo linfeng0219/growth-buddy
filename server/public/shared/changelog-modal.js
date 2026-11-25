@@ -1,7 +1,7 @@
 (function () {
-  var cachedList = null;
+  var cachedPayload = null;
   var modalEl = null;
-  var activeScope = "all"; // all | app | server
+  var activeScope = "all"; // all | app | fish | server
 
   function ensureModal() {
     if (modalEl) return modalEl;
@@ -9,7 +9,7 @@
     modalEl.className = "modal-backdrop";
     modalEl.id = "gbChangelogModal";
     modalEl.innerHTML =
-      '<div class="modal-card" style="text-align:left;max-width:520px">' +
+      '<div class="modal-card" style="text-align:left;max-width:540px">' +
       '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">' +
       '    <h3 id="gbClTitle" style="font-family:var(--serif);margin:0">版本更新内容</h3>' +
       '    <button type="button" class="ghost sm" id="gbClClose">关闭</button>' +
@@ -17,9 +17,10 @@
       '  <div id="gbClTabs" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
       '    <button type="button" class="sm on" data-clscope="all">全部更新</button>' +
       '    <button type="button" class="sm" data-clscope="app">📱 App 端</button>' +
+      '    <button type="button" class="sm" data-clscope="fish">🐟 桌面端 fish</button>' +
       '    <button type="button" class="sm" data-clscope="server">🖥️ 后台与服务端</button>' +
       '  </div>' +
-      '  <div id="gbClBody" style="max-height:380px;overflow-y:auto;font-size:13px;line-height:1.7;color:var(--ink-soft)">加载中...</div>' +
+      '  <div id="gbClBody" style="max-height:400px;overflow-y:auto;font-size:13px;line-height:1.7;color:var(--ink-soft)">加载中...</div>' +
       '</div>';
     document.body.appendChild(modalEl);
     modalEl.querySelector("#gbClClose").addEventListener("click", function () {
@@ -64,25 +65,28 @@
     );
   }
 
-  function renderModalBody() {
-    var m = ensureModal();
-    var body = m.querySelector("#gbClBody");
-    if (!cachedList || !cachedList.length) {
-      body.innerHTML = '<div style="color:var(--muted)">暂无更新记录。</div>';
-      return;
-    }
-    var html = cachedList
+  function renderEntriesHtml(list, scope, limit) {
+    if (!list || !list.length) return "";
+    var sc = scope || "all";
+    var src = limit && limit > 0 ? list.slice(0, limit) : list;
+    return src
       .map(function (entry) {
-        var hasSplit = (entry.app_items && entry.app_items.length) || (entry.server_items && entry.server_items.length);
+        var hasSplit =
+          (entry.app_items && entry.app_items.length) ||
+          (entry.fish_items && entry.fish_items.length) ||
+          (entry.server_items && entry.server_items.length);
         var inner = "";
         if (hasSplit) {
-          if (activeScope === "all" || activeScope === "app") {
+          if (sc === "all" || sc === "app") {
             inner += renderSubBlock("📱 App 客户端", "#f4fbf7", "#cbe4d4", "#2F6B4F", entry.app_title, entry.app_items);
           }
-          if (activeScope === "all" || activeScope === "server") {
+          if (sc === "all" || sc === "fish") {
+            inner += renderSubBlock("🐟 桌面端 fish", "#eef6ff", "#c7dcf5", "#24558a", entry.fish_title, entry.fish_items);
+          }
+          if (sc === "all" || sc === "server") {
             inner += renderSubBlock("🖥️ 后台与服务端", "#fff9ef", "#eed5ae", "#9a5b13", entry.server_title, entry.server_items);
           }
-        } else if (activeScope === "all") {
+        } else if (sc === "all") {
           var items = (entry.items || [])
             .map(function (it) {
               return '<li style="margin:3px 0">' + esc(it) + "</li>";
@@ -103,6 +107,68 @@
       })
       .filter(Boolean)
       .join("");
+  }
+
+  function formatReleaseNotes(list, platform, vName) {
+    if (!list || !list.length) return "";
+    var plat = String(platform || "android").toLowerCase();
+    var pickField = function (x) {
+      if (plat === "fish") return (x.fish_items && x.fish_items.length) ? { title: x.fish_title || "", items: x.fish_items } : null;
+      if (plat === "server") return (x.server_items && x.server_items.length) ? { title: x.server_title || "", items: x.server_items } : null;
+      return (x.app_items && x.app_items.length) ? { title: x.app_title || "", items: x.app_items } : null;
+    };
+    var picked = null;
+    var m = String(vName || "").match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
+    if (m) {
+      var dStr = m[1] + "-" + m[2] + "-" + m[3];
+      picked = list.find(function (x) { return (x.date || "").trim() === dStr && !!pickField(x); }) || null;
+    }
+    if (!picked) {
+      picked = list.find(function (x) { return !!pickField(x); }) || list[0];
+    }
+    var sp = pickField(picked) || { title: picked.title || "", items: picked.items || [] };
+    var title = sp.title || picked.title || "";
+    var lines = [];
+    if (title) lines.push(String(title).trim());
+    (sp.items || []).slice(0, 5).forEach(function (it) {
+      var s = String(it || "").trim();
+      if (s) lines.push("• " + s);
+    });
+    return lines.join("\n");
+  }
+
+  async function fetchChangelog(force) {
+    if (cachedPayload && !force) return cachedPayload;
+    try {
+      var r = await fetch("/api/changelog", { cache: "no-store" });
+      var d = await r.json();
+      cachedPayload = {
+        version: (d && d.version) || "",
+        changelog: (d && d.changelog) || [],
+        latest_notes: (d && d.latest_notes) || {}
+      };
+    } catch (e) {
+      cachedPayload = { version: "", changelog: [], latest_notes: {} };
+    }
+    return cachedPayload;
+  }
+
+  function renderInto(el, list, opts) {
+    if (!el) return;
+    opts = opts || {};
+    var html = renderEntriesHtml(list, opts.scope || "all", opts.limit || 0);
+    el.innerHTML = html || '<div style="color:var(--muted)">暂无更新记录。</div>';
+  }
+
+  function renderModalBody() {
+    var m = ensureModal();
+    var body = m.querySelector("#gbClBody");
+    var list = (cachedPayload && cachedPayload.changelog) || [];
+    if (!list.length) {
+      body.innerHTML = '<div style="color:var(--muted)">暂无更新记录。</div>';
+      return;
+    }
+    var html = renderEntriesHtml(list, activeScope, 0);
     body.innerHTML = html || '<div style="color:var(--muted)">该分类暂无更新记录。</div>';
   }
 
@@ -112,26 +178,21 @@
     var body = m.querySelector("#gbClBody");
     body.innerHTML = "加载中...";
     m.classList.add("show");
-    if (!cachedList) {
-      try {
-        var r = await fetch("/api/changelog");
-        var d = await r.json();
-        cachedList = d.changelog || [];
-      } catch (e) {
-        cachedList = [];
-      }
-    }
+    await fetchChangelog(true);
     renderModalBody();
   }
 
   window.GBChangelog = {
+    fetch: fetchChangelog,
+    renderInto: renderInto,
+    formatReleaseNotes: formatReleaseNotes,
     open: openChangelogModal,
     bindBadge: function (el, prefix) {
       if (!el) return;
       el.style.cursor = "pointer";
       el.title = "点击查看版本更新内容";
       var curVer = "";
-      fetch("/api/health")
+      fetch("/api/health", { cache: "no-store" })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.version) {

@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	wmAppRefresh      = WM_APP + 1
-	wmAppShow         = WM_APP + 2
-	wmAppTray         = WM_APP + 3
-	wmAppUpdateResult = WM_APP + 4
+	wmAppRefresh         = WM_APP + 1
+	wmAppShow            = WM_APP + 2
+	wmAppTray            = WM_APP + 3
+	wmAppUpdateResult    = WM_APP + 4
+	wmAppChangelogResult = WM_APP + 5
 
 	idTimerPoll     = 1
 	idTimerContrast = 2
@@ -56,6 +57,7 @@ const (
 	idMenuClearHKCtrlAltL   = 225
 	idMenuClearHKF8         = 226
 	idMenuUnclearHistory    = 227
+	idMenuChangelog         = 228
 	idMenuAccountBase       = 300
 	maxMenuSavedAccounts    = 15
 	idCtxCopy               = 401
@@ -112,6 +114,7 @@ type appState struct {
 	pendingUpdateRes *FishVersionResponse
 	pendingUpdateErr string
 	pendingUpdateMan bool
+	pendingChangelog string
 
 	backdropBuf    []uint32
 	backdropW      int32
@@ -1108,6 +1111,7 @@ func (a *appState) showTrayMenu() {
 		pAppendMenuW.Call(menu, MF_POPUP, accMenu, uintptr(unsafe.Pointer(u16(curAccLabel))))
 	}
 	verName, _ := currentFishVersion()
+	pAppendMenuW.Call(menu, MF_STRING, idMenuChangelog, uintptr(unsafe.Pointer(u16("更新内容"))))
 	pAppendMenuW.Call(menu, MF_STRING, idMenuCheckUpdate, uintptr(unsafe.Pointer(u16("检查更新 (v"+verName+")"))))
 	if a.loggedIn {
 		pAppendMenuW.Call(menu, MF_STRING, idMenuLogout, uintptr(unsafe.Pointer(u16("注销账号"))))
@@ -1330,6 +1334,8 @@ func (a *appState) handleCommand(id int) {
 		a.restoreClearedMessages()
 	case idMenuAddAccount:
 		a.startAddAccount()
+	case idMenuChangelog:
+		a.showChangelogAsync()
 	case idMenuCheckUpdate:
 		a.checkUpdateAsync(true)
 	case idMenuLogout:
@@ -1914,6 +1920,17 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.handleUpdateMessage(wParam)
 		return 0
 
+	case wmAppChangelogResult:
+		a.mu.Lock()
+		txt := a.pendingChangelog
+		a.pendingChangelog = ""
+		a.mu.Unlock()
+		if txt != "" {
+			verName, _ := currentFishVersion()
+			pMessageBoxW.Call(a.hwnd, uintptr(unsafe.Pointer(u16(txt))), uintptr(unsafe.Pointer(u16("fish 更新内容 (v"+verName+")"))), MB_OK|MB_ICONINFORMATION)
+		}
+		return 0
+
 	case WM_COMMAND:
 		id := int(wParam & 0xFFFF)
 		a.handleCommand(id)
@@ -2006,6 +2023,22 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	r, _, _ := pDefWindowProcW.Call(hwnd, uintptr(msg), wParam, lParam)
 	return r
+}
+
+func (a *appState) showChangelogAsync() {
+	go func() {
+		txt, err := fetchFishChangelogText(defaultServerURL)
+		if err != nil {
+			txt = "获取更新内容失败: " + err.Error()
+		}
+		a.mu.Lock()
+		a.pendingChangelog = txt
+		hwnd := a.hwnd
+		a.mu.Unlock()
+		if hwnd != 0 {
+			pPostMessageW.Call(hwnd, wmAppChangelogResult, 0, 0)
+		}
+	}()
 }
 
 func (a *appState) checkUpdateAsync(manual bool) {

@@ -30,6 +30,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.growthbuddy.child.databinding.ActivityMainBinding
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -405,25 +406,47 @@ class MainActivity : AppCompatActivity() {
         binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · 版本 ${BuildConfig.VERSION_NAME} · 更新记录 ⓘ"
     }
 
+    private fun formatChangelogJson(arr: JSONArray): String {
+        val sb = StringBuilder()
+        for (i in 0 until arr.length()) {
+            val entry = arr.optJSONObject(i) ?: continue
+            val dt = entry.optString("date", "")
+            val appItems = entry.optJSONArray("app_items")
+            val useItems = if (appItems != null && appItems.length() > 0) appItems else entry.optJSONArray("items")
+            if (useItems == null || useItems.length() == 0) continue
+            val title = entry.optString("app_title", "").ifBlank { entry.optString("title", "") }
+            sb.append("📱 ").append(dt)
+            if (title.isNotEmpty()) sb.append(" · ").append(title)
+            sb.append("\n")
+            for (j in 0 until useItems.length()) {
+                sb.append("  • ").append(useItems.optString(j, "")).append("\n")
+            }
+            if (i + 1 < arr.length()) sb.append("\n")
+        }
+        return sb.toString().trim()
+    }
+
     private fun showChangelogDialog() {
-        val fallback = """
-            📅 2026-11-23 · 分龄挑战题库、双端一体 App 与家长信箱升级
-              • 选择「进阶挑战」难度提升时，自动适当增加英语与高年级数学拓展题目
-              • 优化家长登录 App 零闪屏直达管理台，支持多账号头像记忆下拉切换
-              • 家长端支持群作业纯文本批量导入与家长/孩子双向信箱互动
-              • 升级 42 段萌娃拟真童声离线语音包与战斗胜利祝贺音效
-        """.trimIndent()
+        val cachePrefs = getSharedPreferences("gb_changelog_cache", MODE_PRIVATE)
+        val cachedText = runCatching {
+            val raw = cachePrefs.getString("changelog_json", "").orEmpty()
+            if (raw.isNotEmpty()) formatChangelogJson(JSONArray(raw)) else ""
+        }.getOrDefault("")
+        val fallback = cachedText.ifEmpty { "暂未缓存更新记录，请联网后点击查看最新更新内容。" }
 
         val tv = TextView(this).apply {
-            text = "正在加载更新内容..."
+            text = cachedText.ifEmpty { "正在加载更新内容..." }
             textSize = 13.5f
             setTextColor(0xFF4A4238.toInt())
-            setPadding(dp(20), dp(14), dp(20), dp(8))
+            setPadding(dp(20), dp(14), dp(20), dp(12))
             setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(tv)
         }
         val dlg = AlertDialog.Builder(this)
             .setTitle("📋 版本更新内容 (${BuildConfig.VERSION_NAME})")
-            .setView(tv)
+            .setView(scroll)
             .setPositiveButton("知道了", null)
             .create()
         dlg.show()
@@ -431,23 +454,8 @@ class MainActivity : AppCompatActivity() {
         api.request("GET", "/api/changelog", null) { res ->
             val arr = res.json?.optJSONArray("changelog")
             if (res.ok && arr != null && arr.length() > 0) {
-                val sb = StringBuilder()
-                for (i in 0 until arr.length()) {
-                    val entry = arr.getJSONObject(i)
-                    val dt = entry.optString("date", "")
-                    val appItems = entry.optJSONArray("app_items")
-                    val useItems = if (appItems != null && appItems.length() > 0) appItems else entry.optJSONArray("items")
-                    if (useItems == null || useItems.length() == 0) continue
-                    val title = entry.optString("app_title", "").ifBlank { entry.optString("title", "") }
-                    sb.append("📱 ").append(dt)
-                    if (title.isNotEmpty()) sb.append(" · ").append(title)
-                    sb.append("\n")
-                    for (j in 0 until useItems.length()) {
-                        sb.append("  • ").append(useItems.optString(j, "")).append("\n")
-                    }
-                    if (i + 1 < arr.length()) sb.append("\n")
-                }
-                tv.text = sb.toString().trim().ifEmpty { fallback }
+                cachePrefs.edit().putString("changelog_json", arr.toString()).apply()
+                tv.text = formatChangelogJson(arr).ifEmpty { fallback }
             } else {
                 tv.text = fallback
             }

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -423,5 +424,16 @@ func TestClearHotkeyFilteringAndAdaptiveInputBorder(t *testing.T) {
 	darkBorder := adaptiveInputBorderColor(darkBg)
 	if darkBorder == chromaKeyRef || colorLuminance(darkBorder) <= colorLuminance(darkBg)+25 {
 		t.Fatalf("expected brightened border on dark bg, got 0x%08x", darkBorder)
+	}
+
+	clTxt := formatFishChangelogText([]ChangelogEntryDTO{
+		{
+			Date:      "2026-11-25",
+			FishTitle: "清屏与边框优化",
+			FishItems: []string{"支持 Alt+L 清屏", "白底边框加深"},
+		},
+	}, 3)
+	if !strings.Contains(clTxt, "2026-11-25") || !strings.Contains(clTxt, "Alt+L") {
+		t.Fatalf("unexpected formatted fish changelog: %q", clTxt)
 	}
 }

@@ -99,6 +99,8 @@ type changelogEntry struct {
 	Title       string   `json:"title"`
 	AppTitle    string   `json:"app_title,omitempty"`
 	AppItems    []string `json:"app_items,omitempty"`
+	FishTitle   string   `json:"fish_title,omitempty"`
+	FishItems   []string `json:"fish_items,omitempty"`
 	ServerTitle string   `json:"server_title,omitempty"`
 	ServerItems []string `json:"server_items,omitempty"`
 	Items       []string `json:"items,omitempty"`
@@ -125,7 +127,25 @@ func (a *AppServer) loadChangelogEntries() []changelogEntry {
 
 var verDateRegexp = regexp.MustCompile(`(\d{4})[.\-](\d{2})[.\-](\d{2})`)
 
-func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
+func entryFieldsForPlatform(e changelogEntry, platform string) (string, []string) {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "fish":
+		if len(e.FishItems) > 0 {
+			return strings.TrimSpace(e.FishTitle), e.FishItems
+		}
+	case "server":
+		if len(e.ServerItems) > 0 {
+			return strings.TrimSpace(e.ServerTitle), e.ServerItems
+		}
+	default:
+		if len(e.AppItems) > 0 {
+			return strings.TrimSpace(e.AppTitle), e.AppItems
+		}
+	}
+	return "", nil
+}
+
+func (a *AppServer) defaultReleaseNotesForPlatform(platform, vName string) string {
 	entries := a.loadChangelogEntries()
 	if len(entries) == 0 {
 		return ""
@@ -134,15 +154,17 @@ func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
 	if m := verDateRegexp.FindStringSubmatch(strings.TrimSpace(vName)); len(m) == 4 {
 		targetDate := m[1] + "-" + m[2] + "-" + m[3]
 		for i := range entries {
-			if strings.TrimSpace(entries[i].Date) == targetDate && len(entries[i].AppItems) > 0 {
-				picked = &entries[i]
-				break
+			if strings.TrimSpace(entries[i].Date) == targetDate {
+				if _, items := entryFieldsForPlatform(entries[i], platform); len(items) > 0 {
+					picked = &entries[i]
+					break
+				}
 			}
 		}
 	}
 	if picked == nil {
 		for i := range entries {
-			if len(entries[i].AppItems) > 0 {
+			if _, items := entryFieldsForPlatform(entries[i], platform); len(items) > 0 {
 				picked = &entries[i]
 				break
 			}
@@ -152,13 +174,13 @@ func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
 		picked = &entries[0]
 	}
 
-	title := strings.TrimSpace(picked.AppTitle)
-	items := picked.AppItems
+	title, items := entryFieldsForPlatform(*picked, platform)
 	if len(items) == 0 {
-		if title == "" {
-			title = strings.TrimSpace(picked.Title)
-		}
+		title = strings.TrimSpace(picked.Title)
 		items = picked.Items
+	}
+	if title == "" {
+		title = strings.TrimSpace(picked.Title)
 	}
 	var lines []string
 	if title != "" {
@@ -175,6 +197,10 @@ func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (a *AppServer) defaultReleaseNotesForVersion(vName string) string {
+	return a.defaultReleaseNotesForPlatform("android", vName)
 }
 
 func serverToday() string {
@@ -419,16 +445,26 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m == http.MethodGet && p == "/api/changelog" {
+		w.Header().Set("Cache-Control", "no-store")
 		entries := a.loadChangelogEntries()
 		if entries == nil {
 			entries = []changelogEntry{}
 		}
-		writeJSON(w, 200, map[string]any{"version": SystemVersion, "changelog": entries})
+		writeJSON(w, 200, map[string]any{
+			"version":   SystemVersion,
+			"changelog": entries,
+			"latest_notes": map[string]string{
+				"android": a.defaultReleaseNotesForPlatform("android", ""),
+				"fish":    a.defaultReleaseNotesForPlatform("fish", ""),
+				"server":  a.defaultReleaseNotesForPlatform("server", ""),
+			},
+		})
 		return
 	}
 
 	/* ===== 0. 公开 App 远程升级接口 ===== */
 	if m == http.MethodGet && p == "/api/app/version" {
+		w.Header().Set("Cache-Control", "no-store")
 		platform := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("platform")))
 		if platform == "" {
 			platform = "android"
@@ -445,6 +481,11 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 				"release":                 nil,
 			})
 			return
+		}
+		if strings.TrimSpace(rel.ReleaseNotes) == "" || strings.HasPrefix(strings.TrimSpace(rel.ReleaseNotes), "🐟 桌面端 fish 更新") {
+			if unified := a.defaultReleaseNotesForPlatform(platform, rel.VersionName); unified != "" {
+				rel.ReleaseNotes = unified
+			}
 		}
 		minForced := a.store.GetMinForcedVersionCode(platform)
 		hasUpdate := curCode > 0 && rel.VersionCode > curCode
@@ -2258,11 +2299,7 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 			vName = time.Now().In(loc).Format("2006.01.02-1504")
 		}
 		if notes == "" {
-			if platform == "fish" {
-				notes = "🐟 桌面端 fish 更新（v" + vName + "）"
-			} else {
-				notes = a.defaultReleaseNotesForVersion(vName)
-			}
+			notes = a.defaultReleaseNotesForPlatform(platform, vName)
 		}
 		if vCode <= 0 {
 			vCode = autoVersionCodeFromName(vName)
@@ -2351,11 +2388,7 @@ func (a *AppServer) handleAdminCreateRelease(w http.ResponseWriter, r *http.Requ
 	}
 	notes := strings.TrimSpace(mapStr(body, "releaseNotes"))
 	if notes == "" {
-		if platform == "fish" {
-			notes = "🐟 桌面端 fish 更新（v" + vName + "）"
-		} else {
-			notes = a.defaultReleaseNotesForVersion(vName)
-		}
+		notes = a.defaultReleaseNotesForPlatform(platform, vName)
 	}
 	created, err := a.store.CreateRelease(AppReleaseDTO{
 		Platform:     platform,

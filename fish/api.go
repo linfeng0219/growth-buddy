@@ -40,6 +40,19 @@ type FishVersionResponse struct {
 	Release     *FishReleaseDTO `json:"release"`
 }
 
+type ChangelogEntryDTO struct {
+	Date      string   `json:"date"`
+	Title     string   `json:"title"`
+	FishTitle string   `json:"fish_title"`
+	FishItems []string `json:"fish_items"`
+	Items     []string `json:"items"`
+}
+
+type ChangelogAPIResponse struct {
+	Version   string              `json:"version"`
+	Changelog []ChangelogEntryDTO `json:"changelog"`
+}
+
 type LoginResult struct {
 	Token       string
 	Role        string
@@ -316,4 +329,57 @@ func downloadFishUpdateToFile(serverURL string, rel FishReleaseDTO, destPath str
 		return err
 	}
 	return nil
+}
+
+func formatFishChangelogText(entries []ChangelogEntryDTO, maxEntries int) string {
+	if maxEntries <= 0 {
+		maxEntries = 3
+	}
+	var blocks []string
+	for _, e := range entries {
+		items := e.FishItems
+		title := strings.TrimSpace(e.FishTitle)
+		if len(items) == 0 {
+			items = e.Items
+			if title == "" {
+				title = strings.TrimSpace(e.Title)
+			}
+		}
+		if len(items) == 0 {
+			continue
+		}
+		var lines []string
+		head := "📅 " + strings.TrimSpace(e.Date)
+		if title != "" {
+			head += " · " + title
+		}
+		lines = append(lines, head)
+		for _, it := range items {
+			s := strings.TrimSpace(it)
+			if s != "" {
+				lines = append(lines, "  • "+s)
+			}
+		}
+		blocks = append(blocks, strings.Join(lines, "\n"))
+		if len(blocks) >= maxEntries {
+			break
+		}
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
+func fetchFishChangelogText(serverURL string) (string, error) {
+	_, raw, err := apiRequest(serverURL, "GET", "/api/changelog", "", nil)
+	if err != nil {
+		return "", err
+	}
+	var res ChangelogAPIResponse
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return "", err
+	}
+	txt := formatFishChangelogText(res.Changelog, 3)
+	if txt == "" {
+		return "暂无更新内容记录", nil
+	}
+	return txt, nil
 }
