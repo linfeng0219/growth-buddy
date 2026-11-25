@@ -120,6 +120,9 @@ func TestAutoInvertTextColorAndStripAverage(t *testing.T) {
 	if colorLuminance(fg4) >= 128 {
 		t.Fatalf("expected dark text to hold inside hysteresis band, got 0x%08x", fg4)
 	}
+	if d := colorChannelMaxDiff(0x00102030, 0x0015223E); d != 14 {
+		t.Fatalf("expected max channel diff 14, got %d", d)
+	}
 	// Mid-gray (#808080) should avoid gray-on-gray and produce high contrast
 	grayInv := invertTextColorForBg(0x00808080)
 	if absInt(colorLuminance(0x00808080)-colorLuminance(grayInv)) < 85 {
