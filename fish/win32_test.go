@@ -87,3 +87,40 @@ func TestCaptureScreenRectBGRA(t *testing.T) {
 		t.Fatalf("expected 32x24 screen capture buffer, ok=%v len=%d", ok, len(pix))
 	}
 }
+
+func TestWrapTextWithFontAndSizes(t *testing.T) {
+	if got := unsafe.Sizeof(SIZE{}); got != 8 {
+		t.Fatalf("expected SIZE struct size 8, got %d", got)
+	}
+	scrDC, _, _ := pGetDC.Call(0)
+	if scrDC == 0 {
+		t.Fatalf("GetDC(0) returned 0")
+	}
+	defer pReleaseDC.Call(0, scrDC)
+	memDC, _, _ := pCreateCompatibleDC.Call(scrDC)
+	if memDC == 0 {
+		t.Fatalf("CreateCompatibleDC returned 0")
+	}
+	defer pDeleteDC.Call(memDC)
+
+	font := createUIFont(15, false, 0)
+	if font == 0 {
+		t.Fatalf("createUIFont returned 0")
+	}
+	defer pDeleteObject.Call(font)
+
+	lines := wrapTextWithFont(memDC, font, "妈妈: 今天记得完成打卡ABC1234567890", 90, 2, false)
+	if len(lines) < 2 {
+		t.Fatalf("expected narrow wrap width to produce >= 2 visual lines, got %d", len(lines))
+	}
+	for i, ln := range lines {
+		if ln.paraIdx != 2 || ln.h <= 0 || len(ln.u16) == 0 || len(ln.charX) != len(ln.u16)+1 {
+			t.Fatalf("invalid wrapped line %d: %+v", i, ln)
+		}
+		for k := 1; k < len(ln.charX); k++ {
+			if ln.charX[k] < ln.charX[k-1] {
+				t.Fatalf("non-monotonic charX on line %d: %v", i, ln.charX)
+			}
+		}
+	}
+}

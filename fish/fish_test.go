@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unicode/utf16"
 )
 
 func TestFishVersionAndOTAUpdate(t *testing.T) {
@@ -241,5 +242,123 @@ func TestConversationGroupingTimestampAndTrayTip(t *testing.T) {
 	}
 	if got := formatTrayUnreadTip(5); got != "未读信息5条" {
 		t.Fatalf("unexpected tray tip for 5: %q", got)
+	}
+}
+
+func TestSavedAccountsManagement(t *testing.T) {
+	var cfg FishConfig
+	cfg.upsertSavedAccount(SavedAccount{
+		Username:    "mom",
+		Role:        "parent",
+		ActorID:     "u_mom",
+		DisplayName: "妈妈",
+		Token:       "tok_mom_1",
+		GroupID:     "grp_1",
+		GroupName:   "阳光家",
+		LastLoginAt: 1000,
+	})
+	cfg.upsertSavedAccount(SavedAccount{
+		Username:    "kid1",
+		Role:        "child",
+		ActorID:     "u_kid1",
+		DisplayName: "大宝",
+		Token:       "tok_kid_1",
+		GroupID:     "grp_1",
+		GroupName:   "阳光家",
+		LastLoginAt: 2000,
+	})
+	if len(cfg.SavedAccounts) != 2 || cfg.SavedAccounts[0].ActorID != "u_kid1" {
+		t.Fatalf("expected kid1 at front, got %+v", cfg.SavedAccounts)
+	}
+
+	// Switch back / update mom without overwriting username
+	cfg.upsertSavedAccount(SavedAccount{
+		Role:        "parent",
+		ActorID:     "u_mom",
+		DisplayName: "妈妈",
+		Token:       "tok_mom_2",
+		GroupID:     "grp_1",
+		GroupName:   "阳光家",
+		LastLoginAt: 3000,
+	})
+	if len(cfg.SavedAccounts) != 2 || cfg.SavedAccounts[0].ActorID != "u_mom" || cfg.SavedAccounts[0].Username != "mom" || cfg.SavedAccounts[0].Token != "tok_mom_2" {
+		t.Fatalf("expected mom updated cleanly at front, got %+v", cfg.SavedAccounts[0])
+	}
+	if cfg.SavedAccounts[1].Token != "tok_kid_1" {
+		t.Fatalf("expected kid1 token preserved, got %q", cfg.SavedAccounts[1].Token)
+	}
+
+	cfg.Token = "tok_mom_2"
+	cfg.Role = "parent"
+	cfg.ActorID = "u_mom"
+	cfg.Username = "mom"
+	if !cfg.isActiveSavedAccount(cfg.SavedAccounts[0]) || cfg.isActiveSavedAccount(cfg.SavedAccounts[1]) {
+		t.Fatalf("isActiveSavedAccount mismatch")
+	}
+
+	cfg.clearSavedAccountToken("parent", "u_mom", "mom")
+	if cfg.SavedAccounts[0].Token != "" || cfg.SavedAccounts[1].Token != "tok_kid_1" {
+		t.Fatalf("expected only mom token cleared, got %+v", cfg.SavedAccounts)
+	}
+	if got := savedAccountLabel(cfg.SavedAccounts[0]); got != "妈妈 (家长 · mom · 需登录)" {
+		t.Fatalf("unexpected cleared label: %q", got)
+	}
+	if got := savedAccountLabel(cfg.SavedAccounts[1]); got != "大宝 (孩子 · kid1)" {
+		t.Fatalf("unexpected active label: %q", got)
+	}
+}
+
+func TestChatTextSelectionAndExtraction(t *testing.T) {
+	l0 := visualLine{
+		paraIdx: 0,
+		u16:     utf16.Encode([]rune("妈妈: 你")),
+		charX:   []int32{0, 14, 28, 34, 40, 54},
+		y:       0,
+		h:       20,
+	}
+	l1 := visualLine{
+		paraIdx: 0,
+		u16:     utf16.Encode([]rune("好呀")),
+		charX:   []int32{0, 14, 28},
+		y:       20,
+		h:       20,
+	}
+	l2 := visualLine{
+		paraIdx: 1,
+		u16:     utf16.Encode([]rune("大宝: 🙂棒")),
+		charX:   []int32{0, 14, 28, 34, 40, 54, 54, 68}, // surrogate pair shares x advance at boundary
+		y:       48,
+		h:       20,
+	}
+	lines := []visualLine{l0, l1, l2}
+
+	// Hit test midpoint of '好' on line 1 (y=20..40, crTop=10, scrollY=0 -> clientY=35, x near 7+crLeft(8))
+	pos := hitTestChatLines(lines, 0, 8, 10, 8+13, 10+25)
+	if pos != (textPos{line: 1, col: 1}) {
+		t.Fatalf("expected hit (1,1), got %+v", pos)
+	}
+
+	// Surrogate pair boundary check: should snap cleanly
+	posEmoji := hitTestChatLines(lines, 0, 8, 10, 8+45, 10+52)
+	if posEmoji.line != 2 || isLowSurrogate(lines[2].u16[posEmoji.col]) {
+		t.Fatalf("hit test landed inside surrogate pair: %+v", posEmoji)
+	}
+
+	// Double-click paragraph selection on wrapped line 1 should cover whole paragraph 0
+	pLo, pHi, ok := paragraphBoundsAtLine(lines, 1)
+	if !ok || pLo != (textPos{line: 0, col: 0}) || pHi != (textPos{line: 1, col: len(l1.u16)}) {
+		t.Fatalf("paragraphBoundsAtLine mismatch: lo=%+v hi=%+v ok=%v", pLo, pHi, ok)
+	}
+	if got := utf16ToString(extractSelectedUTF16(lines, pLo, pHi)); got != "妈妈: 你好呀" {
+		t.Fatalf("expected wrapped paragraph join without newline, got %q", got)
+	}
+
+	// Reverse selection across paragraphs adds \r\n between paragraph 0 and paragraph 1
+	lo, hi, hasSel := normalizedSelection(textPos{line: 2, col: len(l2.u16)}, textPos{line: 0, col: 4})
+	if !hasSel {
+		t.Fatalf("expected valid reverse selection")
+	}
+	if got := utf16ToString(extractSelectedUTF16(lines, lo, hi)); got != "你好呀\r\n大宝: 🙂棒" {
+		t.Fatalf("expected cross-paragraph selection, got %q", got)
 	}
 }

@@ -48,6 +48,11 @@ const (
 	idMenuLimit100          = 218
 	idMenuLimit500          = 219
 	idMenuLimitAll          = 220
+	idMenuAddAccount        = 221
+	idMenuAccountBase       = 300
+	maxMenuSavedAccounts    = 15
+	idCtxCopy               = 401
+	idCtxSelectAll          = 402
 )
 
 var pGetDpiForWindow = user32.NewProc("GetDpiForWindow")
@@ -74,6 +79,10 @@ type appState struct {
 	scrollY         int32
 	maxScrollY      int32
 	atBottom        bool
+	visLines        []visualLine
+	selecting       bool
+	selAnchor       textPos
+	selFocus        textPos
 
 	uiFont   uintptr
 	boldFont uintptr
@@ -462,17 +471,15 @@ func (a *appState) paintWindow() {
 
 			gapY := a.dpiScale(8)
 			tsGapY := a.dpiScale(2)
-			type measured struct {
+			type para struct {
 				text        string
 				isTimestamp bool
-				h           int32
 				gapAfter    int32
 			}
-			items := make([]measured, 0, len(msgs)+8)
-			var totalH int32
+			paras := make([]para, 0, len(msgs)+8)
 
 			if len(msgs) == 0 {
-				items = append(items, measured{text: "暂无群聊消息", gapAfter: gapY})
+				paras = append(paras, para{text: "暂无群聊消息", gapAfter: gapY})
 			} else {
 				nowTime := time.Now()
 				for i, m := range msgs {
@@ -482,26 +489,30 @@ func (a *appState) paintWindow() {
 					}
 					if shouldShowConversationTimestamp(prevTs, m.CreatedAt, i == 0) {
 						if tsStr := formatConversationTime(m.CreatedAt, nowTime); tsStr != "" {
-							items = append(items, measured{text: tsStr, isTimestamp: true, gapAfter: tsGapY})
+							paras = append(paras, para{text: tsStr, isTimestamp: true, gapAfter: tsGapY})
 						}
 					}
-					items = append(items, measured{text: a.formatMsgLine(m), gapAfter: gapY})
+					paras = append(paras, para{text: a.formatMsgLine(m), gapAfter: gapY})
 				}
 			}
 
-			for i := range items {
-				if items[i].isTimestamp && a.tsFont != 0 {
-					pSelectObject.Call(memDC, a.tsFont)
-				} else {
-					pSelectObject.Call(memDC, a.chatFont)
+			maxTextW := viewW - a.dpiScale(6)
+			lines := make([]visualLine, 0, len(paras)*2)
+			var totalH int32
+			for pIdx, p := range paras {
+				font := a.chatFont
+				if p.isTimestamp && a.tsFont != 0 {
+					font = a.tsFont
 				}
-				calc := RECT{Left: 0, Top: 0, Right: viewW - a.dpiScale(6), Bottom: 0}
-				pDrawTextW.Call(memDC, uintptr(unsafe.Pointer(u16(items[i].text))), ^uintptr(0), uintptr(unsafe.Pointer(&calc)), DT_LEFT|DT_WORDBREAK|DT_CALCRECT|DT_NOPREFIX|DT_EDITCONTROL)
-				items[i].h = calc.Bottom - calc.Top
-				totalH += items[i].h + items[i].gapAfter
-			}
-			if len(items) > 0 {
-				totalH -= items[len(items)-1].gapAfter
+				pLines := wrapTextWithFont(memDC, font, p.text, maxTextW, pIdx, p.isTimestamp)
+				for i := range pLines {
+					pLines[i].y = totalH
+					totalH += pLines[i].h
+				}
+				lines = append(lines, pLines...)
+				if len(pLines) > 0 && pIdx < len(paras)-1 {
+					totalH += p.gapAfter
+				}
 			}
 
 			maxScroll := totalH - viewH
@@ -509,6 +520,7 @@ func (a *appState) paintWindow() {
 				maxScroll = 0
 			}
 			a.mu.Lock()
+			a.visLines = lines
 			a.maxScrollY = maxScroll
 			if a.atBottom {
 				a.scrollY = maxScroll
@@ -520,36 +532,39 @@ func (a *appState) paintWindow() {
 				a.scrollY = 0
 			}
 			curScroll := a.scrollY
+			a.selAnchor = clampTextPos(lines, a.selAnchor)
+			a.selFocus = clampTextPos(lines, a.selFocus)
+			selLo, selHi, hasSel := normalizedSelection(a.selAnchor, a.selFocus)
 			a.mu.Unlock()
 
-			y := cr.Top - curScroll
-			for _, it := range items {
-				if y+it.h >= cr.Top && y <= cr.Bottom {
-					dr := RECT{Left: cr.Left, Top: y, Right: cr.Right - a.dpiScale(4), Bottom: y + it.h}
-					if dr.Top < cr.Top {
-						dr.Top = cr.Top
-					}
-					if dr.Bottom > cr.Bottom {
-						dr.Bottom = cr.Bottom
-					}
-					if dr.Bottom > dr.Top {
-						if it.isTimestamp && a.tsFont != 0 {
-							pSelectObject.Call(memDC, a.tsFont)
-						} else {
-							pSelectObject.Call(memDC, a.chatFont)
-						}
-						lineFg := baseFg
-						if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
-							if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, dr.Top, dr.Bottom); ok {
-								lineFg = invertTextColorForBg(stripBg)
-							}
-						}
-						pSetTextColor.Call(memDC, uintptr(lineFg))
-						drawRc := RECT{Left: cr.Left, Top: y, Right: cr.Right - a.dpiScale(4), Bottom: y + it.h}
-						pDrawTextW.Call(memDC, uintptr(unsafe.Pointer(u16(it.text))), ^uintptr(0), uintptr(unsafe.Pointer(&drawRc)), DT_LEFT|DT_WORDBREAK|DT_NOPREFIX|DT_EDITCONTROL)
+			for li, ln := range lines {
+				screenY := cr.Top + ln.y - curScroll
+				if screenY+ln.h < cr.Top || screenY > cr.Bottom {
+					continue
+				}
+				clipTop := screenY
+				if clipTop < cr.Top {
+					clipTop = cr.Top
+				}
+				clipBottom := screenY + ln.h
+				if clipBottom > cr.Bottom {
+					clipBottom = cr.Bottom
+				}
+				if clipBottom <= clipTop {
+					continue
+				}
+				if ln.isTimestamp && a.tsFont != 0 {
+					pSelectObject.Call(memDC, a.tsFont)
+				} else {
+					pSelectObject.Call(memDC, a.chatFont)
+				}
+				lineFg := baseFg
+				if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
+					if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, clipTop, clipBottom); ok {
+						lineFg = invertTextColorForBg(stripBg)
 					}
 				}
-				y += it.h + it.gapAfter
+				drawVisualLine(memDC, ln, cr.Left, screenY, cr.Top, cr.Bottom, lineFg, hasSel, selLo, selHi, li)
 			}
 			pSelectObject.Call(memDC, oldFont)
 		}
@@ -657,12 +672,23 @@ func (a *appState) handleLoginClick() {
 			a.loginStatus = err.Error()
 		} else {
 			a.cfg.ServerURL = srv
+			a.cfg.Username = usr
 			a.cfg.Token = loginRes.Token
 			a.cfg.Role = loginRes.Role
 			a.cfg.ActorID = loginRes.ActorID
 			a.cfg.DisplayName = loginRes.DisplayName
 			a.cfg.GroupID = grp.ID
 			a.cfg.GroupName = grp.Name
+			a.cfg.upsertSavedAccount(SavedAccount{
+				Username:    usr,
+				Role:        loginRes.Role,
+				ActorID:     loginRes.ActorID,
+				DisplayName: loginRes.DisplayName,
+				Token:       loginRes.Token,
+				GroupID:     grp.ID,
+				GroupName:   grp.Name,
+				LastLoginAt: time.Now().UnixMilli(),
+			})
 			saveConfig(a.cfg)
 			a.loggedIn = true
 			a.messages = nil
@@ -670,9 +696,14 @@ func (a *appState) handleLoginClick() {
 			a.lastMsgTs = 0
 			a.initialSynced = false
 			a.atBottom = true
+			a.visLines = nil
+			a.selecting = false
+			a.selAnchor = textPos{}
+			a.selFocus = textPos{}
 			a.loginStatus = ""
 		}
 		a.mu.Unlock()
+		a.setUnreadCount(0)
 		pPostMessageW.Call(a.hwnd, wmAppRefresh, 1, 0)
 	}()
 }
@@ -704,6 +735,7 @@ func (a *appState) pollMessagesAsync() {
 		a.polling = false
 		if code == 401 || code == 403 {
 			a.loggedIn = false
+			a.cfg.clearSavedAccountToken(a.cfg.Role, a.cfg.ActorID, a.cfg.Username)
 			a.cfg.Token = ""
 			saveConfig(a.cfg)
 			a.loginStatus = "登录已过期，请重新登录"
@@ -946,6 +978,32 @@ func (a *appState) showTrayMenu() {
 	}
 
 	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
+	accMenu, _, _ := pCreatePopupMenu.Call()
+	if accMenu != 0 {
+		a.mu.Lock()
+		accounts := append([]SavedAccount(nil), a.cfg.SavedAccounts...)
+		activeCfg := a.cfg
+		loggedIn := a.loggedIn
+		a.mu.Unlock()
+		for idx, acc := range accounts {
+			if idx >= maxMenuSavedAccounts {
+				break
+			}
+			label := savedAccountLabel(acc)
+			pAppendMenuW.Call(accMenu, menuFlags(loggedIn && activeCfg.isActiveSavedAccount(acc)), uintptr(idMenuAccountBase+idx), uintptr(unsafe.Pointer(u16(label))))
+		}
+		if len(accounts) > 0 {
+			pAppendMenuW.Call(accMenu, MF_SEPARATOR, 0, 0)
+		}
+		pAppendMenuW.Call(accMenu, MF_STRING, idMenuAddAccount, uintptr(unsafe.Pointer(u16("+ 登录其他账号..."))))
+		curAccLabel := "切换账号"
+		if curName := strings.TrimSpace(activeCfg.DisplayName); curName != "" {
+			curAccLabel = "切换账号 (" + curName + ")"
+		} else if activeCfg.Username != "" {
+			curAccLabel = "切换账号 (" + activeCfg.Username + ")"
+		}
+		pAppendMenuW.Call(menu, MF_POPUP, accMenu, uintptr(unsafe.Pointer(u16(curAccLabel))))
+	}
 	verName, _ := currentFishVersion()
 	pAppendMenuW.Call(menu, MF_STRING, idMenuCheckUpdate, uintptr(unsafe.Pointer(u16("检查更新 (v"+verName+")"))))
 	if a.loggedIn {
@@ -1085,25 +1143,226 @@ func (a *appState) handleCommand(id int) {
 		a.cfg.Hotkey = "F9"
 		saveConfig(a.cfg)
 		a.registerBossHotkey()
+	case idMenuAddAccount:
+		a.startAddAccount()
 	case idMenuCheckUpdate:
 		a.checkUpdateAsync(true)
 	case idMenuLogout:
 		a.mu.Lock()
 		a.loggedIn = false
+		a.cfg.clearSavedAccountToken(a.cfg.Role, a.cfg.ActorID, a.cfg.Username)
+		prevUser := a.cfg.Username
 		a.cfg.Token = ""
 		a.cfg.GroupID = ""
 		a.messages = nil
 		a.seenIDs = nil
 		a.lastMsgTs = 0
 		a.initialSynced = false
+		a.visLines = nil
+		a.selecting = false
+		a.selAnchor = textPos{}
+		a.selFocus = textPos{}
 		saveConfig(a.cfg)
 		a.mu.Unlock()
 		a.setUnreadCount(0)
+		setCtrlText(a.hEditUser, prevUser)
+		setCtrlText(a.hEditPass, "")
 		setCtrlText(a.hLblLoginStatus, "")
 		a.layoutControls()
 		a.triggerRepaint()
 	case idBtnQuit, idMenuQuit:
 		pPostMessageW.Call(a.hwnd, WM_CLOSE, 0, 0)
+	default:
+		if id >= idMenuAccountBase && id < idMenuAccountBase+maxMenuSavedAccounts {
+			a.switchToSavedAccount(id - idMenuAccountBase)
+		}
+	}
+}
+
+func (a *appState) startAddAccount() {
+	a.mu.Lock()
+	a.loggedIn = false
+	a.cfg.Token = ""
+	a.cfg.GroupID = ""
+	a.cfg.GroupName = ""
+	a.cfg.Role = ""
+	a.cfg.ActorID = ""
+	a.cfg.DisplayName = ""
+	a.cfg.Username = ""
+	a.messages = nil
+	a.seenIDs = nil
+	a.lastMsgTs = 0
+	a.initialSynced = false
+	a.scrollY = 0
+	a.maxScrollY = 0
+	a.atBottom = true
+	a.visLines = nil
+	a.selecting = false
+	a.selAnchor = textPos{}
+	a.selFocus = textPos{}
+	a.loginStatus = ""
+	saveConfig(a.cfg)
+	a.mu.Unlock()
+
+	a.setUnreadCount(0)
+	setCtrlText(a.hEditUser, "")
+	setCtrlText(a.hEditPass, "")
+	setCtrlText(a.hLblLoginStatus, "")
+	a.layoutControls()
+	a.showAndBringToFront(false)
+	pSetFocus.Call(a.hEditUser)
+	a.triggerRepaint()
+}
+
+func (a *appState) switchToSavedAccount(idx int) {
+	a.mu.Lock()
+	if idx < 0 || idx >= len(a.cfg.SavedAccounts) {
+		a.mu.Unlock()
+		return
+	}
+	acc := a.cfg.SavedAccounts[idx]
+	alreadyActive := a.loggedIn && a.cfg.isActiveSavedAccount(acc)
+	if alreadyActive {
+		a.mu.Unlock()
+		a.showAndBringToFront(false)
+		return
+	}
+	if acc.Token == "" || acc.GroupID == "" {
+		a.loggedIn = false
+		a.cfg.Token = ""
+		a.cfg.Username = acc.Username
+		a.cfg.Role = acc.Role
+		a.cfg.ActorID = acc.ActorID
+		a.cfg.DisplayName = acc.DisplayName
+		a.cfg.GroupID = acc.GroupID
+		a.cfg.GroupName = acc.GroupName
+		a.messages = nil
+		a.seenIDs = nil
+		a.lastMsgTs = 0
+		a.initialSynced = false
+		a.scrollY = 0
+		a.maxScrollY = 0
+		a.atBottom = true
+		a.visLines = nil
+		a.selecting = false
+		a.selAnchor = textPos{}
+		a.selFocus = textPos{}
+		a.loginStatus = "该账号登录已过期，请输入密码重新登录"
+		saveConfig(a.cfg)
+		a.mu.Unlock()
+
+		a.setUnreadCount(0)
+		setCtrlText(a.hEditUser, acc.Username)
+		setCtrlText(a.hEditPass, "")
+		setCtrlText(a.hLblLoginStatus, "该账号登录已过期，请输入密码重新登录")
+		a.layoutControls()
+		a.showAndBringToFront(false)
+		pSetFocus.Call(a.hEditPass)
+		a.triggerRepaint()
+		return
+	}
+
+	acc.LastLoginAt = time.Now().UnixMilli()
+	a.cfg.Username = acc.Username
+	a.cfg.Token = acc.Token
+	a.cfg.Role = acc.Role
+	a.cfg.ActorID = acc.ActorID
+	a.cfg.DisplayName = acc.DisplayName
+	a.cfg.GroupID = acc.GroupID
+	a.cfg.GroupName = acc.GroupName
+	a.cfg.upsertSavedAccount(acc)
+	saveConfig(a.cfg)
+	a.loggedIn = true
+	a.messages = nil
+	a.seenIDs = make(map[string]bool)
+	a.lastMsgTs = 0
+	a.initialSynced = false
+	a.scrollY = 0
+	a.maxScrollY = 0
+	a.atBottom = true
+	a.visLines = nil
+	a.selecting = false
+	a.selAnchor = textPos{}
+	a.selFocus = textPos{}
+	a.loginStatus = ""
+	a.mu.Unlock()
+
+	a.setUnreadCount(0)
+	setCtrlText(a.hEditMsg, "")
+	a.layoutControls()
+	a.showAndBringToFront(false)
+	a.pollMessagesAsync()
+	a.triggerRepaint()
+}
+
+func (a *appState) clearSelection() bool {
+	a.mu.Lock()
+	_, _, hadSel := normalizedSelection(a.selAnchor, a.selFocus)
+	a.selecting = false
+	a.selAnchor = textPos{}
+	a.selFocus = textPos{}
+	a.mu.Unlock()
+	if hadSel {
+		a.triggerRepaint()
+	}
+	return hadSel
+}
+
+func (a *appState) selectAllChat() {
+	a.mu.Lock()
+	if len(a.visLines) == 0 {
+		a.mu.Unlock()
+		return
+	}
+	lastIdx := len(a.visLines) - 1
+	a.selecting = false
+	a.selAnchor = textPos{line: 0, col: 0}
+	a.selFocus = textPos{line: lastIdx, col: len(a.visLines[lastIdx].u16)}
+	a.mu.Unlock()
+	a.triggerRepaint()
+}
+
+func (a *appState) copySelection() bool {
+	a.mu.Lock()
+	lo, hi, ok := normalizedSelection(a.selAnchor, a.selFocus)
+	var u []uint16
+	if ok && len(a.visLines) > 0 {
+		u = extractSelectedUTF16(a.visLines, lo, hi)
+	}
+	a.mu.Unlock()
+	if len(u) == 0 {
+		return false
+	}
+	return copyUTF16ToClipboard(a.hwnd, u)
+}
+
+func (a *appState) showChatContextMenu() {
+	menu, _, _ := pCreatePopupMenu.Call()
+	if menu == 0 {
+		return
+	}
+	defer pDestroyMenu.Call(menu)
+
+	a.mu.Lock()
+	_, _, hasSel := normalizedSelection(a.selAnchor, a.selFocus)
+	hasLines := len(a.visLines) > 0
+	a.mu.Unlock()
+
+	if hasSel {
+		pAppendMenuW.Call(menu, MF_STRING, idCtxCopy, uintptr(unsafe.Pointer(u16("复制 (Ctrl+C)"))))
+	}
+	if hasLines {
+		pAppendMenuW.Call(menu, MF_STRING, idCtxSelectAll, uintptr(unsafe.Pointer(u16("全选 (Ctrl+A)"))))
+	}
+	var pt POINT
+	pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	pSetForegroundWindow.Call(a.hwnd)
+	cmd, _, _ := pTrackPopupMenu.Call(menu, TPM_LEFTALIGN|TPM_RETURNCMD, uintptr(pt.X), uintptr(pt.Y), 0, a.hwnd, 0)
+	switch int(cmd) {
+	case idCtxCopy:
+		a.copySelection()
+	case idCtxSelectAll:
+		a.selectAllChat()
 	}
 }
 
@@ -1234,15 +1493,169 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_ERASEBKGND:
 		return 1
 
+	case WM_SETCURSOR:
+		if a.loggedIn && uint32(lParam&0xFFFF) == 1 {
+			var pt POINT
+			var rc RECT
+			pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+			pScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&pt)))
+			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			cr := a.chatRect(rc)
+			if pt.X >= cr.Left && pt.X <= cr.Right && pt.Y >= cr.Top && pt.Y <= cr.Bottom {
+				ibeam, _, _ := pLoadCursorW.Call(0, IDC_IBEAM)
+				if ibeam != 0 {
+					pSetCursor.Call(ibeam)
+					return 1
+				}
+			}
+		}
+
 	case WM_LBUTTONDOWN:
-		if a.loggedIn && a.hEditMsg != 0 {
+		if a.loggedIn {
 			var rc RECT
 			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
-			bx := a.inputBoxRect(rc)
 			cx := int32(int16(lParam & 0xFFFF))
 			cy := int32(int16((lParam >> 16) & 0xFFFF))
-			if cx >= bx.Left && cx <= bx.Right && cy >= bx.Top && cy <= bx.Bottom {
-				pSetFocus.Call(a.hEditMsg)
+			if a.hEditMsg != 0 {
+				bx := a.inputBoxRect(rc)
+				if cx >= bx.Left && cx <= bx.Right && cy >= bx.Top && cy <= bx.Bottom {
+					pSetFocus.Call(a.hEditMsg)
+					return 0
+				}
+			}
+			cr := a.chatRect(rc)
+			if cx >= cr.Left && cx <= cr.Right && cy >= cr.Top && cy <= cr.Bottom {
+				a.mu.Lock()
+				hasLines := len(a.visLines) > 0
+				if hasLines {
+					pos := hitTestChatLines(a.visLines, a.scrollY, cr.Left, cr.Top, cx, cy)
+					a.selAnchor = pos
+					a.selFocus = pos
+					a.selecting = true
+				}
+				a.mu.Unlock()
+				if hasLines {
+					pSetCapture.Call(hwnd)
+					pSetFocus.Call(hwnd)
+					a.triggerRepaint()
+				}
+				return 0
+			}
+		}
+
+	case WM_MOUSEMOVE:
+		if a.loggedIn {
+			a.mu.Lock()
+			selecting := a.selecting
+			a.mu.Unlock()
+			if selecting {
+				var rc RECT
+				pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+				cr := a.chatRect(rc)
+				cx := int32(int16(lParam & 0xFFFF))
+				cy := int32(int16((lParam >> 16) & 0xFFFF))
+				a.mu.Lock()
+				if cy < cr.Top && a.scrollY > 0 {
+					step := a.dpiScale(12)
+					a.scrollY -= step
+					if a.scrollY < 0 {
+						a.scrollY = 0
+					}
+					a.atBottom = false
+				} else if cy > cr.Bottom && a.scrollY < a.maxScrollY {
+					step := a.dpiScale(12)
+					a.scrollY += step
+					if a.scrollY > a.maxScrollY {
+						a.scrollY = a.maxScrollY
+					}
+					a.atBottom = (a.maxScrollY - a.scrollY) <= a.dpiScale(24)
+				}
+				if len(a.visLines) > 0 {
+					a.selFocus = hitTestChatLines(a.visLines, a.scrollY, cr.Left, cr.Top, cx, cy)
+				}
+				a.mu.Unlock()
+				a.triggerRepaint()
+				return 0
+			}
+		}
+
+	case WM_LBUTTONUP:
+		a.mu.Lock()
+		selecting := a.selecting
+		if selecting {
+			a.selecting = false
+			var rc RECT
+			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			cr := a.chatRect(rc)
+			cx := int32(int16(lParam & 0xFFFF))
+			cy := int32(int16((lParam >> 16) & 0xFFFF))
+			if len(a.visLines) > 0 {
+				a.selFocus = hitTestChatLines(a.visLines, a.scrollY, cr.Left, cr.Top, cx, cy)
+			}
+		}
+		a.mu.Unlock()
+		if selecting {
+			pReleaseCapture.Call()
+			a.triggerRepaint()
+			return 0
+		}
+
+	case WM_LBUTTONDBLCLK:
+		if a.loggedIn {
+			var rc RECT
+			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			cr := a.chatRect(rc)
+			cx := int32(int16(lParam & 0xFFFF))
+			cy := int32(int16((lParam >> 16) & 0xFFFF))
+			if cx >= cr.Left && cx <= cr.Right && cy >= cr.Top && cy <= cr.Bottom {
+				a.mu.Lock()
+				selected := false
+				if len(a.visLines) > 0 {
+					pos := hitTestChatLines(a.visLines, a.scrollY, cr.Left, cr.Top, cx, cy)
+					if lo, hi, ok := paragraphBoundsAtLine(a.visLines, pos.line); ok {
+						a.selAnchor = lo
+						a.selFocus = hi
+						selected = true
+					}
+				}
+				a.mu.Unlock()
+				if selected {
+					pSetFocus.Call(hwnd)
+					a.triggerRepaint()
+				}
+				return 0
+			}
+		}
+
+	case WM_RBUTTONUP:
+		if a.loggedIn {
+			var rc RECT
+			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			cr := a.chatRect(rc)
+			cx := int32(int16(lParam & 0xFFFF))
+			cy := int32(int16((lParam >> 16) & 0xFFFF))
+			if cx >= cr.Left && cx <= cr.Right && cy >= cr.Top && cy <= cr.Bottom {
+				a.showChatContextMenu()
+				return 0
+			}
+		}
+
+	case WM_KEYDOWN:
+		if a.loggedIn {
+			ctrlDown := false
+			st, _, _ := pGetKeyState.Call(VK_CONTROL)
+			if (uint16(st) & 0x8000) != 0 {
+				ctrlDown = true
+			}
+			if ctrlDown && (wParam == 'C' || wParam == 'c') {
+				a.copySelection()
+				return 0
+			}
+			if ctrlDown && (wParam == 'A' || wParam == 'a') {
+				a.selectAllChat()
+				return 0
+			}
+			if wParam == VK_ESCAPE && a.clearSelection() {
 				return 0
 			}
 		}
@@ -1523,6 +1936,7 @@ func main() {
 	gApp.hIconUnread = createFishTrayIcon(true)
 	wc := WNDCLASSEXW{
 		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEXW{})),
+		Style:         CS_DBLCLKS,
 		LpfnWndProc:   syscall.NewCallback(mainWndProc),
 		HInstance:     gApp.hInst,
 		HIcon:         gApp.hIcon,
@@ -1566,7 +1980,7 @@ func main() {
 		if int32(ret) <= 0 {
 			break
 		}
-		if !(m.Message == WM_KEYDOWN && m.WParam == VK_RETURN) {
+		if !(m.Message == WM_KEYDOWN && (m.WParam == VK_RETURN || m.Hwnd == hwnd)) {
 			if handled, _, _ := pIsDialogMessageW.Call(hwnd, uintptr(unsafe.Pointer(&m))); handled != 0 {
 				continue
 			}

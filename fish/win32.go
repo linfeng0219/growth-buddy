@@ -14,7 +14,15 @@ var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
 	pGetModuleHandleW       = kernel32.NewProc("GetModuleHandleW")
+	pGlobalAlloc            = kernel32.NewProc("GlobalAlloc")
+	pGlobalLock             = kernel32.NewProc("GlobalLock")
+	pGlobalUnlock           = kernel32.NewProc("GlobalUnlock")
 	pSetProcessDPIAware     = user32.NewProc("SetProcessDPIAware")
+	pOpenClipboard          = user32.NewProc("OpenClipboard")
+	pEmptyClipboard         = user32.NewProc("EmptyClipboard")
+	pSetClipboardData       = user32.NewProc("SetClipboardData")
+	pCloseClipboard         = user32.NewProc("CloseClipboard")
+	pGetKeyState            = user32.NewProc("GetKeyState")
 	pRegisterClassExW       = user32.NewProc("RegisterClassExW")
 	pCreateWindowExW        = user32.NewProc("CreateWindowExW")
 	pDefWindowProcW         = user32.NewProc("DefWindowProcW")
@@ -49,6 +57,7 @@ var (
 	pTrackPopupMenu         = user32.NewProc("TrackPopupMenu")
 	pDestroyMenu            = user32.NewProc("DestroyMenu")
 	pGetCursorPos           = user32.NewProc("GetCursorPos")
+	pScreenToClient         = user32.NewProc("ScreenToClient")
 	pCreateIconIndirect     = user32.NewProc("CreateIconIndirect")
 	pDestroyIcon            = user32.NewProc("DestroyIcon")
 	pShellNotifyIconW       = shell32.NewProc("Shell_NotifyIconW")
@@ -83,6 +92,8 @@ var (
 	pSetTextColor           = gdi32.NewProc("SetTextColor")
 	pSetBkColor             = gdi32.NewProc("SetBkColor")
 	pSetBkMode              = gdi32.NewProc("SetBkMode")
+	pGetTextExtentExPointW  = gdi32.NewProc("GetTextExtentExPointW")
+	pExtTextOutW            = gdi32.NewProc("ExtTextOutW")
 )
 
 const (
@@ -134,6 +145,7 @@ const (
 	WM_CTLCOLORSTATIC = 0x0138
 	WM_MOUSEWHEEL     = 0x020A
 	WM_NCHITTEST      = 0x0084
+	WM_SETCURSOR      = 0x0020
 	WM_MOUSEMOVE      = 0x0200
 	WM_LBUTTONDOWN    = 0x0201
 	WM_LBUTTONUP      = 0x0202
@@ -208,11 +220,20 @@ const (
 	TRANSPARENT = 1
 	OPAQUE      = 2
 
-	VK_RETURN = 0x0D
-	VK_ESCAPE = 0x1B
+	VK_RETURN  = 0x0D
+	VK_CONTROL = 0x11
+	VK_ESCAPE  = 0x1B
 
-	IDC_ARROW              = 32512
-	IDC_CROSS              = 32515
+	CS_DBLCLKS = 0x0008
+
+	IDC_ARROW = 32512
+	IDC_IBEAM = 32513
+	IDC_CROSS = 32515
+
+	ETO_OPAQUE             = 0x0002
+	ETO_CLIPPED            = 0x0004
+	CF_UNICODETEXT         = 13
+	GMEM_MOVEABLE          = 0x0002
 	DEFAULT_CHARSET        = 1
 	FW_NORMAL              = 400
 	FW_BOLD                = 700
@@ -234,6 +255,10 @@ type POINT struct {
 
 type RECT struct {
 	Left, Top, Right, Bottom int32
+}
+
+type SIZE struct {
+	Cx, Cy int32
 }
 
 type MSG struct {

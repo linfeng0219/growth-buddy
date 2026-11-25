@@ -10,26 +10,39 @@ import (
 
 const defaultServerURL = "https://linuu.xyz"
 
+type SavedAccount struct {
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	ActorID     string `json:"actor_id"`
+	DisplayName string `json:"display_name"`
+	Token       string `json:"token"`
+	GroupID     string `json:"group_id"`
+	GroupName   string `json:"group_name"`
+	LastLoginAt int64  `json:"last_login_at"`
+}
+
 type FishConfig struct {
-	ServerURL      string `json:"server_url"`
-	Token          string `json:"token"`
-	Role           string `json:"role"`
-	DisplayName    string `json:"display_name"`
-	ActorID        string `json:"actor_id"`
-	GroupID        string `json:"group_id"`
-	GroupName      string `json:"group_name"`
-	Width          int    `json:"width"`
-	Height         int    `json:"height"`
-	X              int    `json:"x"`
-	Y              int    `json:"y"`
-	HasPos         bool   `json:"has_pos"`
-	BgColor        string `json:"bg_color"`
-	BgTransparent  bool   `json:"bg_transparent"`
-	AutoInvertText bool   `json:"auto_invert_text"`
-	FontColor      string `json:"font_color"`
-	FontSize       int    `json:"font_size"`
-	MaxMessages    int    `json:"max_messages"` // 100, 500, or 0 (unlimited)
-	Hotkey         string `json:"hotkey"`
+	ServerURL      string         `json:"server_url"`
+	Username       string         `json:"username"`
+	Token          string         `json:"token"`
+	Role           string         `json:"role"`
+	DisplayName    string         `json:"display_name"`
+	ActorID        string         `json:"actor_id"`
+	GroupID        string         `json:"group_id"`
+	GroupName      string         `json:"group_name"`
+	SavedAccounts  []SavedAccount `json:"saved_accounts,omitempty"`
+	Width          int            `json:"width"`
+	Height         int            `json:"height"`
+	X              int            `json:"x"`
+	Y              int            `json:"y"`
+	HasPos         bool           `json:"has_pos"`
+	BgColor        string         `json:"bg_color"`
+	BgTransparent  bool           `json:"bg_transparent"`
+	AutoInvertText bool           `json:"auto_invert_text"`
+	FontColor      string         `json:"font_color"`
+	FontSize       int            `json:"font_size"`
+	MaxMessages    int            `json:"max_messages"` // 100, 500, or 0 (unlimited)
+	Hotkey         string         `json:"hotkey"`
 }
 
 func defaultConfig() FishConfig {
@@ -80,7 +93,102 @@ func loadConfig() FishConfig {
 	}
 	cfg.MaxMessages = normalizeMaxMessages(cfg.MaxMessages)
 	_, _, cfg.Hotkey = parseHotkey(cfg.Hotkey)
+	if cfg.Token != "" && cfg.GroupID != "" && (cfg.ActorID != "" || cfg.Username != "") {
+		cfg.upsertSavedAccount(SavedAccount{
+			Username:    cfg.Username,
+			Role:        cfg.Role,
+			ActorID:     cfg.ActorID,
+			DisplayName: cfg.DisplayName,
+			Token:       cfg.Token,
+			GroupID:     cfg.GroupID,
+			GroupName:   cfg.GroupName,
+		})
+	}
 	return cfg
+}
+
+func sameSavedAccount(a, b SavedAccount) bool {
+	if a.ActorID != "" && b.ActorID != "" && a.Role == b.Role && a.ActorID == b.ActorID {
+		return true
+	}
+	if a.Username != "" && b.Username != "" && strings.EqualFold(a.Username, b.Username) {
+		return true
+	}
+	return false
+}
+
+func (c *FishConfig) upsertSavedAccount(acc SavedAccount) {
+	acc.Username = strings.TrimSpace(acc.Username)
+	acc.DisplayName = strings.TrimSpace(acc.DisplayName)
+	if acc.ActorID == "" && acc.Username == "" {
+		return
+	}
+	next := make([]SavedAccount, 0, len(c.SavedAccounts)+1)
+	for _, old := range c.SavedAccounts {
+		if sameSavedAccount(old, acc) {
+			if acc.Username == "" {
+				acc.Username = old.Username
+			}
+			if acc.DisplayName == "" {
+				acc.DisplayName = old.DisplayName
+			}
+			if acc.LastLoginAt == 0 {
+				acc.LastLoginAt = old.LastLoginAt
+			}
+			continue
+		}
+		next = append(next, old)
+	}
+	// Put updated active account at front
+	out := append([]SavedAccount{acc}, next...)
+	if len(out) > 15 {
+		out = out[:15]
+	}
+	c.SavedAccounts = out
+}
+
+func (c *FishConfig) clearSavedAccountToken(role, actorID, username string) {
+	target := SavedAccount{Role: role, ActorID: actorID, Username: strings.TrimSpace(username)}
+	for i := range c.SavedAccounts {
+		if sameSavedAccount(c.SavedAccounts[i], target) {
+			c.SavedAccounts[i].Token = ""
+		}
+	}
+}
+
+func (c *FishConfig) isActiveSavedAccount(acc SavedAccount) bool {
+	if c.Token == "" {
+		return false
+	}
+	return sameSavedAccount(acc, SavedAccount{
+		Role:     c.Role,
+		ActorID:  c.ActorID,
+		Username: c.Username,
+	})
+}
+
+func savedAccountLabel(acc SavedAccount) string {
+	name := strings.TrimSpace(acc.DisplayName)
+	if name == "" {
+		name = strings.TrimSpace(acc.Username)
+	}
+	if name == "" {
+		name = "已保存账号"
+	}
+	roleName := "成员"
+	if acc.Role == "parent" {
+		roleName = "家长"
+	} else if acc.Role == "child" {
+		roleName = "孩子"
+	}
+	suffix := roleName
+	if acc.Username != "" && !strings.EqualFold(acc.Username, name) {
+		suffix += " · " + acc.Username
+	}
+	if acc.Token == "" {
+		suffix += " · 需登录"
+	}
+	return name + " (" + suffix + ")"
 }
 
 func normalizeMaxMessages(v int) int {
