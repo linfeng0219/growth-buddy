@@ -43,6 +43,8 @@ type FishConfig struct {
 	FontSize       int            `json:"font_size"`
 	MaxMessages    int            `json:"max_messages"` // 100, 500, or 0 (unlimited)
 	Hotkey         string         `json:"hotkey"`
+	ClearHotkey    string         `json:"clear_hotkey"`
+	ClearBeforeTs  int64          `json:"clear_before_ts,omitempty"`
 }
 
 func defaultConfig() FishConfig {
@@ -57,6 +59,7 @@ func defaultConfig() FishConfig {
 		FontSize:       15,
 		MaxMessages:    100,
 		Hotkey:         "Alt+H",
+		ClearHotkey:    "Alt+L",
 	}
 }
 
@@ -93,6 +96,10 @@ func loadConfig() FishConfig {
 	}
 	cfg.MaxMessages = normalizeMaxMessages(cfg.MaxMessages)
 	_, _, cfg.Hotkey = parseHotkey(cfg.Hotkey)
+	_, _, cfg.ClearHotkey = parseClearHotkey(cfg.ClearHotkey)
+	if cfg.ClearBeforeTs < 0 {
+		cfg.ClearBeforeTs = 0
+	}
 	if cfg.Token != "" && cfg.GroupID != "" && (cfg.ActorID != "" || cfg.Username != "") {
 		cfg.upsertSavedAccount(SavedAccount{
 			Username:    cfg.Username,
@@ -213,6 +220,32 @@ func parseHotkey(raw string) (mods uint32, vk uint32, canonical string) {
 	default:
 		return 0x0001, 0x48, "Alt+H"
 	}
+}
+
+func parseClearHotkey(raw string) (mods uint32, vk uint32, canonical string) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "ALT+C":
+		return 0x0001, 0x43, "Alt+C"
+	case "CTRL+ALT+L":
+		return 0x0001 | 0x0002, 0x4C, "Ctrl+Alt+L"
+	case "F8":
+		return 0, 0x77, "F8"
+	default:
+		return 0x0001, 0x4C, "Alt+L"
+	}
+}
+
+func filterMessagesAfterClear(msgs []ChatMsg, clearBeforeTs int64) []ChatMsg {
+	if clearBeforeTs <= 0 || len(msgs) == 0 {
+		return msgs
+	}
+	out := make([]ChatMsg, 0, len(msgs))
+	for _, m := range msgs {
+		if m.CreatedAt > clearBeforeTs {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func saveConfig(cfg FishConfig) {

@@ -162,6 +162,30 @@ func brightenColor(c uint32, delta int) uint32 {
 	return out
 }
 
+// adaptiveInputBorderColor 根据输入框所处桌面/背景颜色自动生成可见且柔和的边框色：
+// 在深色/中暗背景下适当提亮；在浅色/纯白背景下改用适当加深，避免白色背景上边框消失。
+func adaptiveInputBorderColor(surface uint32) uint32 {
+	lum := colorLuminance(surface)
+	if lum >= 165 {
+		clampZero := func(v int) int {
+			if v < 0 {
+				return 0
+			}
+			return v
+		}
+		delta := 58
+		r := clampZero(int(surface&0xFF) - delta)
+		g := clampZero(int((surface>>8)&0xFF) - delta)
+		b := clampZero(int((surface>>16)&0xFF) - delta)
+		out := uint32((b << 16) | (g << 8) | r)
+		if out == chromaKeyRef {
+			return 0x00C2C2C2
+		}
+		return out
+	}
+	return brightenColor(surface, 36)
+}
+
 // darkenColorForButton 计算较暗的按钮底色，确保与亮色文字搭配清晰且不刺眼。
 func darkenColorForButton(bg uint32, pressed bool) uint32 {
 	r := int(bg & 0xFF)

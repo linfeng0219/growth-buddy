@@ -21,6 +21,7 @@ const (
 	idTimerPoll     = 1
 	idTimerContrast = 2
 	idHotkeyBoss    = 1
+	idHotkeyClear   = 2
 	idTrayIcon      = 1
 
 	idBtnLogin = 101
@@ -49,6 +50,12 @@ const (
 	idMenuLimit500          = 219
 	idMenuLimitAll          = 220
 	idMenuAddAccount        = 221
+	idMenuClearNow          = 222
+	idMenuClearHKAltL       = 223
+	idMenuClearHKAltC       = 224
+	idMenuClearHKCtrlAltL   = 225
+	idMenuClearHKF8         = 226
+	idMenuUnclearHistory    = 227
 	idMenuAccountBase       = 300
 	maxMenuSavedAccounts    = 15
 	idCtxCopy               = 401
@@ -350,11 +357,17 @@ func (a *appState) createAllControls() {
 	stMsgEdit := uint32(WS_CHILD | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL)
 	a.hEditMsg = createCtrl("EDIT", "", stMsgEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
 
-	// Subclass Enter key on message & password inputs
+	// Subclass Enter key & Ctrl+L clear shortcut on message & password inputs
 	msgCb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		if msg == WM_KEYDOWN && wParam == VK_RETURN {
 			gApp.handleSendMessage()
 			return 0
+		}
+		if msg == WM_KEYDOWN && (wParam == 'L' || wParam == 'l') {
+			if st, _, _ := pGetKeyState.Call(VK_CONTROL); (uint16(st) & 0x8000) != 0 {
+				gApp.clearMessagesNow()
+				return 0
+			}
 		}
 		if msg == WM_CHAR && wParam == VK_RETURN {
 			return 0
@@ -529,7 +542,11 @@ func (a *appState) paintWindow() {
 			paras := make([]para, 0, len(msgs)+8)
 
 			if len(msgs) == 0 {
-				paras = append(paras, para{text: "暂无群聊消息", gapAfter: gapY})
+				emptyTxt := "暂无群聊消息"
+				if a.cfg.ClearBeforeTs > 0 {
+					emptyTxt = "已清屏（等待新消息）"
+				}
+				paras = append(paras, para{text: emptyTxt, gapAfter: gapY})
 			} else {
 				nowTime := time.Now()
 				for i, m := range msgs {
@@ -635,16 +652,20 @@ func (a *appState) paintWindow() {
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&topClip)), a.bgBrush)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&botClip)), a.bgBrush)
 
-		// Draw custom chat input box (transparent in transparent mode; matches background color when opaque) with a slightly brighter border
+		// Draw custom chat input box (transparent in transparent mode; matches background color when opaque) with adaptive visible border
 		bx := a.inputBoxRect(rc)
 		pFillRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), a.bgBrush)
 		surfaceRef := hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 		if a.cfg.BgTransparent && a.inputBgColor != 0 {
 			surfaceRef = a.inputBgColor
 		}
-		borderRef := brightenColor(surfaceRef, 28)
+		borderRef := adaptiveInputBorderColor(surfaceRef)
 		if borderBr, _, _ := pCreateSolidBrush.Call(uintptr(borderRef)); borderBr != 0 {
 			pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&bx)), borderBr)
+			if a.dpiScale(2) >= 2 && bx.Right-bx.Left > 6 && bx.Bottom-bx.Top > 6 {
+				innerBx := RECT{Left: bx.Left + 1, Top: bx.Top + 1, Right: bx.Right - 1, Bottom: bx.Bottom - 1}
+				pFrameRect.Call(memDC, uintptr(unsafe.Pointer(&innerBx)), borderBr)
+			}
 			pDeleteObject.Call(borderBr)
 		}
 	}
@@ -777,6 +798,10 @@ func (a *appState) pollMessagesAsync() {
 	tok := a.cfg.Token
 	gid := a.cfg.GroupID
 	after := a.lastMsgTs
+	clearBefore := a.cfg.ClearBeforeTs
+	if clearBefore > after {
+		after = clearBefore
+	}
 	maxLim := a.cfg.MaxMessages
 	a.mu.Unlock()
 
@@ -807,6 +832,7 @@ func (a *appState) pollMessagesAsync() {
 			if a.seenIDs == nil {
 				a.seenIDs = make(map[string]bool)
 			}
+			msgs = filterMessagesAfterClear(msgs, a.cfg.ClearBeforeTs)
 			for _, m := range msgs {
 				if !a.seenIDs[m.ID] {
 					a.seenIDs[m.ID] = true
@@ -873,6 +899,10 @@ func (a *appState) handleSendMessage() {
 			if !a.seenIDs[msg.ID] {
 				a.seenIDs[msg.ID] = true
 				a.messages = append(a.messages, *msg)
+				if a.cfg.ClearBeforeTs > msg.CreatedAt && a.cfg.ClearBeforeTs-msg.CreatedAt < 300000 {
+					a.cfg.ClearBeforeTs = msg.CreatedAt - 1
+					saveConfig(a.cfg)
+				}
 				if msg.CreatedAt > a.lastMsgTs {
 					a.lastMsgTs = msg.CreatedAt
 				}
@@ -972,6 +1002,9 @@ func (a *appState) showTrayMenu() {
 		toggleLabel = "隐藏窗口 (" + a.cfg.Hotkey + ")"
 	}
 	pAppendMenuW.Call(menu, MF_STRING, idMenuToggle, uintptr(unsafe.Pointer(u16(toggleLabel))))
+	if a.loggedIn {
+		pAppendMenuW.Call(menu, MF_STRING, idMenuClearNow, uintptr(unsafe.Pointer(u16("清空屏幕 ("+a.cfg.ClearHotkey+" / Ctrl+L)"))))
+	}
 	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
 
 	fontSettingsMenu, _, _ := pCreatePopupMenu.Call()
@@ -1034,6 +1067,19 @@ func (a *appState) showTrayMenu() {
 		pAppendMenuW.Call(menu, MF_POPUP, hkMenu, uintptr(unsafe.Pointer(u16("隐藏热键 ("+a.cfg.Hotkey+")"))))
 	}
 
+	clearHkMenu, _, _ := pCreatePopupMenu.Call()
+	if clearHkMenu != 0 {
+		pAppendMenuW.Call(clearHkMenu, menuFlags(a.cfg.ClearHotkey == "Alt+L"), idMenuClearHKAltL, uintptr(unsafe.Pointer(u16("Alt+L"))))
+		pAppendMenuW.Call(clearHkMenu, menuFlags(a.cfg.ClearHotkey == "Alt+C"), idMenuClearHKAltC, uintptr(unsafe.Pointer(u16("Alt+C"))))
+		pAppendMenuW.Call(clearHkMenu, menuFlags(a.cfg.ClearHotkey == "Ctrl+Alt+L"), idMenuClearHKCtrlAltL, uintptr(unsafe.Pointer(u16("Ctrl+Alt+L"))))
+		pAppendMenuW.Call(clearHkMenu, menuFlags(a.cfg.ClearHotkey == "F8"), idMenuClearHKF8, uintptr(unsafe.Pointer(u16("F8"))))
+		if a.cfg.ClearBeforeTs > 0 {
+			pAppendMenuW.Call(clearHkMenu, MF_SEPARATOR, 0, 0)
+			pAppendMenuW.Call(clearHkMenu, MF_STRING, idMenuUnclearHistory, uintptr(unsafe.Pointer(u16("恢复显示清屏前消息"))))
+		}
+		pAppendMenuW.Call(menu, MF_POPUP, clearHkMenu, uintptr(unsafe.Pointer(u16("清屏热键 ("+a.cfg.ClearHotkey+")"))))
+	}
+
 	pAppendMenuW.Call(menu, MF_SEPARATOR, 0, 0)
 	accMenu, _, _ := pCreatePopupMenu.Call()
 	if accMenu != 0 {
@@ -1091,6 +1137,68 @@ func (a *appState) registerBossHotkey() {
 	mods, vk, label := parseHotkey(a.cfg.Hotkey)
 	a.cfg.Hotkey = label
 	_, _, _ = pRegisterHotKey.Call(a.hwnd, idHotkeyBoss, uintptr(mods|MOD_NOREPEAT), uintptr(vk))
+}
+
+func (a *appState) registerClearHotkey() {
+	if a.hwnd == 0 {
+		return
+	}
+	pUnregisterHotKey.Call(a.hwnd, idHotkeyClear)
+	mods, vk, label := parseClearHotkey(a.cfg.ClearHotkey)
+	a.cfg.ClearHotkey = label
+	_, _, _ = pRegisterHotKey.Call(a.hwnd, idHotkeyClear, uintptr(mods|MOD_NOREPEAT), uintptr(vk))
+}
+
+func (a *appState) clearMessagesNow() {
+	if !a.loggedIn {
+		return
+	}
+	a.mu.Lock()
+	cutoff := time.Now().UnixMilli()
+	if a.lastMsgTs > cutoff {
+		cutoff = a.lastMsgTs
+	}
+	for _, m := range a.messages {
+		if m.CreatedAt > cutoff {
+			cutoff = m.CreatedAt
+		}
+	}
+	a.cfg.ClearBeforeTs = cutoff
+	a.messages = nil
+	a.seenIDs = make(map[string]bool)
+	a.lastMsgTs = cutoff
+	a.scrollY = 0
+	a.maxScrollY = 0
+	a.atBottom = true
+	a.visLines = nil
+	a.selecting = false
+	a.selAnchor = textPos{}
+	a.selFocus = textPos{}
+	saveConfig(a.cfg)
+	a.mu.Unlock()
+	a.setUnreadCount(0)
+	a.triggerRepaint()
+}
+
+func (a *appState) restoreClearedMessages() {
+	a.mu.Lock()
+	a.cfg.ClearBeforeTs = 0
+	a.messages = nil
+	a.seenIDs = make(map[string]bool)
+	a.lastMsgTs = 0
+	a.initialSynced = false
+	a.atBottom = true
+	a.visLines = nil
+	a.selecting = false
+	a.selAnchor = textPos{}
+	a.selFocus = textPos{}
+	saveConfig(a.cfg)
+	loggedIn := a.loggedIn
+	a.mu.Unlock()
+	if loggedIn {
+		a.pollMessagesAsync()
+	}
+	a.triggerRepaint()
 }
 
 func (a *appState) showAndBringToFront(focusInput bool) {
@@ -1200,6 +1308,26 @@ func (a *appState) handleCommand(id int) {
 		a.cfg.Hotkey = "F9"
 		saveConfig(a.cfg)
 		a.registerBossHotkey()
+	case idMenuClearNow:
+		a.clearMessagesNow()
+	case idMenuClearHKAltL:
+		a.cfg.ClearHotkey = "Alt+L"
+		saveConfig(a.cfg)
+		a.registerClearHotkey()
+	case idMenuClearHKAltC:
+		a.cfg.ClearHotkey = "Alt+C"
+		saveConfig(a.cfg)
+		a.registerClearHotkey()
+	case idMenuClearHKCtrlAltL:
+		a.cfg.ClearHotkey = "Ctrl+Alt+L"
+		saveConfig(a.cfg)
+		a.registerClearHotkey()
+	case idMenuClearHKF8:
+		a.cfg.ClearHotkey = "F8"
+		saveConfig(a.cfg)
+		a.registerClearHotkey()
+	case idMenuUnclearHistory:
+		a.restoreClearedMessages()
 	case idMenuAddAccount:
 		a.startAddAccount()
 	case idMenuCheckUpdate:
@@ -1458,6 +1586,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		a.createAllControls()
 		a.refreshResources()
 		a.registerBossHotkey()
+		a.registerClearHotkey()
 		a.addTrayIcon()
 		a.layoutControls()
 		pSetTimer.Call(hwnd, idTimerPoll, 2500, 0)
@@ -1712,6 +1841,10 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 				a.selectAllChat()
 				return 0
 			}
+			if ctrlDown && (wParam == 'L' || wParam == 'l') {
+				a.clearMessagesNow()
+				return 0
+			}
 			if wParam == VK_ESCAPE && a.clearSelection() {
 				return 0
 			}
@@ -1830,6 +1963,8 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_HOTKEY:
 		if wParam == idHotkeyBoss {
 			a.toggleBossHide()
+		} else if wParam == idHotkeyClear {
+			a.clearMessagesNow()
 		}
 		return 0
 
@@ -1850,6 +1985,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 		saveConfig(a.cfg)
 		a.removeTrayIcon()
 		pUnregisterHotKey.Call(hwnd, idHotkeyBoss)
+		pUnregisterHotKey.Call(hwnd, idHotkeyClear)
 		pKillTimer.Call(hwnd, idTimerPoll)
 		pKillTimer.Call(hwnd, idTimerContrast)
 		pDestroyWindow.Call(hwnd)

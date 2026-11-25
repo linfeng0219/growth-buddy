@@ -384,3 +384,44 @@ func TestChatTextSelectionAndExtraction(t *testing.T) {
 		t.Fatalf("expected cross-paragraph selection, got %q", got)
 	}
 }
+
+func TestClearHotkeyFilteringAndAdaptiveInputBorder(t *testing.T) {
+	if m, vk, canon := parseClearHotkey(""); m != 0x0001 || vk != 0x4C || canon != "Alt+L" {
+		t.Fatalf("default parseClearHotkey mismatch: %x %x %s", m, vk, canon)
+	}
+	if m, vk, canon := parseClearHotkey("ctrl+alt+l"); m != 0x0003 || vk != 0x4C || canon != "Ctrl+Alt+L" {
+		t.Fatalf("ctrl+alt+l parseClearHotkey mismatch: %x %x %s", m, vk, canon)
+	}
+	if m, vk, canon := parseClearHotkey("f8"); m != 0 || vk != 0x77 || canon != "F8" {
+		t.Fatalf("f8 parseClearHotkey mismatch: %x %x %s", m, vk, canon)
+	}
+
+	msgs := []ChatMsg{
+		{ID: "m1", CreatedAt: 1000, Text: "old-1"},
+		{ID: "m2", CreatedAt: 2000, Text: "old-at-cutoff"},
+		{ID: "m3", CreatedAt: 2001, Text: "after-clear"},
+	}
+	filtered := filterMessagesAfterClear(msgs, 2000)
+	if len(filtered) != 1 || filtered[0].ID != "m3" {
+		t.Fatalf("expected only m3 after clear cutoff 2000, got %+v", filtered)
+	}
+	if all := filterMessagesAfterClear(msgs, 0); len(all) != 3 {
+		t.Fatalf("expected all messages when clearBeforeTs=0, got %d", len(all))
+	}
+
+	// 白色背景下，边框颜色必须比纯白深且肉眼可见（不能钳位成白色）
+	whiteBorder := adaptiveInputBorderColor(0x00FFFFFF)
+	if whiteBorder == 0x00FFFFFF || whiteBorder == chromaKeyRef {
+		t.Fatalf("white background border must be visible, got 0x%08x", whiteBorder)
+	}
+	if colorLuminance(whiteBorder) > 215 {
+		t.Fatalf("expected darkened border luminance <= 215 on pure white, got %d (0x%08x)", colorLuminance(whiteBorder), whiteBorder)
+	}
+
+	// 深色背景下，边框颜色应适当提亮
+	darkBg := uint32(0x00202020)
+	darkBorder := adaptiveInputBorderColor(darkBg)
+	if darkBorder == chromaKeyRef || colorLuminance(darkBorder) <= colorLuminance(darkBg)+25 {
+		t.Fatalf("expected brightened border on dark bg, got 0x%08x", darkBorder)
+	}
+}
