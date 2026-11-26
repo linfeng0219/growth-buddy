@@ -1442,21 +1442,6 @@
       var petCount=pets.length;
       var stageHtml=needStarter?GBArt.mainPetSVG(0,{w:84}):GBArt.petStageSVG(compSp,c.level,{w:84});
 
-      var petsHtml="";
-      if(pets.length){
-        petsHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">';
-        pets.forEach(function(pt){
-          var ptSp=cat.find(function(x){return x.id===pt.species_id;});
-          var isAct=!!pt.is_active;
-          var hIcon=pt.pet_health==="sick"?"🤒":(pt.pet_health==="weak"?"💧":"");
-          petsHtml+='<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11.5px;border:1px solid '+(isAct?"#b7d6c3":"#e6ded0")+';background:'+(isAct?"#edf7f1":"#faf6ee")+';color:'+(isAct?"#2f6b4f":"#6b6052")+';white-space:nowrap">'
-            +(ptSp?GBArt.petStageSVG(ptSp,c.level,{w:18,noBase:true}):"🐾")
-            +'<span>'+GBArt.esc(pt.pet_name)+(isAct?" · 陪伴中":"")+(hIcon?" "+hIcon:"")+'</span>'
-            +'</span>';
-        });
-        petsHtml+='</div>';
-      }
-
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+stageHtml+'</div>'
         +'<div class="info">'
@@ -1466,7 +1451,7 @@
         +healthBadge
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
         +'<span>宠物 '+petCount+' 只</span>'
-        +'</div>'+petsHtml+'</div></div>';
+        +'</div></div></div>';
       g.appendChild(box);
     });
     populateLogFilters();
