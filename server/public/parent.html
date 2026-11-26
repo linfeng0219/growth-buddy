@@ -263,7 +263,6 @@
             <button class="user-avatar-chip" id="btnParentAvatarChip" type="button" title="点击设置/上传我的头像">
               <span id="parentAvatarSlot"></span>
               <span id="parentGreeting">家长</span>
-              <span style="font-size:11px;color:var(--muted)">✎</span>
             </button>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <button type="button" class="pill ghost" id="btnParentRefreshPage" title="刷新数据">🔄 刷新</button>
@@ -277,71 +276,63 @@
           <button data-tab="logs">📊 记录</button>
           <button data-tab="studio">✨ 伙伴</button>
           <button data-tab="family">🏡 家庭</button>
-          <button data-tab="chat">💬 聊天 <span id="chatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
-          <button data-tab="mailbox">📬 信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
+          <button data-tab="chat">💬 消息 <span id="msgUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
         </nav>
       </div>
     </div>
 
     <div id="tabSwipeViewport">
-    <!-- 1. 孩子总览 -->
+    <!-- 1. 孩子总览（专注呈现状态总览，代打卡统一到「任务 → 当日任务」，照片墙统一到「记录」） -->
     <section id="tab-overview">
       <div class="kid-overview-grid" id="kidOverviewGrid"></div>
-      <div class="panel">
-        <div class="panel-head">
-          <h2>📸 孩子打卡完成情况 · 实拍照片墙</h2>
-          <span class="pill" id="photoWallCount">0 张照片</span>
-        </div>
-        <div id="checkinPhotoWall" class="photo-wall-grid"></div>
-      </div>
     </section>
 
-    <!-- 1.5 打卡记录与汇总 -->
+    <!-- 1.5 打卡记录、照片墙与汇总（统一一套筛选条件） -->
     <section id="tab-logs" style="display:none">
       <div class="panel">
         <div class="panel-head">
-          <h2>📋 打卡记录明细（按天 / 周 / 月）</h2>
+          <h2>📊 成长记录与照片查验</h2>
           <span class="pill" id="logRangeLabel">今日</span>
         </div>
         <div class="row3" style="margin-bottom:10px">
           <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="logChildFilter"><option value="">全部孩子</option></select></div>
-          <div class="field" style="margin-bottom:0"><label>查询周期</label><select id="logPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>查询周期</label><select id="logPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option><option value="year">按年</option></select></div>
           <div class="field" style="margin-bottom:0"><label>基准日期</label><input type="date" id="logDateFilter"></div>
         </div>
-        <div id="checkinLogsList"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>📊 按任务汇总打卡数据（按天 / 周 / 月 / 年）</h2>
-          <span class="pill" id="sumRangeLabel">今日</span>
+        <div class="child-filter-bar" id="logViewTabs" style="margin-bottom:10px">
+          <button type="button" class="sm on" data-logview="details">📋 打卡明细</button>
+          <button type="button" class="sm" data-logview="photos">🖼️ 实拍照片墙 <span id="photoWallCount" style="font-weight:700">0</span></button>
+          <button type="button" class="sm" data-logview="summary">📈 按任务汇总</button>
         </div>
-        <div class="row3" style="margin-bottom:10px">
-          <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="sumChildFilter"><option value="">全部孩子</option></select></div>
-          <div class="field" style="margin-bottom:0"><label>汇总周期</label><select id="sumPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option><option value="year">按年</option></select></div>
-          <div class="field" style="margin-bottom:0"><label>基准日期</label><input type="date" id="sumDateFilter"></div>
+        <div id="logSubDetails">
+          <div id="checkinLogsList"></div>
         </div>
-        <div id="taskSummaryList"></div>
+        <div id="logSubPhotos" style="display:none">
+          <div id="checkinPhotoWall" class="photo-wall-grid"></div>
+        </div>
+        <div id="logSubSummary" style="display:none">
+          <div id="taskSummaryList"></div>
+        </div>
       </div>
     </section>
 
-    <!-- 2. 任务中心（新增任务 / 当日任务 / 所有任务） -->
+    <!-- 2. 任务与题库中心 -->
     <section id="tab-tasks" style="display:none">
       <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
         <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
         <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
         <button type="button" class="sm" data-subtab="import">📋 群作业导入</button>
         <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
+        <button type="button" class="sm" data-subtab="quiz">🌐 冒险题库</button>
       </div>
 
       <div id="subtab-add" class="panel" style="display:none">
         <div class="panel-head"><h2>新增任务（支持单次 / 周一至周日循环）</h2></div>
         <div class="row3">
           <div class="field">
-            <label>任务图标</label>
+            <label>任务图标（点击更换）</label>
             <div style="display:flex;gap:8px;align-items:center">
-              <span id="tIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:21px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
-              <button type="button" class="sm" id="btnPickTIcon">选图标</button>
+              <span id="tIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:21px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
             </div>
             <input type="hidden" id="tEmoji" value="✨">
             <input type="hidden" id="tIconUrl" value="">
@@ -508,6 +499,34 @@
         <div class="panel-head"><h2>📋 所有任务管理（可随时修改周期、分配对象）</h2></div>
         <div id="allTaskList"></div>
       </div>
+
+      <div id="subtab-quiz" class="panel" style="display:none">
+        <div class="panel-head"><h2>🌐 在线分级题库（按儿童年龄与难度自动匹配）</h2></div>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">已取消家长手动录题。冒险战斗时系统将自动拉取在线分级题库，并根据孩子年龄与难度精准出题；选择「🔥 进阶挑战」时会自动适当增加英语与高一学段数学拓展题，孩子也可在战斗界面随时切换难度。</p>
+        <div class="row3">
+          <div class="field"><label>预览年龄段</label>
+            <select id="qFilterAge">
+              <option value="4">3~5 岁（幼儿园小/中班）</option>
+              <option value="7" selected>6~7 岁（小学一年级）</option>
+              <option value="8">8 岁（小学二年级）</option>
+              <option value="9">9~10 岁（小学三~四年级）</option>
+              <option value="12">11~14 岁（高年级/初中）</option>
+            </select>
+          </div>
+          <div class="field"><label>预览难度</label>
+            <select id="qFilterDiff">
+              <option value="easy">🌱 简单启蒙</option>
+              <option value="normal" selected>⚔️ 适中闯关</option>
+              <option value="hard">🔥 进阶挑战（增英语与高年级数学）</option>
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end">
+            <button type="button" id="btnRefreshQuestions" style="width:100%">🔄 换一批预览</button>
+          </div>
+        </div>
+        <div class="msg" id="qMsg"></div>
+        <div id="questionList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
+      </div>
     </section>
 
     <!-- 3. 伙伴工作室 -->
@@ -649,43 +668,16 @@
         </div>
         <div id="parentManageList"></div>
       </div>
-
-      <div class="card">
-        <h3>🌐 在线分级题库（按儿童年龄与难度自动匹配）</h3>
-        <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px">已取消家长手动录题。冒险战斗时系统将自动拉取在线分级题库，并根据孩子年龄与难度精准出题；选择「🔥 进阶挑战」时会自动适当增加英语与高一学段数学拓展题，孩子也可在战斗界面随时切换难度。</p>
-        <div class="row3">
-          <div class="field"><label>预览年龄段</label>
-            <select id="qFilterAge">
-              <option value="4">3~5 岁（幼儿园小/中班）</option>
-              <option value="7" selected>6~7 岁（小学一年级）</option>
-              <option value="8">8 岁（小学二年级）</option>
-              <option value="9">9~10 岁（小学三~四年级）</option>
-              <option value="12">11~14 岁（高年级/初中）</option>
-            </select>
-          </div>
-          <div class="field"><label>预览难度</label>
-            <select id="qFilterDiff">
-              <option value="easy">🌱 简单启蒙</option>
-              <option value="normal" selected>⚔️ 适中闯关</option>
-              <option value="hard">🔥 进阶挑战（增英语与高年级数学）</option>
-            </select>
-          </div>
-          <div class="field" style="display:flex;align-items:flex-end">
-            <button type="button" id="btnRefreshQuestions" style="width:100%">🔄 换一批预览</button>
-          </div>
-        </div>
-        <div class="msg" id="qMsg"></div>
-        <div id="questionList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
-      </div>
     </section>
 
-    <!-- 5.5 家长好友聊天、家庭群聊 & 查看孩子好友聊天记录 -->
+    <!-- 5.5 消息中心（家长好友群聊、孩子好友监护、家长信箱合一） -->
     <section id="tab-chat" style="display:none">
       <div class="panel chat-panel-flush">
         <div class="panel-head" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;justify-content:space-between">
           <div class="seg-switch">
-            <button type="button" class="on" id="btnChatModeMine">💬 我的好友</button>
-            <button type="button" id="btnChatModeKids">👀 孩子好友/记录</button>
+            <button type="button" class="on" id="btnChatModeMine">💬 好友聊天 <span id="mineChatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:2px"></span></button>
+            <button type="button" id="btnChatModeKids">👀 孩子好友</button>
+            <button type="button" id="btnChatModeMail">📬 家长信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:2px"></span></button>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:nowrap;margin-left:auto" id="pSocialTopActions">
             <button type="button" class="sm amber" id="btnAddParentFriend" style="white-space:nowrap">➕ 加好友</button>
@@ -752,66 +744,65 @@
             </div>
           </div>
         </div>
-      </div>
-    </section>
+        <!-- 模式 3：家长信箱（家长与孩子双向写信互动） -->
+        <div id="pSocialMailView" style="display:none">
+          <div class="panel" style="margin-top:4px">
+            <div class="panel-head">
+              <h2>✉️ 给孩子写一封暖心信</h2>
+              <span class="pill" style="background:#fff6eb;color:#b8621b;border-color:#efd2ab">孩子会在 App 收到新信提醒并可回复</span>
+            </div>
+            <div class="row3">
+              <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
+              <div class="field"><label>信封邮票</label>
+                <select id="mailStamp">
+                  <option value="💌">💌 暖心表扬</option>
+                  <option value="🌟">🌟 加油打气</option>
+                  <option value="🎁">🎁 惊喜小礼</option>
+                  <option value="🌙">🌙 睡前寄语</option>
+                  <option value="❤️">❤️ 爸爸妈妈爱的话</option>
+                </select>
+              </div>
+              <div class="field"><label>附带鼓励成长值</label>
+                <select id="mailBonusXp">
+                  <option value="0">不附带（纯信件）</option>
+                  <option value="2">+2 成长值（孩子拆信领取）</option>
+                  <option value="5">+5 成长值（孩子拆信领取）</option>
+                  <option value="10">+10 成长值（大奖励！）</option>
+                </select>
+              </div>
+            </div>
+            <div class="field">
+              <label>信件标题（可点选或自填）</label>
+              <input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友">
+              <div class="quick-chips">
+                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🌟 今天表现真棒！">🌟 今天表现真棒！</button>
+                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💌 给你的一封表扬信">💌 给你的一封表扬信</button>
+                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💪 加油鼓励小纸条">💪 加油鼓励小纸条</button>
+                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🎈 周末开心小约定">🎈 周末开心小约定</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+              <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
+              <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
+              <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
+              <button type="button" class="sm mail-tpl" data-tpl="早点休息养足精神，明天又是活力满满的一天，晚安宝贝！">🌙 晚安寄语</button>
+            </div>
+            <div class="field"><label>正文内容</label><textarea id="mailContent" rows="4" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
+            <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
+            <div class="msg" id="mailMsg"></div>
+          </div>
 
-    <!-- 5. 家长信箱（家长与孩子双向写信互动） -->
-    <section id="tab-mailbox" style="display:none">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>✉️ 给孩子写一封暖心信</h2>
-          <span class="pill" style="background:#fff6eb;color:#b8621b;border-color:#efd2ab">孩子会在 App 收到新信提醒并可回复</span>
-        </div>
-        <div class="row3">
-          <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
-          <div class="field"><label>信封邮票</label>
-            <select id="mailStamp">
-              <option value="💌">💌 暖心表扬</option>
-              <option value="🌟">🌟 加油打气</option>
-              <option value="🎁">🎁 惊喜小礼</option>
-              <option value="🌙">🌙 睡前寄语</option>
-              <option value="❤️">❤️ 爸爸妈妈爱的话</option>
-            </select>
-          </div>
-          <div class="field"><label>附带鼓励成长值</label>
-            <select id="mailBonusXp">
-              <option value="0">不附带（纯信件）</option>
-              <option value="2">+2 成长值（孩子拆信领取）</option>
-              <option value="5">+5 成长值（孩子拆信领取）</option>
-              <option value="10">+10 成长值（大奖励！）</option>
-            </select>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>📬 家庭往来信件墙</h2>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select id="mailFilterChild" style="width:auto;min-width:110px;padding:4px 8px;font-size:12.5px"><option value="">全部孩子</option></select>
+                <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部标为已读</button>
+              </div>
+            </div>
+            <div id="parentMailboxList"></div>
           </div>
         </div>
-        <div class="field">
-          <label>信件标题（可点选或自填）</label>
-          <input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友">
-          <div class="quick-chips">
-            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🌟 今天表现真棒！">🌟 今天表现真棒！</button>
-            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💌 给你的一封表扬信">💌 给你的一封表扬信</button>
-            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💪 加油鼓励小纸条">💪 加油鼓励小纸条</button>
-            <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🎈 周末开心小约定">🎈 周末开心小约定</button>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-          <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
-          <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
-          <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
-          <button type="button" class="sm mail-tpl" data-tpl="早点休息养足精神，明天又是活力满满的一天，晚安宝贝！">🌙 晚安寄语</button>
-        </div>
-        <div class="field"><label>正文内容</label><textarea id="mailContent" rows="4" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
-        <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
-        <div class="msg" id="mailMsg"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head">
-          <h2>📬 家庭往来信件墙</h2>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <select id="mailFilterChild" style="width:auto;min-width:110px;padding:4px 8px;font-size:12.5px"><option value="">全部孩子</option></select>
-            <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部标为已读</button>
-          </div>
-        </div>
-        <div id="parentMailboxList"></div>
       </div>
     </section>
     </div>
@@ -861,10 +852,9 @@
     <h3 style="font-family:var(--serif);margin-bottom:10px">编辑任务与分配对象</h3>
     <div class="row3">
       <div class="field">
-        <label>图标</label>
+        <label>图标（点击换）</label>
         <div style="display:flex;gap:8px;align-items:center">
-          <span id="etIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:20px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
-          <button type="button" class="sm" id="btnPickEtIcon">选图标</button>
+          <span id="etIconPreview" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--hair);border-radius:10px;background:#fff;font-size:20px;flex-shrink:0;cursor:pointer" title="点击选择图标">✨</span>
         </div>
         <input type="hidden" id="etEmoji" value="✨">
         <input type="hidden" id="etIconUrl" value="">
@@ -1390,15 +1380,9 @@
 
   function renderOverview(){
     var g=$id("kidOverviewGrid");g.innerHTML="";
-    var allPhotos=[];
     data.children.forEach(function(c){
       var box=document.createElement("div");box.className="kid-box";
       var lvName=GBArt.LEVELS[c.level]?GBArt.LEVELS[c.level].name:"一颗蛋";
-      (c.recent_logs||[]).forEach(function(l){
-        if(l.has_photo&&l.photo_url){
-          allPhotos.push({kidName:c.name,log:l});
-        }
-      });
       var healthBadge='<span style="background:#e8f5ee;color:#2f6b4f">💚 健康</span>';
       if(c.pet_health==="weak") healthBadge='<span style="background:#fff4e5;color:#b8621b">💧 虚弱 ('+(c.heal_progress||0)+'/'+(c.heal_target||10)+')</span>';
       else if(c.pet_health==="sick") healthBadge='<span style="background:#fdeaea;color:#c0392b">🤒 生病 ('+(c.heal_progress||0)+'/'+(c.heal_target||20)+')</span>';
@@ -1411,43 +1395,9 @@
         +healthBadge
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
         +'<span>图鉴 '+c.owned_count+' 只</span>'
-        +'</div></div></div>'
-        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +'<button type="button" class="sm go-checkin-btn" style="flex:1;background:var(--accent);color:#fff;border-color:var(--accent)">✅ 帮 '+GBArt.esc(c.name)+' 打卡</button>'
-        +'<button class="sm undo-btn">↩ 撤销最近打卡</button>'
-        +'</div>';
-
-      box.querySelector(".go-checkin-btn").addEventListener("click",function(){
-        previewKidId=c.id;
-        switchMainTab("tasks");
-        switchTaskSubTab("today");
-        renderTasksTab();
-      });
-      box.querySelector(".undo-btn").addEventListener("click",async function(){
-        try{await api("/api/parent/undo-checkin",{method:"POST",body:JSON.stringify({childId:c.id})});showToast("已撤销最近一次打卡");await loadOverview();}
-        catch(e){showToast(e.message,true);}
-      });
+        +'</div></div></div>';
       g.appendChild(box);
     });
-
-    allPhotos.sort(function(a,b){return (b.log.created_at||0)-(a.log.created_at||0);});
-    $id("photoWallCount").textContent=allPhotos.length+" 张照片";
-    var pw=$id("checkinPhotoWall");pw.innerHTML="";
-    if(!allPhotos.length){
-      pw.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px">孩子在打卡时上传作业或完成成果照片后，会实时展示在这里供家长查验。</div>';
-    }else{
-      allPhotos.forEach(function(item){
-        var l=item.log, tm=fmtTime(l.created_at);
-        var card=document.createElement("div");card.className="photo-card";
-        card.innerHTML='<img src="'+GBArt.esc(l.photo_url)+'" alt="打卡照片" loading="lazy">'
-          +'<div class="pc-meta"><span>'+GBArt.esc(item.kidName)+' · '+GBArt.esc(l.task_label)+'</span><span style="color:var(--amber)">+'+l.pts+'</span></div>'
-          +'<div class="pc-sub">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+' · 点击放大</div>';
-        card.addEventListener("click",function(){
-          openPhotoPreview(l.photo_url,item.kidName,l.task_label,l.checkin_date,l.created_at);
-        });
-        pw.appendChild(card);
-      });
-    }
     populateLogFilters();
   }
 
@@ -1524,10 +1474,11 @@
     $id("etRopeBox").style.display=isRope?"block":"none";
     $id("etTimerPhotoRow").style.display=isRope?"none":"block";
   });
-  var mainTabOrder=["overview","tasks","logs","studio","family","chat","mailbox"];
+  var mainTabOrder=["overview","tasks","logs","studio","family","chat"];
   var activeMainTab="overview";
   var _tabLoadTimer=null;
   function switchMainTab(tg, dir){
+    if(tg==="mailbox") tg="chat";
     if(mainTabOrder.indexOf(tg)<0) tg="overview";
     var prevTab=activeMainTab;
     activeMainTab=tg;
@@ -1539,6 +1490,7 @@
     });
     mainTabOrder.forEach(function(k){
       var sec=$id("tab-"+k);
+      if(!sec) return;
       sec.style.transition="";
       sec.style.transform="";
       sec.classList.remove("tab-slide-left","tab-slide-right");
@@ -1556,9 +1508,12 @@
     clearTimeout(_tabLoadTimer);
     var runTabData=function(){
       if(activeMainTab!==tg) return;
-      if(tg==="logs"){loadCheckinLogs();loadTaskSummary();}
-      if(tg==="chat"){loadParentChatContacts(true);}
-      if(tg==="mailbox"){loadParentMailbox();}
+      if(tg==="logs"){loadCheckinLogs();}
+      if(tg==="chat"){
+        if(pChatMode==="mail"){loadParentMailbox();}
+        else if(pChatMode==="kids"){loadChildOversightOverview(true);}
+        else{loadParentChatContacts(true);}
+      }
     };
     if(dir){
       _tabLoadTimer=setTimeout(runTabData, 190);
@@ -1666,14 +1621,26 @@
   })();
 
   $id("logDateFilter").value=today();
-  $id("sumDateFilter").value=today();
+  var activeLogView="details";
   function populateLogFilters(){
     if(!data||!data.children) return;
     var opts='<option value="">全部孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
-    var curL=$id("logChildFilter").value, curS=$id("sumChildFilter").value;
-    $id("logChildFilter").innerHTML=opts; $id("logChildFilter").value=curL;
-    $id("sumChildFilter").innerHTML=opts; $id("sumChildFilter").value=curS;
+    var curL=$id("logChildFilter").value;
+    $id("logChildFilter").innerHTML=opts;
+    $id("logChildFilter").value=curL;
   }
+  function switchLogView(vw){
+    activeLogView=vw;
+    document.querySelectorAll("#logViewTabs button").forEach(function(x){
+      x.classList.toggle("on",x.getAttribute("data-logview")===vw);
+    });
+    $id("logSubDetails").style.display=(vw==="details")?"":"none";
+    $id("logSubPhotos").style.display=(vw==="photos")?"":"none";
+    $id("logSubSummary").style.display=(vw==="summary")?"":"none";
+  }
+  document.querySelectorAll("#logViewTabs button").forEach(function(b){
+    b.addEventListener("click",function(){switchLogView(b.getAttribute("data-logview"));});
+  });
   async function loadCheckinLogs(){
     try{
       var cid=$id("logChildFilter").value, per=$id("logPeriodFilter").value, dt=$id("logDateFilter").value||today();
@@ -1681,47 +1648,68 @@
       $id("logRangeLabel").textContent=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
       var box=$id("checkinLogsList");
       var list=r.logs||[];
-      if(!list.length){box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无打卡记录。</div>';return;}
-      box.innerHTML="";
-      list.forEach(function(l){
-        var row=document.createElement("div");row.className="task-item";
-        var tm=fmtTime(l.created_at);
-        var extra=[];
-        if(l.actual_count!=null) extra.push(l.actual_count+"个");
-        if(l.actual_duration!=null) extra.push(l.actual_duration>=60?Math.round(l.actual_duration/60)+"分钟":l.actual_duration+"秒");
-        var extraStr=extra.length?(' <span style="font-size:12px;color:var(--muted)">('+extra.join("/")+')</span>'):"";
-        var phBtn=(l.has_photo&&l.photo_url)?'<button type="button" class="photo-pill">📷 查看照片</button>':"";
-        row.innerHTML='<div class="task-meta"><span style="font-size:12px;color:var(--muted)">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+'</span><strong>'+GBArt.esc(l.child_name)+'</strong><span>· '+GBArt.esc(l.task_label)+'</span>'+extraStr+'<span style="color:var(--amber);font-weight:600">+'+l.pts+'</span></div>'+phBtn;
-        var b=row.querySelector("button");
-        if(b) b.addEventListener("click",function(){openPhotoPreview(l.photo_url,l.child_name,l.task_label,l.checkin_date,l.created_at);});
-        box.appendChild(row);
-      });
-    }catch(e){}
-  }
-  async function loadTaskSummary(){
-    try{
-      var cid=$id("sumChildFilter").value, per=$id("sumPeriodFilter").value, dt=$id("sumDateFilter").value||today();
-      var r=await api("/api/parent/checkin-logs?childId="+encodeURIComponent(cid)+"&period="+encodeURIComponent(per)+"&date="+encodeURIComponent(dt));
-      $id("sumRangeLabel").textContent=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
-      var box=$id("taskSummaryList");
-      var list=r.summary||[];
-      if(!list.length){box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无可汇总的数据。</div>';return;}
-      box.innerHTML=list.map(function(s){
-        var metrics=[];
-        if(s.total_duration>0) metrics.push("累计时长 "+(s.total_duration>=60?Math.round(s.total_duration/60)+"分钟":s.total_duration+"秒"));
-        if(s.total_count>0) metrics.push("累计数量 "+s.total_count+"个");
-        var mStr=metrics.length?(' · <span style="color:var(--muted);font-size:12px">'+metrics.join(" · ")+'</span>'):"";
-        return '<div class="task-item"><div class="task-meta"><strong>'+GBArt.esc(s.task_label)+'</strong>'+mStr+'</div><div style="display:flex;gap:8px;align-items:center"><span class="tag-all">完成 '+s.count+' 次</span><span style="color:var(--amber);font-weight:700">+'+s.total_pts+' XP</span></div></div>';
-      }).join("");
+      if(!list.length){
+        box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无打卡记录。</div>';
+      }else{
+        box.innerHTML="";
+        list.forEach(function(l){
+          var row=document.createElement("div");row.className="task-item";
+          var tm=fmtTime(l.created_at);
+          var extra=[];
+          if(l.actual_count!=null) extra.push(l.actual_count+"个");
+          if(l.actual_duration!=null) extra.push(l.actual_duration>=60?Math.round(l.actual_duration/60)+"分钟":l.actual_duration+"秒");
+          var extraStr=extra.length?(' <span style="font-size:12px;color:var(--muted)">('+extra.join("/")+')</span>'):"";
+          var phBtn=(l.has_photo&&l.photo_url)?'<button type="button" class="photo-pill">📷 查看照片</button>':"";
+          row.innerHTML='<div class="task-meta"><span style="font-size:12px;color:var(--muted)">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+'</span><strong>'+GBArt.esc(l.child_name)+'</strong><span>· '+GBArt.esc(l.task_label)+'</span>'+extraStr+'<span style="color:var(--amber);font-weight:600">+'+l.pts+'</span></div>'+phBtn;
+          var b=row.querySelector("button");
+          if(b) b.addEventListener("click",function(){openPhotoPreview(l.photo_url,l.child_name,l.task_label,l.checkin_date,l.created_at);});
+          box.appendChild(row);
+        });
+      }
+
+      var photos=list.filter(function(l){return l.has_photo&&l.photo_url;});
+      $id("photoWallCount").textContent=String(photos.length);
+      var pw=$id("checkinPhotoWall");pw.innerHTML="";
+      if(!photos.length){
+        pw.innerHTML='<div style="grid-column:1/-1;color:var(--muted);font-size:12.5px;padding:12px 0">该时间段内暂无打卡实拍照片。</div>';
+      }else{
+        photos.forEach(function(l){
+          var tm=fmtTime(l.created_at);
+          var card=document.createElement("div");card.className="photo-card";
+          card.innerHTML='<img src="'+GBArt.esc(l.photo_url)+'" alt="打卡照片" loading="lazy">'
+            +'<div class="pc-meta"><span>'+GBArt.esc(l.child_name)+' · '+GBArt.esc(l.task_label)+'</span><span style="color:var(--amber)">+'+l.pts+'</span></div>'
+            +'<div class="pc-sub">'+GBArt.esc(l.checkin_date)+(tm?(" "+tm):"")+' · 点击放大</div>';
+          card.addEventListener("click",function(){
+            openPhotoPreview(l.photo_url,l.child_name,l.task_label,l.checkin_date,l.created_at);
+          });
+          pw.appendChild(card);
+        });
+      }
+
+      var sumBox=$id("taskSummaryList");
+      var sumList=r.summary||[];
+      if(!sumList.length){
+        sumBox.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">该时间段暂无可汇总的数据。</div>';
+      }else{
+        sumBox.innerHTML=sumList.map(function(s){
+          var metrics=[];
+          if(s.total_duration>0) metrics.push("累计时长 "+(s.total_duration>=60?Math.round(s.total_duration/60)+"分钟":s.total_duration+"秒"));
+          if(s.total_count>0) metrics.push("累计数量 "+s.total_count+"个");
+          var mStr=metrics.length?(' · <span style="color:var(--muted);font-size:12px">'+metrics.join(" · ")+'</span>'):"";
+          return '<div class="task-item"><div class="task-meta"><strong>'+GBArt.esc(s.task_label)+'</strong>'+mStr+'</div><div style="display:flex;gap:8px;align-items:center"><span class="tag-all">完成 '+s.count+' 次</span><span style="color:var(--amber);font-weight:700">+'+s.total_pts+' XP</span></div></div>';
+        }).join("");
+      }
     }catch(e){}
   }
   ["logChildFilter","logPeriodFilter","logDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadCheckinLogs);});
-  ["sumChildFilter","sumPeriodFilter","sumDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadTaskSummary);});
   function switchTaskSubTab(st){
     document.querySelectorAll("#taskSubTabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-subtab")===st);
     });
-    ["today","add","import","all"].forEach(function(k){$id("subtab-"+k).style.display=(k===st)?"":"none";});
+    ["today","add","import","all","quiz"].forEach(function(k){
+      var el=$id("subtab-"+k);
+      if(el) el.style.display=(k===st)?"":"none";
+    });
     if(st==="import"&&!$id("hwDueDate").value){$id("hwDueDate").value=today();}
   }
   document.querySelectorAll("#taskSubTabs button").forEach(function(b){
@@ -2362,8 +2350,6 @@
   }
   $id("tIconPreview").addEventListener("click",function(){openTaskIconPicker("t");});
   $id("etIconPreview").addEventListener("click",function(){openTaskIconPicker("et");});
-  $id("btnPickTIcon").addEventListener("click",function(){openTaskIconPicker("t");});
-  $id("btnPickEtIcon").addEventListener("click",function(){openTaskIconPicker("et");});
   $id("btnApplyManualEmoji").addEventListener("click",function(){
     var v=$id("manualEmojiInput").value.trim();
     if(!v) return;
@@ -2608,7 +2594,27 @@
     }catch(e){note("hwMsg",e.message,true);}
   });
 
-  /* ==================== 家长信箱 ==================== */
+  /* ==================== 家长信箱 & 统一消息未读红点 ==================== */
+  var cachedChatUnreadCount=0;
+  var cachedMailUnreadCount=0;
+  function updateParentMsgBadge(){
+    var mBadge=$id("mineChatUnreadBadge");
+    if(mBadge){
+      if(cachedChatUnreadCount>0){mBadge.style.display="inline-block";mBadge.textContent=cachedChatUnreadCount;}
+      else{mBadge.style.display="none";}
+    }
+    var mailBadge=$id("mailboxUnreadBadge");
+    if(mailBadge){
+      if(cachedMailUnreadCount>0){mailBadge.style.display="inline-block";mailBadge.textContent=cachedMailUnreadCount;}
+      else{mailBadge.style.display="none";}
+    }
+    var total=cachedChatUnreadCount+cachedMailUnreadCount;
+    var topBadge=$id("msgUnreadBadge");
+    if(topBadge){
+      if(total>0){topBadge.style.display="inline-block";topBadge.textContent=total;}
+      else{topBadge.style.display="none";}
+    }
+  }
   function updateMailboxAndImportOptions(){
     if(!data||!data.children) return;
     renderChildCheckboxes("hwChildChecks",[]);
@@ -2618,10 +2624,8 @@
     var fSel=$id("mailFilterChild"), curF=fSel.value;
     fSel.innerHTML='<option value="">全部孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
     if(curF) fSel.value=curF;
-    var unread=data.unread_child_letters||0;
-    var badge=$id("mailboxUnreadBadge");
-    if(unread>0){badge.style.display="inline-block";badge.textContent=unread;}
-    else{badge.style.display="none";}
+    cachedMailUnreadCount=data.unread_child_letters||0;
+    updateParentMsgBadge();
   }
 
   document.querySelectorAll(".mail-tpl").forEach(function(b){
@@ -2636,9 +2640,8 @@
     try{
       var cid=$id("mailFilterChild").value||"";
       var r=await api("/api/parent/letters?childId="+encodeURIComponent(cid));
-      var badge=$id("mailboxUnreadBadge");
-      if((r.unread_from_child||0)>0){badge.style.display="inline-block";badge.textContent=r.unread_from_child;}
-      else{badge.style.display="none";}
+      cachedMailUnreadCount=r.unread_from_child||0;
+      updateParentMsgBadge();
       var box=$id("parentMailboxList");
       var list=r.letters||[];
       if(!list.length){
@@ -2801,10 +2804,7 @@
   function bindChatImageClicks(container){
     container.querySelectorAll(".chat-img-thumb").forEach(function(img){
       img.addEventListener("click",function(){
-        $id("ppTitle").textContent="聊天图片";
-        $id("ppSub").textContent="";
-        $id("ppImg").src=img.getAttribute("data-full");
-        $id("photoPreviewModal").classList.add("show");
+        openPhotoPreview(img.getAttribute("data-full"),"聊天图片","",today(),0);
       });
     });
   }
@@ -2813,17 +2813,22 @@
     pChatMode=mode;
     $id("btnChatModeMine").classList.toggle("on",mode==="mine");
     $id("btnChatModeKids").classList.toggle("on",mode==="kids");
+    $id("btnChatModeMail").classList.toggle("on",mode==="mail");
     $id("pSocialMineView").style.display=(mode==="mine")?"":"none";
     $id("pSocialKidsView").style.display=(mode==="kids")?"":"none";
+    $id("pSocialMailView").style.display=(mode==="mail")?"":"none";
     $id("pSocialTopActions").style.display=(mode==="mine")?"flex":"none";
     if(mode==="kids"){
       loadChildOversightOverview(true);
+    }else if(mode==="mail"){
+      loadParentMailbox();
     }else{
       loadParentChatContacts(true);
     }
   }
   $id("btnChatModeMine").addEventListener("click",function(){setParentChatMode("mine");});
   $id("btnChatModeKids").addEventListener("click",function(){setParentChatMode("kids");});
+  $id("btnChatModeMail").addEventListener("click",function(){setParentChatMode("mail");});
 
   function renderParentRequests(reqs){
     var sec=$id("pIncomingReqSection");
@@ -2959,13 +2964,8 @@
       var friends=ov.friends||[], groups=ov.chat_groups||[], reqs=ov.incoming_requests||[];
       var totalUnread=friends.reduce(function(a,c){return a+(c.unread_count||0);},0)
         +groups.reduce(function(a,g){return a+(g.unread_count||0);},0);
-      var badge=$id("chatUnreadBadge");
-      if(totalUnread>0||reqs.length>0){
-        badge.style.display="inline-block";
-        badge.textContent=totalUnread>0?totalUnread:("申请"+reqs.length);
-      }else{
-        badge.style.display="none";
-      }
+      cachedChatUnreadCount=totalUnread+reqs.length;
+      updateParentMsgBadge();
       renderParentRequests(reqs);
 
       var found=(activeChatPeerType==="group"&&groups.some(function(g){return g.id===activeChatPeerId;}))
@@ -3512,6 +3512,8 @@
     if(pChatMode==="kids"){
       loadChildOversightMessages(true);
       if(chatPollTick%3===0) loadChildOversightOverview(false);
+    }else if(pChatMode==="mail"){
+      if(chatPollTick%3===0) loadParentMailbox();
     }else if(activeChatPeerId){
       loadParentChatMessages(true);
       if(chatPollTick%3===0) loadParentChatContacts(false);

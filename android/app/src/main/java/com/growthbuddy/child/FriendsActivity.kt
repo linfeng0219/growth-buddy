@@ -35,17 +35,26 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 好友与聊天列表中心：
- * - 手机 / 竖屏单栏点击进入独立 ChatActivity；平板横屏左侧显示联系人分组，右侧直接内嵌聊天窗口。
+ * 儿童端「💬 消息」统一消息中心（合并 好友聊天 + 家长信箱）：
+ * - 顶部双段切换：「💬 好友聊天」与「📬 家长信箱」，右上角动作按钮随分栏切换为「➕ 加好友」/「✉️ 写信」。
+ * - 好友分栏在手机/竖屏单栏点击进入独立 ChatActivity，平板横屏左侧联系人分组、右侧直接内嵌聊天窗口。
  * - 支持点击分组名（群聊 / 家庭 / 朋友）展开或折叠组内元素，展示好友在线/离线状态。
  */
 class FriendsActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_INITIAL_MODE = "initial_mode"
+    }
 
     private lateinit var binding: ActivityFriendsBinding
     private lateinit var api: ApiClient
     private lateinit var sound: NativeSoundEngine
     private lateinit var chatController: ChildChatPaneController
+    private lateinit var mailController: ChildMailboxPaneController
 
+    private var msgMode: String = "chat" // "chat" | "mail"
+    private var unreadMailCount: Int = 0
+    private var unreadChatAndReqCount: Int = 0
     private var overview: SocialOverview? = null
     private val collapsedGroups = mutableMapOf<String, Boolean>()
     private var selectedPeerType: String = ""
@@ -82,6 +91,7 @@ class FriendsActivity : AppCompatActivity() {
         override fun run() {
             if (!isResumed) return
             loadOverview(silent = true)
+            mailController.loadLetters(silent = true)
             mainHandler.postDelayed(this, 10_000L)
         }
     }
@@ -124,21 +134,56 @@ class FriendsActivity : AppCompatActivity() {
         )
         chatController.setBackButtonVisible(false)
 
+        mailController = ChildMailboxPaneController(
+            activity = this,
+            binding = binding.friendsMailPane,
+            api = api,
+            sound = sound,
+            onChanged = {
+                hasChangedState = true
+                setResult(RESULT_OK)
+            },
+            onUnreadCount = { cnt ->
+                unreadMailCount = cnt
+                updateModeTabsUi()
+            }
+        )
+
+        binding.msgModeTrack.background = GradientDrawable().apply {
+            setColor(Color.parseColor("#EFE8DA"))
+            cornerRadius = dp(99).toFloat()
+        }
+        binding.btnMsgModeChat.setOnClickListener {
+            sound.playPat()
+            setMsgMode("chat")
+        }
+        binding.btnMsgModeMail.setOnClickListener {
+            sound.playPat()
+            setMsgMode("mail")
+        }
         binding.btnFriendsBack.setOnClickListener {
             if (hasChangedState) setResult(RESULT_OK)
             finish()
         }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
+        binding.btnMsgWriteLetter.setOnClickListener {
+            sound.playPat()
+            mailController.showComposeDialog()
+        }
 
+        val initial = intent.getStringExtra(EXTRA_INITIAL_MODE) ?: "chat"
+        setMsgMode(if (initial == "mail") "mail" else "chat", reload = false)
         applyResponsiveLayout()
         loadOverview(silent = false)
+        mailController.loadLetters(silent = initial != "mail")
     }
 
     override fun onResume() {
         super.onResume()
         isResumed = true
-        loadOverview(silent = false)
-        chatController.setActive(ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
+        loadOverview(silent = msgMode != "chat")
+        mailController.loadLetters(silent = msgMode != "mail")
+        chatController.setActive(msgMode == "chat" && ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
         mainHandler.removeCallbacks(overviewPollTicker)
         mainHandler.postDelayed(overviewPollTicker, 10_000L)
     }
@@ -152,6 +197,8 @@ class FriendsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         chatController.onDestroy()
+        sound.release()
+        api.shutdown()
         super.onDestroy()
     }
 
@@ -162,6 +209,39 @@ class FriendsActivity : AppCompatActivity() {
             syncSplitSelectionAndPane(it)
             renderFriendsList(it)
         }
+        mailController.rerenderCached()
+    }
+
+    private fun setMsgMode(mode: String, reload: Boolean = true) {
+        msgMode = mode
+        val isChat = mode == "chat"
+        binding.friendsBodySplit.visibility = if (isChat) View.VISIBLE else View.GONE
+        binding.friendsMailPane.root.visibility = if (isChat) View.GONE else View.VISIBLE
+        binding.btnAddFriend.visibility = if (isChat) View.VISIBLE else View.GONE
+        binding.btnMsgWriteLetter.visibility = if (isChat) View.GONE else View.VISIBLE
+        chatController.setActive(isResumed && isChat && ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
+        updateModeTabsUi()
+        if (reload) {
+            if (isChat) loadOverview(silent = true) else mailController.loadLetters(silent = false)
+        }
+    }
+
+    private fun updateModeTabsUi() {
+        val isChat = msgMode == "chat"
+        binding.btnMsgModeChat.text = if (unreadChatAndReqCount > 0) "💬 好友($unreadChatAndReqCount)" else "💬 好友"
+        binding.btnMsgModeMail.text = if (unreadMailCount > 0) "📬 信箱($unreadMailCount)" else "📬 信箱"
+
+        binding.btnMsgModeChat.background = GradientDrawable().apply {
+            setColor(if (isChat) Color.WHITE else Color.TRANSPARENT)
+            cornerRadius = dp(99).toFloat()
+        }
+        binding.btnMsgModeChat.setTextColor(Color.parseColor(if (isChat) "#233128" else "#6B6052"))
+
+        binding.btnMsgModeMail.background = GradientDrawable().apply {
+            setColor(if (!isChat) Color.WHITE else Color.TRANSPARENT)
+            cornerRadius = dp(99).toFloat()
+        }
+        binding.btnMsgModeMail.setTextColor(Color.parseColor(if (!isChat) "#233128" else "#6B6052"))
     }
 
     private fun dp(v: Int): Int = ResponsiveUi.dp(this, v)
@@ -169,9 +249,10 @@ class FriendsActivity : AppCompatActivity() {
     private fun applyResponsiveLayout() {
         val m = ResponsiveUi.metrics(this)
         val maxW = if (m.isDesktopSplit) 1180 else if (m.isTablet) 740 else 1200
-        binding.tvFriendsTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (m.isTablet) 18f else 15.5f)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsTopBar, maxW, horizontalReserveDp = 28)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsBodySplit, maxW, horizontalReserveDp = 28)
+        val mailMaxW = if (m.isDesktopSplit) 1040 else if (m.isTablet) 740 else 1200
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsMailPane.root, mailMaxW, horizontalReserveDp = 28)
 
         val listLp = binding.friendsListScroll.layoutParams as LinearLayout.LayoutParams
         val chatLp = binding.friendsChatPaneWrap.layoutParams as LinearLayout.LayoutParams
@@ -188,7 +269,7 @@ class FriendsActivity : AppCompatActivity() {
             chatLp.weight = 1.18f
             chatLp.marginStart = dp(14)
             binding.friendsChatPaneWrap.visibility = View.VISIBLE
-            chatController.setActive(isResumed && selectedPeerId.isNotBlank())
+            chatController.setActive(isResumed && msgMode == "chat" && selectedPeerId.isNotBlank())
         } else {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
             listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -214,6 +295,10 @@ class FriendsActivity : AppCompatActivity() {
             }
             val parsed = SocialParser.parseOverview(res.json)
             overview = parsed
+            unreadChatAndReqCount = parsed.incomingRequests.size +
+                parsed.chatGroups.sumOf { it.unreadCount } +
+                parsed.friends.sumOf { it.unreadCount }
+            updateModeTabsUi()
             renderRequests(parsed.incomingRequests)
             applyResponsiveLayout()
             syncSplitSelectionAndPane(parsed)
@@ -263,7 +348,7 @@ class FriendsActivity : AppCompatActivity() {
         val hasSel = selectedPeerId.isNotBlank()
         binding.friendsChatPane.root.visibility = if (hasSel) View.VISIBLE else View.GONE
         binding.tvSplitChatPlaceholder.visibility = if (hasSel) View.GONE else View.VISIBLE
-        chatController.setActive(isResumed && hasSel)
+        chatController.setActive(isResumed && msgMode == "chat" && hasSel)
     }
 
     private fun openGroupInSplit(g: ChatGroupItem) {

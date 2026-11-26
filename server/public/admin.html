@@ -95,13 +95,6 @@
         <button class="ghost" id="btnRefresh">🔄 刷新数据</button>
       </div>
       <div id="familiesContainer"></div>
-      <div class="panel" style="margin-top:14px">
-        <div class="sub-head" style="margin-bottom:8px">
-          <span>📋 系统版本与更新内容</span>
-          <span class="pill" id="adminSysVerTag" style="background:#eef6f0;color:#2f6b4f;border-color:#c6dfc9">加载中...</span>
-        </div>
-        <div id="adminChangelogBody" style="font-size:13px;color:var(--ink-soft);line-height:1.7">正在读取版本更新记录...</div>
-      </div>
     </div>
 
     <div id="secReleases" style="display:none">
@@ -325,11 +318,8 @@
   if(window.GBChangelog) GBChangelog.bindBadge(document.getElementById("adminVerBadge"),"");
   if(window.GBChangelog){
     GBChangelog.fetch(true).then(function(d){
-      var tag=$id("adminSysVerTag"), body=$id("adminChangelogBody");
-      if(tag) tag.textContent="当前系统版本 v"+(d.version||"—");
       cachedChangelog=d.changelog||[];
       autoFillReleaseNotes(false);
-      GBChangelog.renderInto(body, cachedChangelog, { limit: 6 });
     });
   }
   var data=null;

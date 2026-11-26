@@ -53,7 +53,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updater: AppUpdater
 
     private var state: ChildState? = null
-    private var currentTab: Int = 0 // 0=home, 1=dex
     private var patIndex: Int = 0
 
     // 打卡拍照与头像选取状态
@@ -102,6 +101,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val mailboxLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        loadChildState()
+    }
+
+    private val dexLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { _ ->
         loadChildState()
@@ -229,10 +234,6 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyResponsiveLayout()
-        state?.let {
-            renderDex(it)
-            renderPolaroids(it)
-        }
     }
 
     private fun applyResponsiveLayout() {
@@ -296,13 +297,6 @@ class MainActivity : AppCompatActivity() {
         binding.homeLeftPane.layoutParams = leftLp
         binding.homeRightPane.layoutParams = rightLp
         binding.petStageView.layoutParams = stageLp
-
-        ResponsiveUi.applyCenteredMaxWidth(
-            this,
-            binding.dexSection,
-            if (m.isDesktopSplit) 1140 else if (m.isTablet) 760 else 1200,
-            horizontalReserveDp = 28
-        )
     }
 
     private fun setupLoginUi() {
@@ -330,8 +324,20 @@ class MainActivity : AppCompatActivity() {
         binding.btnRefresh.setOnClickListener { loadChildState() }
         binding.btnLogout.setOnClickListener { confirmLogout() }
 
-        binding.tabHome.setOnClickListener { switchTab(0) }
-        binding.tabDex.setOnClickListener { switchTab(1) }
+        binding.tabHome.setOnClickListener {
+            binding.mainScroll.smoothScrollTo(0, 0)
+        }
+        binding.tabMessages.setOnClickListener {
+            sound.playPat()
+            val c = state?.child
+            val chatAndReq = (c?.unreadChat ?: 0) + (c?.pendingFriendRequests ?: 0)
+            val mailUnread = c?.unreadLetters ?: 0
+            val initMode = if (chatAndReq == 0 && mailUnread > 0) "mail" else "chat"
+            val intent = Intent(this, FriendsActivity::class.java).apply {
+                putExtra(FriendsActivity.EXTRA_INITIAL_MODE, initMode)
+            }
+            mailboxLauncher.launch(intent)
+        }
 
         binding.petStageView.setOnClickListener {
             sound.playPat()
@@ -352,16 +358,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.btnRenamePet.setOnClickListener { showRenamePetDialog() }
-        populateQuickChips(
-            binding.snapMoodRow,
-            listOf("😄 今天超开心！", "💪 任务全部完成", "🌟 我又进步啦", "❤️ 最爱小伙伴")
-        ) { mood ->
-            sound.playPat()
-            binding.etSnapNote.setText(mood)
-        }
         binding.btnUndo.setOnClickListener { performUndo() }
-        binding.btnMysteryEgg.setOnClickListener { performAdopt(speciesId = null, mystery = true) }
-        binding.btnSnap.setOnClickListener { performTakePolaroid() }
         binding.btnFreeFocus.setOnClickListener {
             val st = state
             val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
@@ -392,13 +389,9 @@ class MainActivity : AppCompatActivity() {
             }
             adventureLauncher.launch(intent)
         }
-        binding.btnOpenFriends.setOnClickListener {
+        binding.btnOpenDex.setOnClickListener {
             sound.playPat()
-            mailboxLauncher.launch(Intent(this, FriendsActivity::class.java))
-        }
-        binding.btnOpenMailbox.setOnClickListener {
-            sound.playPat()
-            mailboxLauncher.launch(Intent(this, MailboxActivity::class.java))
+            dexLauncher.launch(Intent(this, DexActivity::class.java))
         }
     }
 
@@ -637,17 +630,7 @@ class MainActivity : AppCompatActivity() {
     private fun showAppView() {
         binding.loginContainer.visibility = View.GONE
         binding.appContainer.visibility = View.VISIBLE
-        switchTab(currentTab)
-    }
-
-    private fun switchTab(idx: Int) {
-        currentTab = idx
-        binding.homeSection.visibility = if (idx == 0) View.VISIBLE else View.GONE
-        binding.dexSection.visibility = if (idx == 1) View.VISIBLE else View.GONE
-        binding.tabHome.setTextColor(if (idx == 0) 0xFF2F6B4F.toInt() else 0xFF8A7E6E.toInt())
-        binding.tabHome.setTypeface(null, if (idx == 0) Typeface.BOLD else Typeface.NORMAL)
-        binding.tabDex.setTextColor(if (idx == 1) 0xFF2F6B4F.toInt() else 0xFF8A7E6E.toInt())
-        binding.tabDex.setTypeface(null, if (idx == 1) Typeface.BOLD else Typeface.NORMAL)
+        binding.homeSection.visibility = View.VISIBLE
         binding.mainScroll.scrollTo(0, 0)
     }
 
@@ -863,25 +846,23 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
 
-        val socialBadge = c.unreadChat + c.pendingFriendRequests
-        if (socialBadge > 0) {
-            binding.btnOpenFriends.text = "💬 好友($socialBadge)"
-            binding.btnOpenFriends.setTextColor(0xFFB86511.toInt())
-            binding.btnOpenFriends.setBackgroundColor(0xFFFFF7EA.toInt())
+        val msgBadge = c.unreadChat + c.pendingFriendRequests + c.unreadLetters
+        if (msgBadge > 0) {
+            binding.tabMessages.text = "💬 消息($msgBadge)"
+            binding.tabMessages.setTextColor(0xFFB86511.toInt())
         } else {
-            binding.btnOpenFriends.text = "💬 好友"
-            binding.btnOpenFriends.setTextColor(0xFF2F6B4F.toInt())
-            binding.btnOpenFriends.setBackgroundColor(0xFFFFFDF9.toInt())
+            binding.tabMessages.text = "💬 消息"
+            binding.tabMessages.setTextColor(0xFF2F6B4F.toInt())
         }
 
-        if (c.unreadLetters > 0) {
-            binding.btnOpenMailbox.text = "📬 ${c.unreadLetters}封新信"
-            binding.btnOpenMailbox.setTextColor(0xFFB86511.toInt())
-            binding.btnOpenMailbox.setBackgroundColor(0xFFFFF7EA.toInt())
+        if (c.coupons > 0) {
+            binding.btnOpenDex.text = "📖 图鉴与合影 · ${c.coupons}蛋"
+            binding.btnOpenDex.setTextColor(0xFFB86511.toInt())
+            binding.btnOpenDex.setBackgroundColor(0xFFFFF7EA.toInt())
         } else {
-            binding.btnOpenMailbox.text = "📬 信箱"
-            binding.btnOpenMailbox.setTextColor(0xFF2F6B4F.toInt())
-            binding.btnOpenMailbox.setBackgroundColor(0xFFFFFDF9.toInt())
+            binding.btnOpenDex.text = "📖 图鉴与合影"
+            binding.btnOpenDex.setTextColor(0xFF2F6B4F.toInt())
+            binding.btnOpenDex.setBackgroundColor(0xFFFFFDF9.toInt())
         }
 
         val totalDays = st.logs.map { it.checkinDate }.toSet().size
@@ -905,8 +886,6 @@ class MainActivity : AppCompatActivity() {
 
         renderWeekStrip(st)
         renderTasks(st)
-        renderDex(st)
-        renderPolaroids(st)
     }
 
     private fun renderWeekStrip(st: ChildState) {
@@ -1529,389 +1508,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun renderDex(st: ChildState) {
-        val c = st.child
-        val matureXp = 200
-        val surplus = (c.xp - matureXp).coerceAtLeast(0)
-        binding.tvCouponTitle.text = if (c.xp < matureXp) {
-            "成长值：${c.xp}/$matureXp（主宠成熟后，富余每 25 点可换宠物蛋）"
-        } else {
-            "主宠已成熟！富余成长值：$surplus 点（每 25 点可直兑 1 只）"
-        } + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
-        binding.dexContainer.removeAllViews()
-
-        val cols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
-        val pairs = st.catalog.chunked(cols)
-        for (rowItems in pairs) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(10) }
-            }
-            for (idx in 0 until cols) {
-                val sp = rowItems.getOrNull(idx)
-                if (sp == null) {
-                    val spacer = View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
-                            if (idx > 0) marginStart = dp(10)
-                        }
-                    }
-                    row.addView(spacer)
-                    continue
-                }
-                val isOwned = st.owned.containsKey(sp.id)
-                val isActive = c.activeCompanion == sp.id
-
-                val card = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(dp(10), dp(12), dp(10), dp(12))
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(16).toFloat()
-                        setColor(if (isOwned) 0xFFFAFDFB.toInt() else Color.WHITE)
-                        setStroke(dp(1), if (isOwned) 0xFFBED6C7.toInt() else 0xFFEAE2D3.toInt())
-                    }
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (idx > 0) marginStart = dp(10)
-                    }
-                }
-
-                val thumb = SpeciesThumbView(this).apply {
-                    setSpecies(sp, isSilhouette = !isOwned)
-                    layoutParams = LinearLayout.LayoutParams(dp(106), dp(92))
-                }
-                val nameTv = TextView(this).apply {
-                    text = if (isOwned) sp.name else "？？？"
-                    textSize = 14.5f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(0xFF2B2620.toInt())
-                    setPadding(0, dp(4), 0, 0)
-                }
-                val hintTv = TextView(this).apply {
-                    text = if (isOwned) "已拥有 · ${st.owned[sp.id]}" else sp.hint.ifEmpty { "等待孵化" }
-                    textSize = 11.5f
-                    setTextColor(if (isOwned) 0xFF2F6B4F.toInt() else 0xFF8A7E6E.toInt())
-                }
-                val actionBtn = Button(this).apply {
-                    textSize = 12f
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(38)
-                    ).apply { topMargin = dp(8) }
-                    when {
-                        isActive -> {
-                            text = "✨ 陪伴中"
-                            isEnabled = false
-                            setBackgroundColor(0xFFE3F2E8.toInt())
-                            setTextColor(0xFF2F6B4F.toInt())
-                        }
-                        isOwned -> {
-                            text = "设为陪伴伙伴"
-                            setBackgroundColor(0xFF2F6B4F.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performSetCompanion(sp.id) }
-                        }
-                        c.coupons > 0 -> {
-                            text = "🥚 用 1 枚蛋领养"
-                            setBackgroundColor(0xFFE8913A.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performAdopt(sp.id, mystery = false) }
-                        }
-                        surplus >= 25 -> {
-                            text = "✨ 25 富余成长值兑换"
-                            setBackgroundColor(0xFFE8913A.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performAdopt(sp.id, mystery = false) }
-                        }
-                        c.xp < matureXp -> {
-                            text = "主宠成熟后可兑换"
-                            isEnabled = false
-                            setBackgroundColor(0xFFEDE6DA.toInt())
-                            setTextColor(0xFF8A7E6E.toInt())
-                        }
-                        else -> {
-                            text = "富余还差 ${25 - surplus} 点"
-                            isEnabled = false
-                            setBackgroundColor(0xFFEDE6DA.toInt())
-                            setTextColor(0xFF8A7E6E.toInt())
-                        }
-                    }
-                }
-
-                card.addView(thumb)
-                card.addView(nameTv)
-                card.addView(hintTv)
-                card.addView(actionBtn)
-                row.addView(card)
-            }
-            binding.dexContainer.addView(row)
-        }
-    }
-
-    private fun performAdopt(speciesId: String?, mystery: Boolean) {
-        val payload = JSONObject().apply {
-            put("mystery", mystery)
-            put("date", todayStr())
-            if (speciesId != null) put("speciesId", speciesId)
-        }
-        api.request("POST", "/api/child/adopt", payload) { res ->
-            if (res.ok && res.json != null) {
-                sound.playWin()
-                val adoptedName = res.json.optJSONObject("adopted")?.optString("name", "新伙伴") ?: "新伙伴"
-                res.json.optJSONObject("state")?.let {
-                    val ns = GrowthMeta.parseChildState(it)
-                    state = ns
-                    renderAll(ns)
-                } ?: loadChildState()
-                sound.speak("恭喜你，领养了新伙伴${adoptedName}")
-                AlertDialog.Builder(this)
-                    .setTitle("🎉 新伙伴来啦！")
-                    .setMessage("欢迎「$adoptedName」加入你的图鉴，现在可以带它出来陪你一起成长啦！")
-                    .setPositiveButton("太棒啦！", null)
-                    .show()
-            } else {
-                sound.playError()
-                Toast.makeText(this, res.error ?: "领养失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun performSetCompanion(speciesId: String) {
-        api.request("POST", "/api/child/companion", JSONObject().put("speciesId", speciesId)) { res ->
-            if (res.ok) {
-                sound.playPat()
-                loadChildState()
-                Toast.makeText(this, "已更换陪伴伙伴！", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, res.error ?: "设置失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun renderPolaroids(st: ChildState) {
-        val c = st.child
-        binding.tvWallCount.text = "${st.polaroids.size} 张合影"
-
-        // 显示当前头像，并提示拍立得直接使用该头像（可点击更换头像）
-        binding.avatarPickRow.removeAllViews()
-        val curAv = SpeciesThumbView(this).apply {
-            bindAvatarView(this, c.avatarIdx, c.avatarUrl)
-            layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
-            setOnClickListener { showAvatarPreviewDialog(api, "${c.name} 的头像", c.avatarIdx, c.avatarUrl) }
-        }
-        val infoTv = TextView(this).apply {
-            text = "拍立得将直接使用你当前的头像"
-            textSize = 12.5f
-            setTextColor(0xFF7D7263.toInt())
-            setPadding(dp(10), 0, dp(8), 0)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val btnChange = Button(this).apply {
-            text = "更换头像"
-            textSize = 12f
-            setAllCaps(false)
-            setTextColor(0xFF2F6B4F.toInt())
-            background = GradientDrawable().apply {
-                cornerRadius = dp(99).toFloat()
-                setColor(0xFFE3F2E8.toInt())
-                setStroke(dp(1), 0xFFB8D4C3.toInt())
-            }
-            setPadding(dp(12), 0, dp(12), 0)
-            minWidth = 0
-            minimumWidth = 0
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32))
-            setOnClickListener { showAvatarPickerDialog() }
-        }
-        binding.avatarPickRow.addView(curAv)
-        binding.avatarPickRow.addView(infoTv)
-        binding.avatarPickRow.addView(btnChange)
-
-        // 合影墙卡片
-        binding.wallContainer.removeAllViews()
-        if (st.polaroids.isEmpty()) {
-            val empty = TextView(this).apply {
-                text = "还没有合影，快拍下第一张拍立得留念吧！"
-                setTextColor(0xFF8A7E6E.toInt())
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(14), dp(8), dp(14))
-            }
-            binding.wallContainer.addView(empty)
-            return
-        }
-
-        val wallCols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
-        for (rowItems in st.polaroids.chunked(wallCols)) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(10) }
-            }
-            for (idx in 0 until wallCols) {
-                val p = rowItems.getOrNull(idx)
-                if (p == null) {
-                    row.addView(View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
-                            if (idx > 0) marginStart = dp(10)
-                        }
-                    })
-                    continue
-                }
-                val frame = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(dp(8), dp(8), dp(8), dp(10))
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(10).toFloat()
-                        setColor(Color.WHITE)
-                        setStroke(dp(1), 0xFFE5DCCB.toInt())
-                    }
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        if (idx > 0) marginStart = dp(10)
-                    }
-                }
-                val photoBox = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    setPadding(dp(4), dp(8), dp(4), dp(6))
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(6).toFloat()
-                        setColor(0xFFFBF2E3.toInt())
-                    }
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(88))
-                }
-                val kidView = SpeciesThumbView(this).apply {
-                    bindAvatarView(this, p.avatarIdx, p.avatarUrl)
-                    layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
-                }
-                val petView = SpeciesThumbView(this).apply {
-                    val sp = st.catalog.find { it.id == p.petRef }
-                    if (sp != null) setSpecies(sp, isSilhouette = false)
-                    else setMainPet(p.petLv)
-                    layoutParams = LinearLayout.LayoutParams(dp(72), dp(68))
-                }
-                photoBox.addView(kidView)
-                photoBox.addView(petView)
-
-                val dateTv = TextView(this).apply {
-                    text = p.photoDate
-                    textSize = 11.5f
-                    setTextColor(0xFF5C5347.toInt())
-                    setPadding(0, dp(6), 0, 0)
-                }
-                frame.addView(photoBox)
-                frame.addView(dateTv)
-                if (p.note.isNotEmpty()) {
-                    val noteTv = TextView(this).apply {
-                        text = p.note
-                        textSize = 11f
-                        setTextColor(0xFF8A7E6E.toInt())
-                    }
-                    frame.addView(noteTv)
-                }
-                frame.setOnClickListener {
-                    showPolaroidPreviewDialog(p, st.catalog)
-                }
-                row.addView(frame)
-            }
-            binding.wallContainer.addView(row)
-        }
-    }
-
-    private fun showPolaroidPreviewDialog(p: PolaroidItem, catalog: List<SpeciesItem>) {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(18), dp(16), dp(18), dp(12))
-        }
-        val frame = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(12), dp(12), dp(12), dp(14))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(Color.WHITE)
-                setStroke(dp(1), 0xFFE5DCCB.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(276), LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        val photoBox = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(14), dp(8), dp(12))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(8).toFloat()
-                setColor(0xFFFBF2E3.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(196))
-        }
-        val kidView = SpeciesThumbView(this).apply {
-            bindAvatarView(this, p.avatarIdx, p.avatarUrl)
-            layoutParams = LinearLayout.LayoutParams(dp(108), dp(108))
-            setOnClickListener {
-                showAvatarPreviewDialog(api, "合影中的头像", p.avatarIdx, p.avatarUrl)
-            }
-        }
-        val petView = SpeciesThumbView(this).apply {
-            val sp = catalog.find { it.id == p.petRef }
-            if (sp != null) setSpecies(sp, isSilhouette = false)
-            else setMainPet(p.petLv)
-            layoutParams = LinearLayout.LayoutParams(dp(132), dp(124))
-        }
-        photoBox.addView(kidView)
-        photoBox.addView(petView)
-        frame.addView(photoBox)
-
-        val dateTv = TextView(this).apply {
-            text = "📅 ${p.photoDate}"
-            textSize = 14f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(0xFF5C5347.toInt())
-            setPadding(0, dp(10), 0, 0)
-        }
-        frame.addView(dateTv)
-        if (p.note.isNotEmpty()) {
-            frame.addView(TextView(this).apply {
-                text = p.note
-                textSize = 13f
-                setTextColor(0xFF8A7E6E.toInt())
-                setPadding(0, dp(4), 0, 0)
-            })
-        }
-        root.addView(frame)
-
-        AlertDialog.Builder(this)
-            .setTitle("📸 纪念墙合影放大预览")
-            .setView(root)
-            .setPositiveButton("关闭", null)
-            .show()
-    }
-
-    private fun performTakePolaroid() {
-        val payload = JSONObject().apply {
-            put("note", binding.etSnapNote.text.toString().trim().take(16))
-            put("date", todayStr())
-        }
-        api.request("POST", "/api/child/polaroid", payload) { res ->
-            if (res.ok && res.json != null) {
-                sound.playWin()
-                binding.etSnapNote.setText("")
-                res.json.optJSONObject("state")?.let {
-                    val ns = GrowthMeta.parseChildState(it)
-                    state = ns
-                    renderAll(ns)
-                } ?: loadChildState()
-                Toast.makeText(this, "📷 今日合影已珍藏到纪念墙！", Toast.LENGTH_SHORT).show()
-            } else {
-                sound.playError()
-                Toast.makeText(this, res.error ?: "拍照失败", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     private fun bindAvatarView(view: SpeciesThumbView, avatarIdx: Int, avatarUrl: String) {
         view.tag = avatarUrl
         view.setAvatar(avatarIdx, null)
@@ -2157,9 +1753,59 @@ class MainActivity : AppCompatActivity() {
             root.addView(row)
         }
 
+        // 版本与更新入口（无需退出登录即可查看更新记录与检查新版）
+        root.addView(TextView(this).apply {
+            text = "关于与版本（当前 ${BuildConfig.VERSION_NAME}）"
+            textSize = 12.5f
+            setTextColor(0xFF7D7263.toInt())
+            setPadding(0, dp(10), 0, dp(8))
+        })
+        val verRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        verRow.addView(Button(this).apply {
+            text = "🔄 检查更新"
+            textSize = 12.5f
+            setAllCaps(false)
+            setTextColor(0xFF2F6B4F.toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(0xFFE3F2E8.toInt())
+                setStroke(dp(1), 0xFFB8D4C3.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(6) }
+            setOnClickListener {
+                sound.playPat()
+                dialogRef?.dismiss()
+                updater.checkForUpdate(silent = false)
+            }
+        })
+        verRow.addView(Button(this).apply {
+            text = "📋 更新记录"
+            textSize = 12.5f
+            setAllCaps(false)
+            setTextColor(0xFF8A5A2B.toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(0xFFFFF4D6.toInt())
+                setStroke(dp(1), 0xFFE6C994.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginStart = dp(6) }
+            setOnClickListener {
+                sound.playPat()
+                dialogRef?.dismiss()
+                showChangelogDialog()
+            }
+        })
+        root.addView(verRow)
+
         val scroll = ScrollView(this).apply { addView(root) }
         dialogRef = AlertDialog.Builder(this)
-            .setTitle("设置我的头像")
+            .setTitle("个人头像与版本设置")
             .setView(scroll)
             .setNegativeButton("关闭", null)
             .create()

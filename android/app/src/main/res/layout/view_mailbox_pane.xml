@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tvMailHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#FFF8EB"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:text="💌 爸爸妈妈寄来的鼓励信和你的小回信都会保存在这里~"
+        android:textColor="#8A5A2B"
+        android:textSize="12.5sp" />
+
+    <ProgressBar
+        android:id="@+id/mailLoading"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_marginTop="6dp"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <ScrollView
+        android:id="@+id/mailScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:id="@+id/lettersContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="16dp" />
+    </ScrollView>
+
+</LinearLayout>
