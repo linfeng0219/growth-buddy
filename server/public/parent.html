@@ -272,8 +272,6 @@
         <nav class="tabs" id="parentTopTabs">
           <button data-tab="overview" class="on">👶 总览</button>
           <button data-tab="tasks">📋 任务</button>
-          <button data-tab="logs">📊 记录</button>
-          <button data-tab="studio">✨ 伙伴</button>
           <button data-tab="family">🏡 家庭</button>
           <button data-tab="chat">💬 消息 <span id="msgUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
         </nav>
@@ -281,14 +279,23 @@
     </div>
 
     <div id="tabSwipeViewport">
-    <!-- 1. 孩子总览（专注呈现状态总览，代打卡统一到「任务 → 当日任务」，照片墙统一到「记录」） -->
+    <!-- 1. 孩子总览（专注呈现状态总览） -->
     <section id="tab-overview">
       <div class="kid-overview-grid" id="kidOverviewGrid"></div>
     </section>
 
-    <!-- 1.5 打卡记录、照片墙与汇总（统一一套筛选条件） -->
-    <section id="tab-logs" style="display:none">
-      <div class="panel">
+    <!-- 2. 任务、记录与题库中心 -->
+    <section id="tab-tasks" style="display:none">
+      <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
+        <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
+        <button type="button" class="sm" data-subtab="logs">📊 打卡记录</button>
+        <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
+        <button type="button" class="sm" data-subtab="import">📋 群作业导入</button>
+        <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
+        <button type="button" class="sm" data-subtab="quiz">🌐 冒险题库</button>
+      </div>
+
+      <div id="subtab-logs" class="panel" style="display:none">
         <div class="panel-head">
           <h2>📊 成长记录与照片查验</h2>
           <span class="pill" id="logRangeLabel">今日</span>
@@ -312,17 +319,6 @@
         <div id="logSubSummary" style="display:none">
           <div id="taskSummaryList"></div>
         </div>
-      </div>
-    </section>
-
-    <!-- 2. 任务与题库中心 -->
-    <section id="tab-tasks" style="display:none">
-      <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
-        <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
-        <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
-        <button type="button" class="sm" data-subtab="import">📋 群作业导入</button>
-        <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
-        <button type="button" class="sm" data-subtab="quiz">🌐 冒险题库</button>
       </div>
 
       <div id="subtab-add" class="panel" style="display:none">
@@ -528,144 +524,30 @@
       </div>
     </section>
 
-    <!-- 3. 伙伴工作室 -->
-    <section id="tab-studio" style="display:none">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>上新糖霜伙伴到图鉴</h2>
-          <button class="ghost" id="btnPreviewSilo">切换剪影/真容</button>
-        </div>
-        <div class="studio-preview">
-          <div class="pv-svg" id="studioPreviewSvg"></div>
-          <div style="font-size:12.5px;color:var(--ink-soft)">
-            <div style="font-weight:600;font-size:14px" id="pvName">星芽</div>
-            <div style="color:var(--muted);margin-top:3px">可设为全家庭通用图鉴，也可指定为某个孩子的专属惊喜奖励！</div>
-          </div>
-        </div>
-        <div class="row3">
-          <div class="field"><label>伙伴名字</label><input type="text" id="spName" maxlength="10" placeholder="例如：星芽"></div>
-          <div class="field"><label>解锁提示</label><input type="text" id="spHint" maxlength="16" placeholder="例如：期末满分解锁"></div>
-          <div class="field"><label>开放范围</label><select id="spTargetChild"></select></div>
-        </div>
-        <div class="row3">
-          <div class="field"><label>身体颜色</label><input type="color" id="spColor" value="#7fa8c9"></div>
-          <div class="field"><label>耳朵 / 头顶</label>
-            <select id="spEar"><option value="round">圆耳朵</option><option value="tall">长耳朵</option><option value="pointy">尖耳朵</option><option value="horn">小犄角</option><option value="unicorn">独角</option><option value="none">光头</option></select>
-          </div>
-          <div class="field"><label>特征配件</label>
-            <select id="spAcc"><option value="none">无</option><option value="scarf">小围巾</option><option value="star">耳上星星</option><option value="crown">小王冠</option><option value="bow">小领结</option></select>
-          </div>
-        </div>
-        <div class="row3">
-          <div class="field"><label>尾巴 / 翅膀</label>
-            <select id="spTail"><option value="puff">绒球尾</option><option value="fox">蓬松大尾</option><option value="wing">小翅膀</option><option value="dragon">尖尖尾</option><option value="none">无</option></select>
-          </div>
-          <div class="field"><label>嘴型</label>
-            <select id="spMouth"><option value="smile">微笑</option><option value="cat">猫咪嘴</option><option value="buck">小龅牙</option><option value="fang">小虎牙</option></select>
-          </div>
-          <div class="field"><label>底座</label>
-            <select id="spBase"><option value="grass">青青草地</option><option value="snow">冬日雪地</option><option value="sand">暖阳沙地</option><option value="cloud">软绵云朵</option></select>
-          </div>
-        </div>
-        <button class="primary" id="btnAddSpecies" style="width:100%">发布到云端图鉴</button>
-        <div class="msg" id="studioMsg"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head"><h2>图鉴伙伴列表</h2></div>
-        <div id="speciesMgmtList"></div>
-      </div>
-    </section>
-
-    <!-- 4. 家庭与档案 -->
+    <!-- 3. 家庭与伙伴档案管理（孩子档案 / 家长档案 / 宠物档案） -->
     <section id="tab-family" style="display:none">
       <div class="panel">
-        <div class="panel-head"><h2>添加一位孩子档案</h2></div>
-        <div class="row3">
-          <div class="field">
-            <label>孩子昵称</label>
-            <input type="text" id="newKidName" maxlength="10" placeholder="例如：二宝">
-            <div class="quick-chips">
-              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="大宝">大宝</button>
-              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="二宝">二宝</button>
-              <button type="button" class="qchip" data-qtarget="newKidName" data-qval="小宝">小宝</button>
-            </div>
-          </div>
-          <div class="field"><label>孩子登录账号（至少3位）</label><input type="text" id="newKidUser" maxlength="32" placeholder="如 erbao01"></div>
-          <div class="field"><label>孩子登录密码（至少4位）</label><input type="password" id="newKidPass" placeholder="供孩子登录儿童端"></div>
+        <div class="panel-head">
+          <h2>👶 孩子档案</h2>
+          <button type="button" class="sm primary" id="btnOpenAddChildModal">➕ 添加</button>
         </div>
-        <div class="row2">
-          <div class="field"><label>孩子年龄（匹配在线题库）</label>
-            <select id="newKidAge">
-              <option value="3">3 岁（幼儿园小班）</option>
-              <option value="4">4 岁（幼儿园小/中班）</option>
-              <option value="5">5 岁（幼儿园中/大班）</option>
-              <option value="6">6 岁（小学一年级）</option>
-              <option value="7" selected>7 岁（小学一年级）</option>
-              <option value="8">8 岁（小学二年级）</option>
-              <option value="9">9 岁（小学三年级）</option>
-              <option value="10">10 岁（小学四年级）</option>
-              <option value="11">11 岁（小学五年级）</option>
-              <option value="12">12 岁（小学六年级）</option>
-              <option value="13">13 岁（初中一年级）</option>
-              <option value="14">14 岁（初中二年级）</option>
-            </select>
-          </div>
-          <div class="field"><label>默认冒险答题难度</label>
-            <select id="newKidDiff">
-              <option value="easy">🌱 简单启蒙</option>
-              <option value="normal" selected>⚔️ 适中闯关</option>
-              <option value="hard">🔥 进阶挑战（增英语与高年级数学）</option>
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label>选择头像</label>
-          <div id="newKidAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        </div>
-        <button class="primary" id="btnAddChild" style="width:100%">+ 添加孩子档案</button>
-        <div class="msg" id="kidAddMsg"></div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head"><h2>现有孩子档案管理</h2></div>
         <div id="childManageList"></div>
       </div>
 
       <div class="panel">
-        <div class="panel-head"><h2>添加共同管理家长（免输称呼可选）</h2></div>
-        <div class="row3">
-          <div class="field"><label>家长账号</label><input type="text" id="coUser" placeholder="英文/数字"></div>
-          <div class="field">
-            <label>称呼</label>
-            <select id="coNameSel">
-              <option value="爸爸" selected>爸爸</option>
-              <option value="妈妈">妈妈</option>
-              <option value="爷爷">爷爷</option>
-              <option value="奶奶">奶奶</option>
-              <option value="外公">外公</option>
-              <option value="外婆">外婆</option>
-              <option value="家长">家长</option>
-              <option value="__custom__">✏️ 其他自定义...</option>
-            </select>
-            <input type="text" id="coName" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
-          </div>
-          <div class="field"><label>密码</label><input type="password" id="coPass" placeholder="至少4位"></div>
+        <div class="panel-head">
+          <h2>👨‍👩‍👧 家长档案 <span class="pill" id="parentManageCount" style="margin-left:6px">0 位</span></h2>
+          <button type="button" class="sm primary" id="btnOpenAddParentModal">➕ 添加</button>
         </div>
-        <div class="field">
-          <label>选择头像</label>
-          <div id="newParentAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        </div>
-        <button id="btnAddParent" style="width:100%">+ 添加家长账号</button>
-        <div class="msg" id="coMsg"></div>
+        <div id="parentManageList"></div>
       </div>
 
       <div class="panel">
         <div class="panel-head">
-          <h2>现有家长档案管理</h2>
-          <span class="pill" id="parentManageCount">0 位家长</span>
+          <h2>✨ 宠物档案</h2>
+          <button type="button" class="sm primary" id="btnOpenAddSpeciesModal">➕ 添加</button>
         </div>
-        <div id="parentManageList"></div>
+        <div id="speciesMgmtList"></div>
       </div>
     </section>
 
@@ -721,25 +603,22 @@
             </div>
 
             <div id="pMailPaneInner" style="display:none;flex-direction:column;gap:8px">
-              <div class="chat-head-bar" style="flex-wrap:wrap;gap:6px">
+              <div class="chat-head-bar" style="flex-wrap:nowrap;gap:8px">
                 <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                  <button type="button" class="sm social-back-btn" id="btnPMailBack">← 列表</button>
-                  <div style="min-width:0">
-                    <div id="pMailPaneTitle" style="font-weight:700;font-size:14.5px;color:var(--ink)">📥 收件箱</div>
-                    <div id="pMailPaneSub" style="font-size:11.5px;color:var(--muted)">来自孩子的信件与回信</div>
-                  </div>
+                  <button type="button" class="sm social-back-btn" id="btnPMailBack" style="flex:none;white-space:nowrap">← 列表</button>
+                  <div id="pMailPaneTitle" style="font-weight:700;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📥 收件箱</div>
                 </div>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  <select id="mailFilterChild" style="width:auto;min-width:96px;padding:4px 8px;font-size:12px"><option value="">全部孩子</option></select>
-                  <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部已读</button>
-                  <button type="button" class="sm amber" id="btnOpenMailCompose">✉️ 写信</button>
-                </div>
+                <button type="button" class="sm amber" id="btnOpenMailCompose" style="flex:none;white-space:nowrap">✉️ 写信</button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                <select id="mailFilterChild" style="width:auto;min-width:104px;padding:4px 8px;font-size:12px"><option value="">全部孩子</option></select>
+                <button type="button" class="sm" id="btnMarkAllMailRead" style="white-space:nowrap">✓ 全部已读</button>
               </div>
 
               <div id="pMailComposeWrap" style="display:none;background:#fffaf2;border:1px solid #ead4b0;border-radius:14px;padding:12px">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
-                  <div style="font-weight:700;font-size:14px;color:var(--ink)">✉️ 写一封暖心信 / 回信</div>
-                  <button type="button" class="sm" id="btnCloseMailCompose">✕ 收起</button>
+                  <div style="font-weight:700;font-size:14px;color:var(--ink);white-space:nowrap">✉️ 写信给孩子</div>
+                  <button type="button" class="sm" id="btnCloseMailCompose" style="white-space:nowrap">✕ 收起</button>
                 </div>
                 <div class="row3">
                   <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
@@ -1117,6 +996,141 @@
   </div>
 </div>
 
+<!-- 添加孩子档案弹窗 -->
+<div class="modal-backdrop" id="addChildModal">
+  <div class="modal-card" style="text-align:left;max-width:480px;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="font-family:var(--serif);margin:0">👶 添加孩子档案</h3>
+      <button type="button" class="sm" id="btnCloseAddChildModal">✕ 关闭</button>
+    </div>
+    <div class="field">
+      <label>孩子昵称</label>
+      <input type="text" id="newKidName" maxlength="10" placeholder="例如：二宝">
+      <div class="quick-chips">
+        <button type="button" class="qchip" data-qtarget="newKidName" data-qval="大宝">大宝</button>
+        <button type="button" class="qchip" data-qtarget="newKidName" data-qval="二宝">二宝</button>
+        <button type="button" class="qchip" data-qtarget="newKidName" data-qval="小宝">小宝</button>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>登录账号（至少3位）</label><input type="text" id="newKidUser" maxlength="32" placeholder="如 erbao01"></div>
+      <div class="field"><label>登录密码（至少4位）</label><input type="password" id="newKidPass" placeholder="供孩子登录儿童端"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>孩子年龄</label>
+        <select id="newKidAge">
+          <option value="3">3 岁（小班）</option>
+          <option value="4">4 岁（小/中班）</option>
+          <option value="5">5 岁（中/大班）</option>
+          <option value="6">6 岁（一年级）</option>
+          <option value="7" selected>7 岁（一年级）</option>
+          <option value="8">8 岁（二年级）</option>
+          <option value="9">9 岁（三年级）</option>
+          <option value="10">10 岁（四年级）</option>
+          <option value="11">11 岁（五年级）</option>
+          <option value="12">12 岁（六年级）</option>
+          <option value="13">13 岁（初一）</option>
+          <option value="14">14 岁（初二）</option>
+        </select>
+      </div>
+      <div class="field"><label>默认冒险难度</label>
+        <select id="newKidDiff">
+          <option value="easy">🌱 简单启蒙</option>
+          <option value="normal" selected>⚔️ 适中闯关</option>
+          <option value="hard">🔥 进阶挑战</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>选择头像</label>
+      <div id="newKidAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <button type="button" class="primary" id="btnAddChild" style="width:100%">+ 添加孩子档案</button>
+    <div class="msg" id="kidAddMsg"></div>
+  </div>
+</div>
+
+<!-- 添加家长档案弹窗 -->
+<div class="modal-backdrop" id="addParentModal">
+  <div class="modal-card" style="text-align:left;max-width:440px;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="font-family:var(--serif);margin:0">👨‍👩‍👧 添加家长档案</h3>
+      <button type="button" class="sm" id="btnCloseAddParentModal2">✕ 关闭</button>
+    </div>
+    <div class="field"><label>家长账号</label><input type="text" id="coUser" placeholder="英文/数字"></div>
+    <div class="row2">
+      <div class="field">
+        <label>称呼</label>
+        <select id="coNameSel">
+          <option value="爸爸" selected>爸爸</option>
+          <option value="妈妈">妈妈</option>
+          <option value="爷爷">爷爷</option>
+          <option value="奶奶">奶奶</option>
+          <option value="外公">外公</option>
+          <option value="外婆">外婆</option>
+          <option value="家长">家长</option>
+          <option value="__custom__">✏️ 其他自定义...</option>
+        </select>
+        <input type="text" id="coName" placeholder="输入自定义称呼" style="display:none;margin-top:6px">
+      </div>
+      <div class="field"><label>密码</label><input type="password" id="coPass" placeholder="至少4位"></div>
+    </div>
+    <div class="field">
+      <label>选择头像</label>
+      <div id="newParentAvatars" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+    <button type="button" class="primary" id="btnAddParent" style="width:100%">+ 添加家长账号</button>
+    <div class="msg" id="coMsg"></div>
+  </div>
+</div>
+
+<!-- 添加宠物档案弹窗（伙伴工作室） -->
+<div class="modal-backdrop" id="addSpeciesModal">
+  <div class="modal-card" style="text-align:left;max-width:520px;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="font-family:var(--serif);margin:0">✨ 添加宠物伙伴到图鉴</h3>
+      <div style="display:flex;gap:6px">
+        <button type="button" class="sm" id="btnPreviewSilo">剪影/真容</button>
+        <button type="button" class="sm" id="btnCloseAddSpeciesModal">✕ 关闭</button>
+      </div>
+    </div>
+    <div class="studio-preview">
+      <div class="pv-svg" id="studioPreviewSvg"></div>
+      <div style="font-size:12.5px;color:var(--ink-soft)">
+        <div style="font-weight:600;font-size:14px" id="pvName">星芽</div>
+        <div style="color:var(--muted);margin-top:3px">可设为全家庭通用，也可指定为某个孩子的专属惊喜奖励</div>
+      </div>
+    </div>
+    <div class="row3">
+      <div class="field"><label>伙伴名字</label><input type="text" id="spName" maxlength="10" placeholder="例如：星芽"></div>
+      <div class="field"><label>解锁提示</label><input type="text" id="spHint" maxlength="16" placeholder="例如：期末满分"></div>
+      <div class="field"><label>开放范围</label><select id="spTargetChild"></select></div>
+    </div>
+    <div class="row3">
+      <div class="field"><label>身体颜色</label><input type="color" id="spColor" value="#7fa8c9"></div>
+      <div class="field"><label>耳朵/头顶</label>
+        <select id="spEar"><option value="round">圆耳朵</option><option value="tall">长耳朵</option><option value="pointy">尖耳朵</option><option value="horn">小犄角</option><option value="unicorn">独角</option><option value="none">光头</option></select>
+      </div>
+      <div class="field"><label>特征配件</label>
+        <select id="spAcc"><option value="none">无</option><option value="scarf">小围巾</option><option value="star">耳上星星</option><option value="crown">小王冠</option><option value="bow">小领结</option></select>
+      </div>
+    </div>
+    <div class="row3">
+      <div class="field"><label>尾巴/翅膀</label>
+        <select id="spTail"><option value="puff">绒球尾</option><option value="fox">蓬松大尾</option><option value="wing">小翅膀</option><option value="dragon">尖尖尾</option><option value="none">无</option></select>
+      </div>
+      <div class="field"><label>嘴型</label>
+        <select id="spMouth"><option value="smile">微笑</option><option value="cat">猫咪嘴</option><option value="buck">小龅牙</option><option value="fang">小虎牙</option></select>
+      </div>
+      <div class="field"><label>底座</label>
+        <select id="spBase"><option value="grass">青青草地</option><option value="snow">冬日雪地</option><option value="sand">暖阳沙地</option><option value="cloud">软绵云朵</option></select>
+      </div>
+    </div>
+    <button type="button" class="primary" id="btnAddSpecies" style="width:100%">发布到云端图鉴</button>
+    <div class="msg" id="studioMsg"></div>
+  </div>
+</div>
+
 <div class="gb-toast" id="gbToast"></div>
 
 <script src="/shared/pet-art.js"></script>
@@ -1479,11 +1493,14 @@
     $id("etRopeBox").style.display=isRope?"block":"none";
     $id("etTimerPhotoRow").style.display=isRope?"none":"block";
   });
-  var mainTabOrder=["overview","tasks","logs","studio","family","chat"];
+  var mainTabOrder=["overview","tasks","family","chat"];
   var activeMainTab="overview";
+  var activeTaskSubTab="today";
   var _tabLoadTimer=null;
   function switchMainTab(tg, dir){
     if(tg==="mailbox") tg="chat";
+    if(tg==="logs"){tg="tasks";activeTaskSubTab="logs";}
+    if(tg==="studio") tg="family";
     if(mainTabOrder.indexOf(tg)<0) tg="overview";
     var prevTab=activeMainTab;
     activeMainTab=tg;
@@ -1501,6 +1518,7 @@
       sec.classList.remove("tab-slide-left","tab-slide-right");
       sec.style.display=(k===tg)?"":"none";
     });
+    if(tg==="tasks") switchTaskSubTab(activeTaskSubTab);
     if(dir&&prevTab!==tg){
       var inSec=$id("tab-"+tg);
       requestAnimationFrame(function(){
@@ -1513,10 +1531,11 @@
     clearTimeout(_tabLoadTimer);
     var runTabData=function(){
       if(activeMainTab!==tg) return;
-      if(tg==="overview"||tg==="tasks"||tg==="studio"||tg==="family"){
+      if(tg==="overview"||tg==="family"){
         loadOverview();
-      }else if(tg==="logs"){
-        loadCheckinLogs();
+      }else if(tg==="tasks"){
+        loadOverview();
+        if(activeTaskSubTab==="logs") loadCheckinLogs();
       }else if(tg==="chat"){
         if(pChatMode==="kids"){loadChildOversightOverview(true);}
         else{loadParentChatContacts(true);loadParentMailbox(true);}
@@ -1710,14 +1729,16 @@
   }
   ["logChildFilter","logPeriodFilter","logDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadCheckinLogs);});
   function switchTaskSubTab(st){
+    activeTaskSubTab=st||"today";
     document.querySelectorAll("#taskSubTabs button").forEach(function(x){
-      x.classList.toggle("on",x.getAttribute("data-subtab")===st);
+      x.classList.toggle("on",x.getAttribute("data-subtab")===activeTaskSubTab);
     });
-    ["today","add","import","all","quiz"].forEach(function(k){
+    ["today","logs","add","import","all","quiz"].forEach(function(k){
       var el=$id("subtab-"+k);
-      if(el) el.style.display=(k===st)?"":"none";
+      if(el) el.style.display=(k===activeTaskSubTab)?"":"none";
     });
-    if(st==="import"&&!$id("hwDueDate").value){$id("hwDueDate").value=today();}
+    if(activeTaskSubTab==="logs"){loadCheckinLogs();}
+    if(activeTaskSubTab==="import"&&!$id("hwDueDate").value){$id("hwDueDate").value=today();}
   }
   document.querySelectorAll("#taskSubTabs button").forEach(function(b){
     b.addEventListener("click",function(){switchTaskSubTab(b.getAttribute("data-subtab"));});
@@ -2005,7 +2026,7 @@
       var isB=sp.id.charAt(0)==="b";
       var scopeTxt=sp.target_child_id?("仅 "+childNameById(sp.target_child_id)+" 专属"):"全家庭通用";
       var row=document.createElement("div");row.className="task-item";
-      row.innerHTML='<div class="task-meta"><span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:'+sp.color+';border:1px solid var(--hair-2)"></span><strong>'+GBArt.esc(sp.name)+'</strong><span class="'+(isB?"tag-all":"tag-sel")+'">'+(isB?"内置":scopeTxt)+'</span></div>'
+      row.innerHTML='<div class="task-meta">'+GBArt.speciesSVG(sp,{w:40})+'<strong>'+GBArt.esc(sp.name)+'</strong><span class="'+(isB?"tag-all":"tag-sel")+'">'+(isB?"内置":scopeTxt)+'</span>'+(sp.hint?'<span style="font-size:12px;color:var(--muted)">'+GBArt.esc(sp.hint)+'</span>':"")+'</div>'
         +(isB?'<span style="font-size:12px;color:var(--muted)">内置保留</span>':'<button class="sm danger del-sp">下架</button>');
       var db=row.querySelector(".del-sp");
       if(db) db.addEventListener("click",async function(){await api("/api/parent/species/"+sp.id,{method:"DELETE"});await loadOverview();});
@@ -2013,13 +2034,20 @@
     });
   }
 
+  $id("btnOpenAddSpeciesModal").addEventListener("click",function(){
+    $id("studioMsg").textContent="";
+    updateStudioPreview();
+    $id("addSpeciesModal").classList.add("show");
+  });
+  $id("btnCloseAddSpeciesModal").addEventListener("click",function(){$id("addSpeciesModal").classList.remove("show");});
   $id("btnAddSpecies").addEventListener("click",async function(){
     try{
       var sp=draftSpecies();
       sp.target_child_id=$id("spTargetChild").value||null;
       await api("/api/parent/species",{method:"POST",body:JSON.stringify(sp)});
       $id("spName").value="";$id("spHint").value="";
-      note("studioMsg","新伙伴已上新到云端图鉴！");
+      $id("addSpeciesModal").classList.remove("show");
+      showToast("✨ 新宠物伙伴已添加到图鉴！");
       await loadOverview();
     }catch(e){note("studioMsg",e.message,true);}
   });
@@ -2210,6 +2238,12 @@
     });
   }
 
+  $id("btnOpenAddChildModal").addEventListener("click",function(){
+    $id("kidAddMsg").textContent="";
+    buildNewKidAvatars();
+    $id("addChildModal").classList.add("show");
+  });
+  $id("btnCloseAddChildModal").addEventListener("click",function(){$id("addChildModal").classList.remove("show");});
   $id("btnAddChild").addEventListener("click",async function(){
     try{
       await api("/api/parent/children",{
@@ -2224,15 +2258,24 @@
         })
       });
       $id("newKidName").value="";$id("newKidUser").value="";$id("newKidPass").value="";
-      note("kidAddMsg","孩子档案已创建！");await loadOverview();
+      $id("addChildModal").classList.remove("show");
+      showToast("👶 孩子档案已添加！");
+      await loadOverview();
     }catch(e){note("kidAddMsg",e.message,true);}
   });
+  $id("btnOpenAddParentModal").addEventListener("click",function(){
+    $id("coMsg").textContent="";
+    buildNewParentAvatars();
+    $id("addParentModal").classList.add("show");
+  });
+  $id("btnCloseAddParentModal2").addEventListener("click",function(){$id("addParentModal").classList.remove("show");});
   $id("btnAddParent").addEventListener("click",async function(){
     try{
       await api("/api/parent/parents",{method:"POST",body:JSON.stringify({username:$id("coUser").value.trim(),displayName:readRolePicker("coNameSel","coName"),password:$id("coPass").value,avatar_idx:newParentAv})});
       $id("coUser").value="";$id("coName").value="";$id("coPass").value="";
       $id("coNameSel").value="爸爸";$id("coName").style.display="none";
-      note("coMsg","共同管理家长添加成功！");
+      $id("addParentModal").classList.remove("show");
+      showToast("👨‍👩‍👧 家长档案已添加！");
       await loadOverview();
     }catch(e){note("coMsg",e.message,true);}
   });
@@ -2666,8 +2709,7 @@
 
   function renderParentMailboxFolder(){
     var isInbox=(activeMailFolder==="inbox");
-    $id("pMailPaneTitle").textContent=isInbox?"📥 收件箱（孩子来信）":"📤 已发送（寄给孩子）";
-    $id("pMailPaneSub").textContent=isInbox?"优先置顶未读来信，点击「↩ 回信」直接回复对应孩子":"查看历史鼓励信及孩子拆阅状态";
+    $id("pMailPaneTitle").textContent=isInbox?"📥 收件箱":"📤 已发送";
     $id("btnMarkAllMailRead").style.display=isInbox?"inline-block":"none";
     var cid=$id("mailFilterChild").value||"";
     var box=$id("parentMailboxList");
@@ -3607,7 +3649,7 @@
   $id("btnPMineBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
   $id("btnPMailBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
   $id("btnPKidsBack").addEventListener("click",function(){$id("pOversightShell").classList.remove("chat-open");});
-  ["pMyCardModal","pAddFriendChoiceModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
+  ["addChildModal","addParentModal","addSpeciesModal","pMyCardModal","pAddFriendChoiceModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
     $id(mid).addEventListener("click",function(e){if(e.target===$id(mid)) $id(mid).classList.remove("show");});
   });
 
@@ -3641,7 +3683,7 @@
   async function refreshCurrentParentView(){
     if(!token()) return;
     await loadOverview();
-    if(activeMainTab==="logs") await loadCheckinLogs();
+    if(activeMainTab==="tasks"&&activeTaskSubTab==="logs") await loadCheckinLogs();
     else if(activeMainTab==="chat"){
       if(pChatMode==="kids") await loadChildOversightOverview(true);
       else{await loadParentChatContacts(true);await loadParentMailbox(true);}

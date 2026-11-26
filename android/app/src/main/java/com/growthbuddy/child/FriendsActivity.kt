@@ -176,6 +176,10 @@ class FriendsActivity : AppCompatActivity() {
             applyResponsiveLayout()
         }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
+        binding.btnTopWriteLetter.setOnClickListener {
+            sound.playPat()
+            mailController.showComposeDialog()
+        }
         binding.btnMailPaneWrite.setOnClickListener {
             sound.playPat()
             mailController.showComposeDialog()
@@ -252,6 +256,9 @@ class FriendsActivity : AppCompatActivity() {
         if (m.isDesktopSplit) {
             binding.friendsBodySplit.orientation = LinearLayout.HORIZONTAL
             binding.friendsSwipeRefresh.visibility = View.VISIBLE
+            binding.tvFriendsTitle.text = "💬 消息"
+            binding.btnAddFriend.visibility = View.VISIBLE
+            binding.btnTopWriteLetter.visibility = View.GONE
             listLp.width = 0
             listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
             listLp.weight = 0.88f
@@ -260,23 +267,33 @@ class FriendsActivity : AppCompatActivity() {
             chatLp.weight = 1.18f
             chatLp.marginStart = dp(14)
             binding.friendsChatPaneWrap.visibility = View.VISIBLE
+            binding.mailRightHeaderBar.visibility = View.VISIBLE
             binding.btnMailFolderBack.visibility = View.GONE
             updateRightPaneVisibility(isSplit = true)
         } else {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
             chatController.setActive(false)
             if (phoneMailOpen) {
+                // 手机单栏进入收件箱/已发送时，直接将顶部好友标题与按钮替换为邮箱标题与「✉️ 写信」
+                val folderTitle = if (mailController.getFolder() == MailFolder.SENT) "📤 已发送" else "📥 收件箱"
+                binding.tvFriendsTitle.text = folderTitle
+                binding.btnAddFriend.visibility = View.GONE
+                binding.btnTopWriteLetter.visibility = View.VISIBLE
+                binding.mailRightHeaderBar.visibility = View.GONE
                 binding.friendsSwipeRefresh.visibility = View.GONE
                 binding.friendsChatPaneWrap.visibility = View.VISIBLE
                 chatLp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 chatLp.height = ViewGroup.LayoutParams.MATCH_PARENT
                 chatLp.weight = 1f
                 chatLp.marginStart = 0
-                binding.btnMailFolderBack.visibility = View.VISIBLE
                 binding.friendsMailBox.visibility = View.VISIBLE
                 binding.friendsChatPane.root.visibility = View.GONE
                 binding.tvSplitChatPlaceholder.visibility = View.GONE
             } else {
+                binding.tvFriendsTitle.text = "💬 消息"
+                binding.btnAddFriend.visibility = View.VISIBLE
+                binding.btnTopWriteLetter.visibility = View.GONE
+                binding.mailRightHeaderBar.visibility = View.VISIBLE
                 binding.friendsSwipeRefresh.visibility = View.VISIBLE
                 listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
