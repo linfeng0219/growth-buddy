@@ -45,6 +45,7 @@ class AdventureActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_PET_STAGE = "pet_stage"
         const val EXTRA_PET_ASLEEP = "pet_asleep"
+        const val EXTRA_PET_NAME = "pet_name"
         const val EXTRA_SPECIES_ITEM = "species_item"
         const val EXTRA_CHILD_AGE = "child_age"
         const val EXTRA_QUIZ_DIFFICULTY = "quiz_difficulty"
@@ -73,6 +74,7 @@ class AdventureActivity : AppCompatActivity() {
     private var adventureXpToday: Int = 0
     private var adventureXpLimit: Int = 10
     private var serverAgeLabel: String = ""
+    private var petDisplayName: String = "你的宠物"
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var questionShownAtMs: Long = 0L
@@ -95,6 +97,7 @@ class AdventureActivity : AppCompatActivity() {
         sound = NativeSoundEngine(this)
         val petStage = intent.getIntExtra(EXTRA_PET_STAGE, 0).coerceIn(0, 5)
         val petAsleep = intent.getBooleanExtra(EXTRA_PET_ASLEEP, false)
+        petDisplayName = intent.getStringExtra(EXTRA_PET_NAME)?.takeIf { it.isNotBlank() } ?: "你的宠物"
         childAge = intent.getIntExtra(EXTRA_CHILD_AGE, 7).coerceIn(3, 14)
         currentDiff = normalizeDiff(intent.getStringExtra(EXTRA_QUIZ_DIFFICULTY))
         adventureXpToday = intent.getIntExtra(EXTRA_ADVENTURE_XP_TODAY, 0).coerceAtLeast(0)
@@ -359,7 +362,7 @@ class AdventureActivity : AppCompatActivity() {
 
     private fun updateHpUi() {
         val hearts = "💖".repeat(petHp) + "🤍".repeat((maxPetHp - petHp).coerceAtLeast(0))
-        binding.tvPetHp.text = "$hearts 小伙伴元气 $petHp/$maxPetHp"
+        binding.tvPetHp.text = "$hearts ${petDisplayName}元气 $petHp/$maxPetHp"
         binding.pbPetHp.progress = petHp
         binding.tvAdvHp.text = "史莱姆 $monsterHp/$maxHp"
         binding.tvSlimeHpBarLabel.text = "🫧 拖延史莱姆 $monsterHp/$maxHp"
@@ -429,9 +432,9 @@ class AdventureActivity : AppCompatActivity() {
             if (isFastCrit) fastCritCountInRound += 1
             binding.pbSlimeCharge.progress = 0
             binding.tvAdvStatus.text = if (isFastCrit) {
-                "⚡ 反应神速！小伙伴发动「闪电暴击」！"
+                "⚡ 反应神速！${petDisplayName}发动「闪电暴击」！"
             } else {
-                "⚡ 答对了！小伙伴蓄力发动元气暴击！"
+                "⚡ 答对了！${petDisplayName}蓄力发动元气暴击！"
             }
             binding.advBattleStage.triggerAttack(
                 isFinishingBlow = isFatal,
@@ -497,7 +500,7 @@ class AdventureActivity : AppCompatActivity() {
                 updateHpUi()
                 busy = false
                 if (petHp <= 0) {
-                    binding.tvAdvStatus.text = "🫧 小伙伴被懒洋洋泡泡包住啦，休息一下满血再战！"
+                    binding.tvAdvStatus.text = "🫧 ${petDisplayName}被懒洋洋泡泡包住啦，休息一下满血再战！"
                     showDefeatDialog()
                 } else {
                     if (advanceQuestion) {
@@ -687,7 +690,7 @@ class AdventureActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         })
         card.addView(TextView(this).apply {
-            text = "小伙伴被拖延粘液困住啦~"
+            text = "${petDisplayName}被拖延粘液困住啦~"
             textSize = 20f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#4C1D95"))
@@ -695,7 +698,7 @@ class AdventureActivity : AppCompatActivity() {
             setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
         })
         card.addView(TextView(this).apply {
-            text = "深呼吸放松 1 秒钟，给小伙伴充满 3 颗元气心，咱们立刻继续打跑史莱姆！"
+            text = "深呼吸放松 1 秒钟，给${petDisplayName}充满 3 颗元气心，咱们立刻继续打跑史莱姆！"
             textSize = 14f
             setTextColor(Color.parseColor("#2F6B4F"))
             gravity = Gravity.CENTER

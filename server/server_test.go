@@ -301,7 +301,11 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 		t.Fatalf("parent overview missing photo info in recent_logs: %+v", pLogs)
 	}
 
-	// Native Android convenience routes: mute, pet-name, grant egg, adopt (1 per species, independent pet_name per pet), companion, polaroid
+	// Native Android convenience routes: choose-starter, mute, pet-name, grant egg, adopt (1 per species, independent pet_name per pet), companion, polaroid
+	st, starterRes := doJSON(t, ts, "POST", "/api/child/starter-pet", childTok, map[string]any{"speciesId": "b1", "date": "2026-11-18"})
+	if st != 200 || starterRes["adopted_pet"] == nil {
+		t.Fatalf("starter-pet failed: %d %+v", st, starterRes)
+	}
 	st, _ = doJSON(t, ts, "PATCH", "/api/child/mute", childTok, map[string]any{"muted": true})
 	if st != 200 {
 		t.Fatalf("mute failed: %d", st)
@@ -990,9 +994,16 @@ func TestPetHealthRecoveryBeforeGrowth(t *testing.T) {
 	t2ID := t2Res["id"].(string)
 
 	today := time.Now().In(time.FixedZone("CST", 8*3600)).Format("2006-01-02")
-	// 设为虚弱状态(需10点恢复)，初始 XP = 5
+	// 先选择初始宠物，再将其设为虚弱状态(需10点恢复)，孩子初始 XP = 5
+	st, stRes := doJSON(t, ts, "POST", "/api/child/starter-pet", kidTok, map[string]any{"speciesId": "b1", "date": today})
+	if st != 200 || stRes["adopted_pet"] == nil {
+		t.Fatalf("starter-pet in health test failed: %d %+v", st, stRes)
+	}
 	if err := store.db.WithTx(func(tx *Tx) error {
-		_, err := tx.Exec("UPDATE children SET xp = 5, pet_health = 'weak', heal_progress = 0, last_health_date = ? WHERE id = ?", today, childID)
+		if _, err := tx.Exec("UPDATE children SET xp = 5 WHERE id = ?", childID); err != nil {
+			return err
+		}
+		_, err := tx.Exec("UPDATE child_pets SET pet_health = 'weak', heal_progress = 0, last_health_date = ? WHERE child_id = ? AND is_active = 1", today, childID)
 		return err
 	}); err != nil {
 		t.Fatalf("seed weak state failed: %v", err)
@@ -1030,7 +1041,10 @@ func TestPetHealthRecoveryBeforeGrowth(t *testing.T) {
 
 	// 3. 设回生病状态(需20点恢复，已有进度19)，冒险胜利(+1)：恰好恢复健康，XP不额外增加
 	if err := store.db.WithTx(func(tx *Tx) error {
-		_, err := tx.Exec("UPDATE children SET xp = 9, pet_health = 'sick', heal_progress = 19, last_health_date = ? WHERE id = ?", today, childID)
+		if _, err := tx.Exec("UPDATE children SET xp = 9 WHERE id = ?", childID); err != nil {
+			return err
+		}
+		_, err := tx.Exec("UPDATE child_pets SET pet_health = 'sick', heal_progress = 19, last_health_date = ? WHERE child_id = ? AND is_active = 1", today, childID)
 		return err
 	}); err != nil {
 		t.Fatalf("seed sick state failed: %v", err)

@@ -22,21 +22,22 @@ type ChildSocialSelfDTO struct {
 }
 
 type FriendItemDTO struct {
-	PeerType      string `json:"peer_type"` // child | parent
-	PeerID        string `json:"peer_id"`
-	Name          string `json:"name"`
-	RoleLabel     string `json:"role_label"`
-	GroupName     string `json:"group_name"` // 家庭 | 朋友
-	IsFamily      bool   `json:"is_family"`
-	AvatarIdx     int    `json:"avatar_idx"`
-	AvatarURL     string `json:"avatar_url"`
-	PetName       string `json:"pet_name,omitempty"`
-	PetLevel      int    `json:"pet_level"`
-	IsOnline      bool   `json:"is_online"`
-	LastActiveAt  int64  `json:"last_active_at,omitempty"`
-	UnreadCount   int    `json:"unread_count"`
-	LastMessage   string `json:"last_message"`
-	LastMessageAt int64  `json:"last_message_at"`
+	PeerType        string `json:"peer_type"` // child | parent
+	PeerID          string `json:"peer_id"`
+	Name            string `json:"name"`
+	RoleLabel       string `json:"role_label"`
+	GroupName       string `json:"group_name"` // 家庭 | 朋友
+	IsFamily        bool   `json:"is_family"`
+	AvatarIdx       int    `json:"avatar_idx"`
+	AvatarURL       string `json:"avatar_url"`
+	PetName         string `json:"pet_name,omitempty"`
+	ActiveCompanion string `json:"active_companion,omitempty"`
+	PetLevel        int    `json:"pet_level"`
+	IsOnline        bool   `json:"is_online"`
+	LastActiveAt    int64  `json:"last_active_at,omitempty"`
+	UnreadCount     int    `json:"unread_count"`
+	LastMessage     string `json:"last_message"`
+	LastMessageAt   int64  `json:"last_message_at"`
 }
 
 const actorOnlineWindowMs int64 = 90 * 1000
@@ -114,29 +115,31 @@ func (s *Store) lookupActorPresenceLocked(tx *Tx, actorType, actorID string) int
 }
 
 type FriendRequestDTO struct {
-	ID          string `json:"id"`
-	FromChildID string `json:"from_child_id"`
-	ToChildID   string `json:"to_child_id"`
-	Name        string `json:"name"`
-	Username    string `json:"username"`
-	AvatarIdx   int    `json:"avatar_idx"`
-	AvatarURL   string `json:"avatar_url"`
-	PetName     string `json:"pet_name"`
-	PetLevel    int    `json:"pet_level"`
-	Message     string `json:"message"`
-	Status      string `json:"status"`
-	CreatedAt   int64  `json:"created_at"`
+	ID              string `json:"id"`
+	FromChildID     string `json:"from_child_id"`
+	ToChildID       string `json:"to_child_id"`
+	Name            string `json:"name"`
+	Username        string `json:"username"`
+	AvatarIdx       int    `json:"avatar_idx"`
+	AvatarURL       string `json:"avatar_url"`
+	PetName         string `json:"pet_name"`
+	ActiveCompanion string `json:"active_companion,omitempty"`
+	PetLevel        int    `json:"pet_level"`
+	Message         string `json:"message"`
+	Status          string `json:"status"`
+	CreatedAt       int64  `json:"created_at"`
 }
 
 type FriendLookupDTO struct {
-	ChildID        string `json:"child_id"`
-	Name           string `json:"name"`
-	Username       string `json:"username"`
-	AvatarIdx      int    `json:"avatar_idx"`
-	AvatarURL      string `json:"avatar_url"`
-	PetName        string `json:"pet_name"`
-	PetLevel       int    `json:"pet_level"`
-	RelationStatus string `json:"relation_status"` // self | family | friend | pending_outgoing | pending_incoming | none
+	ChildID         string `json:"child_id"`
+	Name            string `json:"name"`
+	Username        string `json:"username"`
+	AvatarIdx       int    `json:"avatar_idx"`
+	AvatarURL       string `json:"avatar_url"`
+	PetName         string `json:"pet_name"`
+	ActiveCompanion string `json:"active_companion,omitempty"`
+	PetLevel        int    `json:"pet_level"`
+	RelationStatus  string `json:"relation_status"` // self | family | friend | pending_outgoing | pending_incoming | none
 }
 
 type ParentSocialSelfDTO struct {
@@ -622,24 +625,26 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		if err := tx.Query(
 			`SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at,
 			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 			        xp, last_seen_at
 			 FROM children WHERE family_id = ? AND id != ? ORDER BY created_at ASC`,
 			func(r SQLiteRow) error {
 				cid := r.String(0)
-				lastSeen := r.Int64(7)
+				lastSeen := r.Int64(8)
 				out.Friends = append(out.Friends, FriendItemDTO{
-					PeerType:     "child",
-					PeerID:       cid,
-					Name:         r.String(1),
-					RoleLabel:    "家人",
-					GroupName:    "家庭",
-					IsFamily:     true,
-					AvatarIdx:    r.Int(2),
-					AvatarURL:    avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-					PetName:      r.String(5),
-					PetLevel:     LevelForXP(r.Int(6)),
-					IsOnline:     isActorOnline(lastSeen, now),
-					LastActiveAt: lastSeen,
+					PeerType:        "child",
+					PeerID:          cid,
+					Name:            r.String(1),
+					RoleLabel:       "家人",
+					GroupName:       "家庭",
+					IsFamily:        true,
+					AvatarIdx:       r.Int(2),
+					AvatarURL:       avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
+					PetName:         r.String(5),
+					ActiveCompanion: r.String(6),
+					PetLevel:        LevelForXP(r.Int(7)),
+					IsOnline:        isActorOnline(lastSeen, now),
+					LastActiveAt:    lastSeen,
 				})
 				return nil
 			}, familyID, childID,
@@ -651,6 +656,7 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		if err := tx.Query(
 			`SELECT c.id, c.name, f.group_name, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
 			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 			        c.xp, c.last_seen_at
 			 FROM friendships f
 			 JOIN children c ON c.id = f.friend_child_id
@@ -662,20 +668,21 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 				if grp == "" {
 					grp = "朋友"
 				}
-				lastSeen := r.Int64(8)
+				lastSeen := r.Int64(9)
 				out.Friends = append(out.Friends, FriendItemDTO{
-					PeerType:     "child",
-					PeerID:       cid,
-					Name:         r.String(1),
-					RoleLabel:    "小伙伴",
-					GroupName:    grp,
-					IsFamily:     false,
-					AvatarIdx:    r.Int(3),
-					AvatarURL:    avatarURL("child", cid, r.Int(4) != 0, r.Int64(5)),
-					PetName:      r.String(6),
-					PetLevel:     LevelForXP(r.Int(7)),
-					IsOnline:     isActorOnline(lastSeen, now),
-					LastActiveAt: lastSeen,
+					PeerType:        "child",
+					PeerID:          cid,
+					Name:            r.String(1),
+					RoleLabel:       "小伙伴",
+					GroupName:       grp,
+					IsFamily:        false,
+					AvatarIdx:       r.Int(3),
+					AvatarURL:       avatarURL("child", cid, r.Int(4) != 0, r.Int64(5)),
+					PetName:         r.String(6),
+					ActiveCompanion: r.String(7),
+					PetLevel:        LevelForXP(r.Int(8)),
+					IsOnline:        isActorOnline(lastSeen, now),
+					LastActiveAt:    lastSeen,
 				})
 				return nil
 			}, childID,
@@ -694,6 +701,7 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		if err := tx.Query(
 			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
 			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 			        c.xp, fr.message, fr.status, fr.created_at
 			 FROM friend_requests fr
 			 JOIN children c ON c.id = fr.from_child_id
@@ -702,18 +710,19 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 			func(r SQLiteRow) error {
 				cid := r.String(1)
 				out.IncomingRequests = append(out.IncomingRequests, FriendRequestDTO{
-					ID:          r.String(0),
-					FromChildID: cid,
-					ToChildID:   r.String(2),
-					Name:        r.String(3),
-					Username:    r.String(4),
-					AvatarIdx:   r.Int(5),
-					AvatarURL:   avatarURL("child", cid, r.Int(6) != 0, r.Int64(7)),
-					PetName:     r.String(8),
-					PetLevel:    LevelForXP(r.Int(9)),
-					Message:     r.String(10),
-					Status:      r.String(11),
-					CreatedAt:   r.Int64(12),
+					ID:              r.String(0),
+					FromChildID:     cid,
+					ToChildID:       r.String(2),
+					Name:            r.String(3),
+					Username:        r.String(4),
+					AvatarIdx:       r.Int(5),
+					AvatarURL:       avatarURL("child", cid, r.Int(6) != 0, r.Int64(7)),
+					PetName:         r.String(8),
+					ActiveCompanion: r.String(9),
+					PetLevel:        LevelForXP(r.Int(10)),
+					Message:         r.String(11),
+					Status:          r.String(12),
+					CreatedAt:       r.Int64(13),
 				})
 				return nil
 			}, childID,
@@ -724,6 +733,7 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		if err := tx.Query(
 			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
 			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 			        c.xp, fr.message, fr.status, fr.created_at
 			 FROM friend_requests fr
 			 JOIN children c ON c.id = fr.to_child_id
@@ -732,18 +742,19 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 			func(r SQLiteRow) error {
 				cid := r.String(2)
 				out.OutgoingRequests = append(out.OutgoingRequests, FriendRequestDTO{
-					ID:          r.String(0),
-					FromChildID: r.String(1),
-					ToChildID:   cid,
-					Name:        r.String(3),
-					Username:    r.String(4),
-					AvatarIdx:   r.Int(5),
-					AvatarURL:   avatarURL("child", cid, r.Int(6) != 0, r.Int64(7)),
-					PetName:     r.String(8),
-					PetLevel:    LevelForXP(r.Int(9)),
-					Message:     r.String(10),
-					Status:      r.String(11),
-					CreatedAt:   r.Int64(12),
+					ID:              r.String(0),
+					FromChildID:     r.String(1),
+					ToChildID:       cid,
+					Name:            r.String(3),
+					Username:        r.String(4),
+					AvatarIdx:       r.Int(5),
+					AvatarURL:       avatarURL("child", cid, r.Int(6) != 0, r.Int64(7)),
+					PetName:         r.String(8),
+					ActiveCompanion: r.String(9),
+					PetLevel:        LevelForXP(r.Int(10)),
+					Message:         r.String(11),
+					Status:          r.String(12),
+					CreatedAt:       r.Int64(13),
 				})
 				return nil
 			}, childID,
@@ -778,7 +789,7 @@ func (s *Store) ResetChildFriendCode(familyID, childID string) (string, string, 
 	return code, "growthbuddy://add-friend?code=" + code, nil
 }
 
-func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, name, username string, avIdx int, hasAv bool, avUpd int64, petName string, xp int, err error) {
+func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, name, username string, avIdx int, hasAv bool, avUpd int64, petName, activeComp string, xp int, err error) {
 	token := parseFriendSearchToken(rawQuery)
 	if token == "" {
 		err = errors.New("请输入好友账号、分享码或扫描好友二维码")
@@ -790,6 +801,7 @@ func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, na
 	err = tx.QueryRow(
 		`SELECT id, family_id, name, username, avatar_idx, (avatar_data != ''), avatar_updated_at,
 		        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+		        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 		        xp
 		 FROM children
 		 WHERE id = ? OR friend_code = ? OR (username != '' AND LOWER(username) = ?)
@@ -803,7 +815,8 @@ func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, na
 			hasAv = r.Int(5) != 0
 			avUpd = r.Int64(6)
 			petName = r.String(7)
-			xp = r.Int(8)
+			activeComp = r.String(8)
+			xp = r.Int(9)
 			return nil
 		}, token, upperCode, lowerUser,
 	)
@@ -828,7 +841,7 @@ func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, na
 func (s *Store) LookupFriendTarget(familyID, childID, rawQuery string) (*FriendLookupDTO, error) {
 	var out FriendLookupDTO
 	err := s.db.WithLock(func(tx *Tx) error {
-		tid, tfamID, tname, tuser, avIdx, hasAv, avUpd, petName, xp, err := s.resolveTargetChildLocked(tx, rawQuery)
+		tid, tfamID, tname, tuser, avIdx, hasAv, avUpd, petName, activeComp, xp, err := s.resolveTargetChildLocked(tx, rawQuery)
 		if err != nil {
 			return err
 		}
@@ -859,14 +872,15 @@ func (s *Store) LookupFriendTarget(familyID, childID, rawQuery string) (*FriendL
 		}
 
 		out = FriendLookupDTO{
-			ChildID:        tid,
-			Name:           tname,
-			Username:       tuser,
-			AvatarIdx:      avIdx,
-			AvatarURL:      avatarURL("child", tid, hasAv, avUpd),
-			PetName:        petName,
-			PetLevel:       LevelForXP(xp),
-			RelationStatus: rel,
+			ChildID:         tid,
+			Name:            tname,
+			Username:        tuser,
+			AvatarIdx:       avIdx,
+			AvatarURL:       avatarURL("child", tid, hasAv, avUpd),
+			PetName:         petName,
+			ActiveCompanion: activeComp,
+			PetLevel:        LevelForXP(xp),
+			RelationStatus:  rel,
 		}
 		return nil
 	})
@@ -884,7 +898,7 @@ func (s *Store) SendFriendRequest(familyID, fromChildID, rawTarget, greeting str
 	var statusOut, noticeOut string
 
 	err := s.db.WithLock(func(tx *Tx) error {
-		tid, tfamID, tname, _, _, _, _, _, _, err := s.resolveTargetChildLocked(tx, rawTarget)
+		tid, tfamID, tname, _, _, _, _, _, _, _, err := s.resolveTargetChildLocked(tx, rawTarget)
 		if err != nil {
 			return err
 		}
@@ -1492,24 +1506,26 @@ func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) 
 	if err := tx.Query(
 		`SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at,
 		        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+		        COALESCE((SELECT cp.species_id FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
 		        xp, last_seen_at
 		 FROM children WHERE family_id = ? ORDER BY created_at ASC`,
 		func(r SQLiteRow) error {
 			cid := r.String(0)
-			lastSeen := r.Int64(7)
+			lastSeen := r.Int64(8)
 			items = append(items, FriendItemDTO{
-				PeerType:     "child",
-				PeerID:       cid,
-				Name:         r.String(1),
-				RoleLabel:    "孩子",
-				GroupName:    "家庭",
-				IsFamily:     true,
-				AvatarIdx:    r.Int(2),
-				AvatarURL:    avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-				PetName:      r.String(5),
-				PetLevel:     LevelForXP(r.Int(6)),
-				IsOnline:     isActorOnline(lastSeen, now),
-				LastActiveAt: lastSeen,
+				PeerType:        "child",
+				PeerID:          cid,
+				Name:            r.String(1),
+				RoleLabel:       "孩子",
+				GroupName:       "家庭",
+				IsFamily:        true,
+				AvatarIdx:       r.Int(2),
+				AvatarURL:       avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
+				PetName:         r.String(5),
+				ActiveCompanion: r.String(6),
+				PetLevel:        LevelForXP(r.Int(7)),
+				IsOnline:        isActorOnline(lastSeen, now),
+				LastActiveAt:    lastSeen,
 			})
 			return nil
 		}, familyID,

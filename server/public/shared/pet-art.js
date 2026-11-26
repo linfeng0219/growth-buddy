@@ -225,12 +225,43 @@
     }, { passive: true });
   }
 
+  function tintHex(hex, whiteRatio) {
+    var h = String(hex || "#ec9844").replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6) return "#fff1da";
+    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return "#fff1da";
+    var w = Math.max(0, Math.min(1, whiteRatio || 0));
+    return "rgb(" + Math.round(r * (1 - w) + 255 * w) + "," + Math.round(g * (1 - w) + 255 * w) + "," + Math.round(b * (1 - w) + 255 * w) + ")";
+  }
+
+  function petStageSVG(sp, lv, o) {
+    o = o || {};
+    lv = lv || 0;
+    if (!sp) return mainPetSVG(lv, o);
+    if (lv <= 0) {
+      var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
+      var c0 = tintHex(sp.color, 0.72), c1 = tintHex(sp.color, 0.35), c2 = tintHex(sp.color, 0.12);
+      var s = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "宠物蛋") + '">';
+      s += '<defs><radialGradient id="peg_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="' + c0 + '"/><stop offset="65%" stop-color="' + c1 + '"/><stop offset="100%" stop-color="' + c2 + '"/></radialGradient></defs>';
+      if (!o.noBase) s += pedestalSVG(sp.base || "grass");
+      s += '<g class="egg-wobble"><ellipse cx="110" cy="120" rx="44" ry="54" fill="url(#peg_' + uid + ')" stroke="' + c2 + '" stroke-width="2"/><ellipse cx="100" cy="96" rx="18" ry="24" fill="#fff" opacity=".45" transform="rotate(-18 100 96)"/><circle cx="94" cy="106" r="4" fill="#fff" opacity=".4"/><circle cx="128" cy="134" r="3.2" fill="#fff" opacity=".35"/></g></svg>';
+      return s;
+    }
+    var spDraw = sp;
+    if (lv >= 5 && (!sp.acc || sp.acc === "none")) {
+      spDraw = Object.assign({}, sp, { acc: "crown" });
+    }
+    return speciesSVG(spDraw, o);
+  }
+
   global.GBArt = {
     LEVELS: LEVELS,
     AVATARS: AVATARS,
     esc: esc,
     levelForXp: levelForXp,
     mainPetSVG: mainPetSVG,
+    petStageSVG: petStageSVG,
     speciesSVG: speciesSVG,
     avatarSVG: avatarSVG,
     avatarHtml: avatarHtml,

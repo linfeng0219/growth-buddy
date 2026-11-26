@@ -54,6 +54,8 @@ class MainActivity : AppCompatActivity() {
 
     private var state: ChildState? = null
     private var patIndex: Int = 0
+    private var starterPickerPromptedChildId: String = ""
+    private var starterPickerDialog: AlertDialog? = null
 
     // 打卡拍照与头像选取状态
     private var pendingCaptureFile: File? = null
@@ -344,6 +346,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.petStageView.setOnClickListener {
+            val st = state
+            if (st != null && (st.child.needsStarterPet || st.pets.isEmpty())) {
+                sound.playPat()
+                showStarterPetPickerDialog(st)
+                return@setOnClickListener
+            }
             sound.playPat()
             binding.petStageView.triggerPatAnimation()
             val line = GrowthMeta.PAT_LINES[patIndex % GrowthMeta.PAT_LINES.size]
@@ -361,18 +369,28 @@ class MainActivity : AppCompatActivity() {
                 sound.playPat()
             }
         }
-        binding.btnRenamePet.setOnClickListener { showRenamePetDialog() }
+        binding.btnRenamePet.setOnClickListener {
+            val st = state
+            if (st != null && (st.child.needsStarterPet || st.pets.isEmpty())) {
+                showStarterPetPickerDialog(st)
+            } else {
+                showRenamePetDialog()
+            }
+        }
         binding.btnUndo.setOnClickListener { performUndo() }
         binding.btnFreeFocus.setOnClickListener {
             val st = state
             val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
             val asleep = st?.let { isAsleep(it.logs) } ?: false
-            val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
+            val activePet = st?.let { GrowthMeta.findActivePet(it.pets, it.child.activePetId) }
+            val activeComp = st?.let { s -> s.catalog.find { it.id == (activePet?.speciesId ?: s.child.activeCompanion) } }
+            val petName = st?.let { GrowthMeta.resolvePetDisplayName(it.child, it.catalog, activePet) } ?: "你的宠物"
             val intent = Intent(this, FocusActivity::class.java).apply {
                 putExtra(FocusActivity.EXTRA_TASK_TITLE, "自由专注")
                 putExtra(FocusActivity.EXTRA_DURATION_MIN, 15)
                 putExtra(FocusActivity.EXTRA_PET_STAGE, lv)
                 putExtra(FocusActivity.EXTRA_PET_ASLEEP, asleep)
+                putExtra(FocusActivity.EXTRA_PET_NAME, petName)
                 if (activeComp != null) putExtra(FocusActivity.EXTRA_SPECIES_ITEM, activeComp)
             }
             focusLauncher.launch(intent)
@@ -381,10 +399,13 @@ class MainActivity : AppCompatActivity() {
             val st = state
             val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
             val asleep = st?.let { isAsleep(it.logs) } ?: false
-            val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
+            val activePet = st?.let { GrowthMeta.findActivePet(it.pets, it.child.activePetId) }
+            val activeComp = st?.let { s -> s.catalog.find { it.id == (activePet?.speciesId ?: s.child.activeCompanion) } }
+            val petName = st?.let { GrowthMeta.resolvePetDisplayName(it.child, it.catalog, activePet) } ?: "你的宠物"
             val intent = Intent(this, AdventureActivity::class.java).apply {
                 putExtra(AdventureActivity.EXTRA_PET_STAGE, lv)
                 putExtra(AdventureActivity.EXTRA_PET_ASLEEP, asleep)
+                putExtra(AdventureActivity.EXTRA_PET_NAME, petName)
                 putExtra(AdventureActivity.EXTRA_CHILD_AGE, st?.child?.age ?: 7)
                 putExtra(AdventureActivity.EXTRA_QUIZ_DIFFICULTY, st?.child?.quizDifficulty ?: "normal")
                 putExtra(AdventureActivity.EXTRA_ADVENTURE_XP_TODAY, st?.child?.adventureXpToday ?: 0)
@@ -838,21 +859,29 @@ class MainActivity : AppCompatActivity() {
             else -> binding.tvHealthPill.visibility = View.GONE
         }
         binding.petStageView.setPetState(lv, asleep, activeComp, c.petHealth)
+        val petDisplayName = GrowthMeta.resolvePetDisplayName(c, st.catalog, activePet)
+        val needStarter = c.needsStarterPet || st.pets.isEmpty()
 
         binding.tvBubble.text = when {
+            needStarter -> "🥚 你有一枚待孵化的小宠物蛋！点击宠物或右边按钮，自己选一只或者抽随机盲盒吧~"
             c.petHealth == "sick" -> {
                 val left = (c.healTarget.coerceAtLeast(20) - c.healProgress).coerceAtLeast(1)
-                "🤒 呜呜，我生病了……还差 $left 点成长值就能康复！"
+                "🤒 呜呜，${petDisplayName}生病了……还差 $left 点成长值就能康复！"
             }
             c.petHealth == "weak" -> {
                 val left = (c.healTarget.coerceAtLeast(10) - c.healProgress).coerceAtLeast(1)
-                "💧 我有点虚弱了……再攒 $left 点成长值就能恢复活力！"
+                "💧 ${petDisplayName}有点虚弱了……再攒 $left 点成长值就能恢复活力！"
             }
-            asleep -> "呼呼……已经 3 天没见到你了，喂我一口就醒来。"
+            asleep -> "呼呼……${petDisplayName}已经 3 天没见到你了，喂一口就醒来。"
             st.logs.isEmpty() -> GrowthMeta.LEVELS[0].talk
             else -> lvSpec.talk
         }
-        binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(c, st.catalog, activePet)
+        binding.tvPetName.text = petDisplayName
+        binding.btnRenamePet.text = if (needStarter) "🎁 选初始蛋" else "✏️ 改名"
+        if (needStarter && starterPickerPromptedChildId != c.id && starterPickerDialog?.isShowing != true) {
+            starterPickerPromptedChildId = c.id
+            showStarterPetPickerDialog(st)
+        }
 
         val msgBadge = c.unreadChat + c.pendingFriendRequests + c.unreadLetters
         if (msgBadge > 0) {
@@ -1083,9 +1112,14 @@ class MainActivity : AppCompatActivity() {
                         t.timerMode == "countdown" || t.timerMode == "countup" -> launchTaskFocus(t)
                         t.requirePhoto -> showCheckinConfirmDialog(t, null, null)
                         else -> {
+                            val petLabel = GrowthMeta.resolvePetDisplayName(
+                                st.child,
+                                st.catalog,
+                                GrowthMeta.findActivePet(st.pets, st.child.activePetId)
+                            )
                             AlertDialog.Builder(this)
                                 .setTitle("确认完成任务？")
-                                .setMessage("已完成「${t.label}」，现在喂小伙伴并领取 +${t.pts} 成长值吗？")
+                                .setMessage("已完成「${t.label}」，现在喂「${petLabel}」并领取 +${t.pts} 成长值吗？")
                                 .setPositiveButton("✓ 确认打卡") { _, _ -> submitCheckin(t.id, null, null, null) }
                                 .setNegativeButton("再想想", null)
                                 .show()
@@ -1109,7 +1143,9 @@ class MainActivity : AppCompatActivity() {
         val st = state
         val lv = st?.let { GrowthMeta.levelForXp(it.child.xp) } ?: 0
         val asleep = st?.let { isAsleep(it.logs) } ?: false
-        val activeComp = st?.let { s -> s.catalog.find { it.id == s.child.activeCompanion } }
+        val activePet = st?.let { GrowthMeta.findActivePet(it.pets, it.child.activePetId) }
+        val activeComp = st?.let { s -> s.catalog.find { it.id == (activePet?.speciesId ?: s.child.activeCompanion) } }
+        val petName = st?.let { GrowthMeta.resolvePetDisplayName(it.child, it.catalog, activePet) } ?: "你的宠物"
         val intent = Intent(this, FocusActivity::class.java).apply {
             putExtra(FocusActivity.EXTRA_TASK_ID, t.id)
             putExtra(FocusActivity.EXTRA_TASK_TITLE, t.label)
@@ -1117,6 +1153,7 @@ class MainActivity : AppCompatActivity() {
             putExtra(FocusActivity.EXTRA_DURATION_SEC, t.durationSec)
             putExtra(FocusActivity.EXTRA_PET_STAGE, lv)
             putExtra(FocusActivity.EXTRA_PET_ASLEEP, asleep)
+            putExtra(FocusActivity.EXTRA_PET_NAME, petName)
             if (activeComp != null) putExtra(FocusActivity.EXTRA_SPECIES_ITEM, activeComp)
         }
         focusLauncher.launch(intent)
@@ -1378,29 +1415,34 @@ class MainActivity : AppCompatActivity() {
                     state = newState
                     renderAll(newState)
                     val newLv = GrowthMeta.levelForXp(newState.child.xp)
+                    val petDisplay = GrowthMeta.resolvePetDisplayName(
+                        newState.child,
+                        newState.catalog,
+                        GrowthMeta.findActivePet(newState.pets, newState.child.activePetId)
+                    )
                     if (newLv > prevLv) {
                         sound.playWin()
                         binding.petStageView.triggerCelebration()
                         val lvName = GrowthMeta.LEVELS[newLv].name
-                        sound.speak("太棒了，你的小伙伴进化成${lvName}啦")
+                        sound.speak("太棒了，${petDisplay}进化成${lvName}啦")
                         AlertDialog.Builder(this)
-                            .setTitle("🎉 进化啦！Lv.${newLv + 1} $lvName")
+                            .setTitle("🎉 ${petDisplay}进化啦！Lv.${newLv + 1} $lvName")
                             .setMessage(GrowthMeta.LEVELS[newLv].talk)
                             .setPositiveButton("太棒啦！", null)
                             .show()
                     } else if (actualCount != null) {
                         sound.playWin()
                         binding.petStageView.triggerCelebration()
-                        Toast.makeText(this, "🪢 跳绳 ${actualCount} 个达标！喂宠成功！", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "🪢 跳绳 ${actualCount} 个达标！${petDisplay}元气满满！", Toast.LENGTH_LONG).show()
                     } else {
                         val photoNote = if (!photoData.isNullOrEmpty()) "（📷 照片已传给爸妈）" else ""
                         val healUsed = res.json.optInt("healUsed", 0)
                         val grownXp = res.json.optInt("grownXp", res.json.optInt("pts", 0))
                         val tip = when {
                             healUsed > 0 && grownXp == 0 ->
-                                "💚 已用 $healUsed 点成长值帮小伙伴恢复健康$photoNote"
+                                "💚 已用 $healUsed 点成长值帮「$petDisplay」恢复健康$photoNote"
                             healUsed > 0 && grownXp > 0 ->
-                                "💚 小伙伴已恢复健康！剩余 +$grownXp 用于成长$photoNote"
+                                "💚 「$petDisplay」已恢复健康！剩余 +$grownXp 用于成长$photoNote"
                             else ->
                                 "打卡成功！成长值 +${res.json.optInt("pts", 0)}$photoNote"
                         }
@@ -1461,6 +1503,168 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { onPick(txt) }
             }
             container.addView(tv)
+        }
+    }
+
+    private fun showStarterPetPickerDialog(st: ChildState) {
+        if (isFinishing || isDestroyed) return
+        starterPickerDialog?.dismiss()
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(10))
+        }
+        root.addView(TextView(this).apply {
+            text = "欢迎来到成长小屋！你可以自己选一只初始宠物蛋，也可以抽随机神秘蛋（免费领取，之后靠成长值或领养蛋继续收集其他伙伴）："
+            textSize = 13f
+            setTextColor(0xFF5C5347.toInt())
+            setPadding(0, 0, 0, dp(10))
+        })
+
+        val nameInput = EditText(this).apply {
+            hint = "起个名字（留空自动命名为「${st.child.name}的宠物名」）"
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
+        root.addView(nameInput)
+
+        var dialogRef: AlertDialog? = null
+
+        val randomBtn = Button(this).apply {
+            text = "🎲 手气不错 · 随机抽一枚初始神秘蛋"
+            textSize = 14f
+            setAllCaps(false)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(0xFFE8913A.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(44)
+            ).apply { bottomMargin = dp(12) }
+            setOnClickListener {
+                dialogRef?.dismiss()
+                chooseStarterPet(speciesId = null, mystery = true, customName = nameInput.text.toString())
+            }
+        }
+        root.addView(randomBtn)
+
+        root.addView(TextView(this).apply {
+            text = "👇 或直接挑选一位你想孵化的初始伙伴："
+            textSize = 12.5f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(0xFF2B2620.toInt())
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        val gridWrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val cols = 2
+        for (rowItems in st.catalog.chunked(cols)) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+            }
+            for (i in 0 until cols) {
+                val sp = rowItems.getOrNull(i)
+                if (sp == null) {
+                    row.addView(View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
+                            if (i > 0) marginStart = dp(8)
+                        }
+                    })
+                    continue
+                }
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(dp(8), dp(10), dp(8), dp(10))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(0xFFFAFDFB.toInt())
+                        setStroke(dp(1), 0xFFBED6C7.toInt())
+                    }
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        if (i > 0) marginStart = dp(8)
+                    }
+                    setOnClickListener {
+                        dialogRef?.dismiss()
+                        chooseStarterPet(speciesId = sp.id, mystery = false, customName = nameInput.text.toString())
+                    }
+                }
+                val thumb = SpeciesThumbView(this).apply {
+                    setSpecies(sp, isSilhouette = false)
+                    layoutParams = LinearLayout.LayoutParams(dp(74), dp(66))
+                }
+                val titleTv = TextView(this).apply {
+                    text = sp.name
+                    textSize = 13.5f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(0xFF2B2620.toInt())
+                    setPadding(0, dp(4), 0, 0)
+                }
+                val hintTv = TextView(this).apply {
+                    text = sp.hint.ifEmpty { "初始伙伴" }
+                    textSize = 11f
+                    setTextColor(0xFF7D7263.toInt())
+                    gravity = Gravity.CENTER
+                }
+                card.addView(thumb)
+                card.addView(titleTv)
+                card.addView(hintTv)
+                row.addView(card)
+            }
+            gridWrap.addView(row)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(gridWrap)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(290)
+            )
+        }
+        root.addView(scroll)
+
+        dialogRef = AlertDialog.Builder(this)
+            .setTitle("🥚 选择你的第一位初始宠物")
+            .setView(root)
+            .setNegativeButton("先逛逛小屋", null)
+            .create()
+        starterPickerDialog = dialogRef
+        dialogRef.show()
+    }
+
+    private fun chooseStarterPet(speciesId: String?, mystery: Boolean, customName: String) {
+        val payload = JSONObject().apply {
+            put("mystery", mystery)
+            put("date", todayStr())
+            put("petName", customName.trim().take(16))
+            if (!speciesId.isNullOrBlank()) put("speciesId", speciesId)
+        }
+        api.request("POST", "/api/child/starter-pet", payload) { res ->
+            if (res.ok && res.json != null) {
+                sound.playWin()
+                binding.petStageView.triggerCelebration()
+                val adoptedName = res.json.optJSONObject("adopted_pet")?.optString("pet_name")?.ifBlank { null }
+                    ?: res.json.optJSONObject("adopted")?.optString("name", "新伙伴")
+                    ?: "新伙伴"
+                res.json.optJSONObject("state")?.let {
+                    val ns = GrowthMeta.parseChildState(it)
+                    state = ns
+                    renderAll(ns)
+                } ?: loadChildState()
+                sound.speak("太棒了，欢迎${adoptedName}来到你的小屋")
+                Toast.makeText(this, "🥚 已领养初始宠物「$adoptedName」！", Toast.LENGTH_LONG).show()
+            } else {
+                sound.playError()
+                Toast.makeText(this, res.error ?: "领养失败", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

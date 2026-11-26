@@ -32,6 +32,7 @@ data class FriendItem(
     val avatarIdx: Int,
     val avatarUrl: String,
     val petName: String,
+    val activeCompanion: String = "",
     val petLevel: Int,
     val unreadCount: Int,
     val lastMessage: String,
@@ -49,6 +50,7 @@ data class FriendRequestItem(
     val avatarIdx: Int,
     val avatarUrl: String,
     val petName: String,
+    val activeCompanion: String = "",
     val petLevel: Int,
     val message: String,
     val status: String,
@@ -62,6 +64,7 @@ data class FriendLookupCandidate(
     val avatarIdx: Int,
     val avatarUrl: String,
     val petName: String,
+    val activeCompanion: String = "",
     val petLevel: Int,
     val relationStatus: String
 )
@@ -154,6 +157,7 @@ object SocialParser {
                     avatarIdx = f.optInt("avatar_idx", 0),
                     avatarUrl = f.optString("avatar_url", ""),
                     petName = f.optString("pet_name", ""),
+                    activeCompanion = f.optString("active_companion", ""),
                     petLevel = f.optInt("pet_level", 0),
                     unreadCount = f.optInt("unread_count", 0),
                     lastMessage = f.optString("last_message", ""),
@@ -223,6 +227,7 @@ object SocialParser {
                     avatarIdx = r.optInt("avatar_idx", 0),
                     avatarUrl = r.optString("avatar_url", ""),
                     petName = r.optString("pet_name", ""),
+                    activeCompanion = r.optString("active_companion", ""),
                     petLevel = r.optInt("pet_level", 0),
                     message = r.optString("message", ""),
                     status = r.optString("status", "pending"),
@@ -241,6 +246,7 @@ object SocialParser {
             avatarIdx = obj.optInt("avatar_idx", 0),
             avatarUrl = obj.optString("avatar_url", ""),
             petName = obj.optString("pet_name", ""),
+            activeCompanion = obj.optString("active_companion", ""),
             petLevel = obj.optInt("pet_level", 0),
             relationStatus = obj.optString("relation_status", "none")
         )

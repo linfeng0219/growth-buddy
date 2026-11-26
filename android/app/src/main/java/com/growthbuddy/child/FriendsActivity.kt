@@ -866,7 +866,12 @@ class FriendsActivity : AppCompatActivity() {
                 nameRow.addView(onlineTv)
 
                 val subTv = TextView(this).apply {
-                    text = f.lastMessage.ifBlank { "点击发送文字、语音或图片消息~" }
+                    val petTag = if (f.peerType == "child" && f.petName.isNotBlank()) "🐾 ${f.petName}" else ""
+                    text = when {
+                        f.lastMessage.isNotBlank() -> f.lastMessage
+                        petTag.isNotEmpty() -> "$petTag · 点击发送消息~"
+                        else -> "点击发送文字、语音或图片消息~"
+                    }
                     textSize = 12.5f
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END

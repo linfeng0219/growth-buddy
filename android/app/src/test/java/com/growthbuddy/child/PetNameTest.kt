@@ -80,4 +80,11 @@ class PetNameTest {
         val child = sampleChild(name = " ", petName = "", activeCompanion = null)
         assertEquals("小团子", GrowthMeta.resolvePetDisplayName(child, catalog))
     }
+
+    @Test
+    fun waitingStarterPetPromptsForChoice() {
+        val catalog = listOf(sampleSpecies("b1", "小团子"), sampleSpecies("b2", "雪球"))
+        val child = sampleChild(name = "柚子", petName = "", activeCompanion = null).copy(needsStarterPet = true)
+        assertEquals("🥚 待领养初始宠物蛋", GrowthMeta.resolvePetDisplayName(child, catalog, null))
+    }
 }

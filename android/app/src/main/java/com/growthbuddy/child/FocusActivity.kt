@@ -36,6 +36,7 @@ class FocusActivity : AppCompatActivity() {
         const val EXTRA_SPECIES_ITEM = "species_item"
         const val EXTRA_PET_STAGE = "pet_stage"
         const val EXTRA_PET_ASLEEP = "pet_asleep"
+        const val EXTRA_PET_NAME = "pet_name"
     }
 
     private lateinit var binding: ActivityFocusBinding
@@ -53,6 +54,7 @@ class FocusActivity : AppCompatActivity() {
     private val countupHandler = Handler(Looper.getMainLooper())
     private var isRunning = false
     private var isFinished = false
+    private var petDisplayName: String = "小伙伴"
 
     private val countupTicker = object : Runnable {
         override fun run() {
@@ -84,6 +86,7 @@ class FocusActivity : AppCompatActivity() {
 
         val petStage = intent.getIntExtra(EXTRA_PET_STAGE, 0).coerceIn(0, 5)
         val petAsleep = intent.getBooleanExtra(EXTRA_PET_ASLEEP, false)
+        petDisplayName = intent.getStringExtra(EXTRA_PET_NAME)?.takeIf { it.isNotBlank() } ?: "你的宠物"
         @Suppress("DEPRECATION")
         val speciesItem = intent.getSerializableExtra(EXTRA_SPECIES_ITEM) as? SpeciesItem
         binding.focusPetStage.setPetState(petStage, isSleep = petAsleep, activeComp = speciesItem)
@@ -190,7 +193,7 @@ class FocusActivity : AppCompatActivity() {
     private fun startFocus() {
         isRunning = true
         binding.focusDurationRow.visibility = View.GONE
-        binding.tvFocusBubble.text = "嘘——小伙伴正在陪你一起认真专注，加油！"
+        binding.tvFocusBubble.text = "嘘——${petDisplayName}正在陪你一起认真专注，加油！"
         sound.playStart()
         sound.speak("开始专注，加油")
 
@@ -277,7 +280,7 @@ class FocusActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle("确定要离开吗？")
-            .setMessage("现在退出不会记录本次专注，小伙伴还在等你哦。")
+            .setMessage("现在退出不会记录本次专注，${petDisplayName}还在等你哦。")
             .setPositiveButton("继续专注", null)
             .setNegativeButton("确定退出") { _, _ ->
                 timer?.cancel()

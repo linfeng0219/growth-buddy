@@ -1057,6 +1057,22 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m == http.MethodPost && p == "/api/child/starter-pet" {
+		body, err := readJSONMap(r, 0)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		todayStr := sanitizeDate(mapStr(body, "date"))
+		sp, pet, st, err := a.store.ChooseStarterPet(auth.FamilyID, targetChildID, mapStr(body, "speciesId"), mapBool(body, "mystery"), mapStr(body, "petName"), todayStr)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"adopted": sp, "adopted_pet": pet, "state": st})
+		return
+	}
+
 	if m == http.MethodPost && p == "/api/child/adopt" {
 		body, err := readJSONMap(r, 0)
 		if err != nil {
@@ -1425,6 +1441,7 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 					AvatarIdx:      avIdx,
 					AvatarData:     avData,
 					Pin:            mapOptStr(body, "pin"),
+					PetID:          mapOptStr(body, "pet_id"),
 					PetName:        mapOptStr(body, "pet_name"),
 					Username:       mapOptStr(body, "username"),
 					Password:       mapOptStr(body, "password"),
@@ -2243,6 +2260,7 @@ func (a *AppServer) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 					Name:           mapOptStr(body, "name"),
 					AvatarIdx:      mapOptInt(body, "avatar_idx"),
 					Pin:            mapOptStr(body, "pin"),
+					PetID:          mapOptStr(body, "pet_id"),
 					PetName:        mapOptStr(body, "pet_name"),
 					Username:       mapOptStr(body, "username"),
 					Password:       mapOptStr(body, "password"),

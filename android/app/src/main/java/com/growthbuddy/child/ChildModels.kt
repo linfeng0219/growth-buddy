@@ -20,6 +20,7 @@ data class ChildInfo(
     val coupons: Int,
     val activeCompanion: String?,
     val activePetId: String = "",
+    val needsStarterPet: Boolean = false,
     val muted: Boolean,
     val petHealth: String = "normal",
     val healProgress: Int = 0,
@@ -38,7 +39,11 @@ data class ChildPet(
     val childId: String,
     val speciesId: String,
     val petName: String,
+    val isCustomName: Boolean = false,
     val isActive: Boolean,
+    val petHealth: String = "normal",
+    val healProgress: Int = 0,
+    val healTarget: Int = 0,
     val adoptedDate: String,
     val createdAt: Long = 0L
 )
@@ -86,6 +91,7 @@ data class PolaroidItem(
     val avatarIdx: Int,
     val avatarUrl: String,
     val petRef: String,
+    val petName: String = "",
     val petLv: Int,
     val photoDate: String,
     val note: String
@@ -164,12 +170,13 @@ object GrowthMeta {
             ?: pets.find { activePetId.isNotBlank() && it.id == activePetId }
             ?: pets.firstOrNull()
 
-    /** 解析宠物展示名称：优先使用当前宠物独立名称，否则使用默认「孩子名+宠物名」。 */
+    /** 解析宠物展示名称：尚未领取初始宠时提示待选择，否则优先使用当前宠物独立名称或「孩子名+宠物名」。 */
     fun resolvePetDisplayName(
         child: ChildInfo,
         catalog: List<SpeciesItem> = emptyList(),
         activePet: ChildPet? = null
     ): String {
+        if (child.needsStarterPet && activePet == null) return "🥚 待领养初始宠物蛋"
         val petCustom = activePet?.petName?.trim().orEmpty()
         if (petCustom.isNotEmpty()) return petCustom
         val custom = child.petName.trim()
@@ -272,6 +279,7 @@ object GrowthMeta {
                     avatarIdx = p.optInt("avatar_idx", 0),
                     avatarUrl = p.optString("avatar_url", ""),
                     petRef = p.optString("pet_ref", "main"),
+                    petName = p.optString("pet_name", ""),
                     petLv = p.optInt("pet_lv", 0),
                     photoDate = p.optString("photo_date", ""),
                     note = p.optString("note", "")
@@ -289,7 +297,11 @@ object GrowthMeta {
                     childId = pt.optString("child_id", ""),
                     speciesId = pt.optString("species_id", "b1"),
                     petName = pt.optString("pet_name", ""),
+                    isCustomName = pt.optBoolean("is_custom_name", false),
                     isActive = pt.optBoolean("is_active", false),
+                    petHealth = pt.optString("pet_health", "normal").ifBlank { "normal" },
+                    healProgress = pt.optInt("heal_progress", 0),
+                    healTarget = pt.optInt("heal_target", 0),
                     adoptedDate = pt.optString("adopted_date", ""),
                     createdAt = pt.optLong("created_at", 0L)
                 )
@@ -318,10 +330,11 @@ object GrowthMeta {
                 coupons = childObj.optInt("coupons", 0),
                 activeCompanion = comp,
                 activePetId = childObj.optString("active_pet_id", "").ifEmpty { activePet?.id ?: "" },
+                needsStarterPet = childObj.optBoolean("needs_starter_pet", pets.isEmpty()),
                 muted = childObj.optBoolean("muted", false),
-                petHealth = childObj.optString("pet_health", "normal"),
-                healProgress = childObj.optInt("heal_progress", 0),
-                healTarget = childObj.optInt("heal_target", 0),
+                petHealth = activePet?.petHealth ?: childObj.optString("pet_health", "normal"),
+                healProgress = activePet?.healProgress ?: childObj.optInt("heal_progress", 0),
+                healTarget = activePet?.healTarget ?: childObj.optInt("heal_target", 0),
                 age = childObj.optInt("age", 7).coerceIn(3, 14),
                 quizDifficulty = childObj.optString("quiz_difficulty", "normal").ifBlank { "normal" },
                 unreadLetters = childObj.optInt("unread_letters", 0),

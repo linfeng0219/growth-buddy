@@ -127,15 +127,33 @@ class DexActivity : AppCompatActivity() {
         val matureXp = 200
         val surplus = (c.xp - matureXp).coerceAtLeast(0)
         binding.tvCouponTitle.text = if (c.xp < matureXp) {
-            "成长值：${c.xp}/$matureXp（主宠成熟后，富余每 25 点可换宠物蛋）"
+            "成长值：${c.xp}/$matureXp（满 200 点后，富余每 25 点可领养新宠物蛋）"
         } else {
-            "主宠已成熟！富余成长值：$surplus 点（每 25 点可直兑 1 只）"
+            "已达成年守护阶段！富余成长值：$surplus 点（每 25 点可直兑 1 只）"
         } + if (c.coupons > 0) " · 领养蛋 ${c.coupons} 枚" else ""
         binding.dexContainer.removeAllViews()
 
         val cols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
 
-        // 1) 我的宠物列表（1:N 独立宠物实例，支持同物种多只及单独改名/设为陪伴）
+        if (st.pets.isEmpty()) {
+            binding.dexContainer.addView(TextView(this).apply {
+                text = "🥚 你还没有领养第一位初始宠物！先回小屋挑选或随机抽取一枚初始宠物蛋吧，也可以下面预览全部图鉴。"
+                textSize = 13.5f
+                setTextColor(0xFF9A5B13.toInt())
+                setPadding(dp(12), dp(12), dp(12), dp(12))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(0xFFFFF8EC.toInt())
+                    setStroke(dp(1), 0xFFE8913A.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+            })
+        }
+
+        // 1) 我的宠物列表（1:N 独立宠物实例，每个物种限 1 只，各自改名与切换陪伴）
         if (st.pets.isNotEmpty()) {
             binding.dexContainer.addView(TextView(this).apply {
                 text = "🐾 我的宠物（共 ${st.pets.size} 只 · 可分别改名与切换陪伴）"
@@ -335,8 +353,14 @@ class DexActivity : AppCompatActivity() {
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
+                        st.pets.isEmpty() -> {
+                            text = "🥚 选它当初始宠物"
+                            setBackgroundColor(0xFF2F6B4F.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performChooseStarterFromDex(sp.id) }
+                        }
                         c.xp < matureXp -> {
-                            text = "主宠成熟后可兑换"
+                            text = "满 200 成长值可兑换"
                             isEnabled = false
                             setBackgroundColor(0xFFEDE6DA.toInt())
                             setTextColor(0xFF8A7E6E.toInt())
@@ -396,6 +420,39 @@ class DexActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun performChooseStarterFromDex(speciesId: String) {
+        val payload = JSONObject().apply {
+            put("speciesId", speciesId)
+            put("mystery", false)
+            put("date", todayStr())
+        }
+        api.request("POST", "/api/child/starter-pet", payload) { res ->
+            if (res.ok && res.json != null) {
+                hasChangedState = true
+                setResult(RESULT_OK)
+                sound.playWin()
+                val chosenName = res.json.optJSONObject("adopted_pet")?.optString("pet_name")?.ifBlank { null }
+                    ?: res.json.optJSONObject("adopted")?.optString("name", "初始宠物")
+                    ?: "初始宠物"
+                res.json.optJSONObject("state")?.let {
+                    val ns = GrowthMeta.parseChildState(it)
+                    state = ns
+                    renderDex(ns)
+                    renderPolaroids(ns)
+                } ?: loadState()
+                sound.speak("恭喜你，选中了${chosenName}")
+                AlertDialog.Builder(this)
+                    .setTitle("🥚 初始宠物领养成功！")
+                    .setMessage("欢迎「$chosenName」来到你的小屋，快和它一起打卡成长吧！")
+                    .setPositiveButton("太棒啦！", null)
+                    .show()
+            } else {
+                sound.playError()
+                Toast.makeText(this, res.error ?: "领养失败", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun performAdopt(speciesId: String?, mystery: Boolean) {
@@ -531,7 +588,7 @@ class DexActivity : AppCompatActivity() {
                 }
                 val petView = SpeciesThumbView(this).apply {
                     val sp = st.catalog.find { it.id == p.petRef }
-                    if (sp != null) setSpecies(sp, isSilhouette = false)
+                    if (sp != null) setPetSnapshot(sp, p.petLv)
                     else setMainPet(p.petLv)
                     layoutParams = LinearLayout.LayoutParams(dp(72), dp(68))
                 }
@@ -539,7 +596,7 @@ class DexActivity : AppCompatActivity() {
                 photoBox.addView(petView)
 
                 val dateTv = TextView(this).apply {
-                    text = p.photoDate
+                    text = if (p.petName.isNotEmpty()) "${p.photoDate} · ${p.petName}" else p.photoDate
                     textSize = 11.5f
                     setTextColor(0xFF5C5347.toInt())
                     setPadding(0, dp(6), 0, 0)
@@ -598,7 +655,7 @@ class DexActivity : AppCompatActivity() {
         }
         val petView = SpeciesThumbView(this).apply {
             val sp = catalog.find { it.id == p.petRef }
-            if (sp != null) setSpecies(sp, isSilhouette = false)
+            if (sp != null) setPetSnapshot(sp, p.petLv)
             else setMainPet(p.petLv)
             layoutParams = LinearLayout.LayoutParams(dp(132), dp(124))
         }
@@ -607,7 +664,7 @@ class DexActivity : AppCompatActivity() {
         frame.addView(photoBox)
 
         frame.addView(TextView(this).apply {
-            text = "📅 ${p.photoDate}"
+            text = if (p.petName.isNotEmpty()) "📅 ${p.photoDate} · 🐾 ${p.petName}" else "📅 ${p.photoDate}"
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
             setTextColor(0xFF5C5347.toInt())
