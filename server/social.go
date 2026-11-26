@@ -620,7 +620,10 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		}
 
 		if err := tx.Query(
-			"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp, last_seen_at FROM children WHERE family_id = ? AND id != ? ORDER BY created_at ASC",
+			`SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at,
+			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        xp, last_seen_at
+			 FROM children WHERE family_id = ? AND id != ? ORDER BY created_at ASC`,
 			func(r SQLiteRow) error {
 				cid := r.String(0)
 				lastSeen := r.Int64(7)
@@ -646,7 +649,9 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 
 		// 2. 已同意的外部好友放入「朋友」默认分组
 		if err := tx.Query(
-			`SELECT c.id, c.name, f.group_name, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at, c.pet_name, c.xp, c.last_seen_at
+			`SELECT c.id, c.name, f.group_name, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
+			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        c.xp, c.last_seen_at
 			 FROM friendships f
 			 JOIN children c ON c.id = f.friend_child_id
 			 WHERE f.child_id = ?
@@ -687,7 +692,9 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 
 		// 3. 待处理好友申请（收到的 + 发出的）
 		if err := tx.Query(
-			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at, c.pet_name, c.xp, fr.message, fr.status, fr.created_at
+			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
+			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        c.xp, fr.message, fr.status, fr.created_at
 			 FROM friend_requests fr
 			 JOIN children c ON c.id = fr.from_child_id
 			 WHERE fr.to_child_id = ? AND fr.status = 'pending'
@@ -715,7 +722,9 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		}
 
 		if err := tx.Query(
-			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at, c.pet_name, c.xp, fr.message, fr.status, fr.created_at
+			`SELECT fr.id, fr.from_child_id, fr.to_child_id, c.name, c.username, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at,
+			        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = c.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			        c.xp, fr.message, fr.status, fr.created_at
 			 FROM friend_requests fr
 			 JOIN children c ON c.id = fr.to_child_id
 			 WHERE fr.from_child_id = ? AND fr.status = 'pending'
@@ -779,7 +788,9 @@ func (s *Store) resolveTargetChildLocked(tx *Tx, rawQuery string) (id, famID, na
 	lowerUser := strings.ToLower(token)
 
 	err = tx.QueryRow(
-		`SELECT id, family_id, name, username, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp
+		`SELECT id, family_id, name, username, avatar_idx, (avatar_data != ''), avatar_updated_at,
+		        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+		        xp
 		 FROM children
 		 WHERE id = ? OR friend_code = ? OR (username != '' AND LOWER(username) = ?)
 		 LIMIT 1`,
@@ -1479,7 +1490,10 @@ func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) 
 	}
 	// 2. 同家庭孩子放入「家庭」分组
 	if err := tx.Query(
-		"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp, last_seen_at FROM children WHERE family_id = ? ORDER BY created_at ASC",
+		`SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at,
+		        COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+		        xp, last_seen_at
+		 FROM children WHERE family_id = ? ORDER BY created_at ASC`,
 		func(r SQLiteRow) error {
 			cid := r.String(0)
 			lastSeen := r.Int64(7)

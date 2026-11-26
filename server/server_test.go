@@ -301,7 +301,7 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 		t.Fatalf("parent overview missing photo info in recent_logs: %+v", pLogs)
 	}
 
-	// Native Android convenience routes: mute, pet-name, grant egg, adopt, companion, polaroid
+	// Native Android convenience routes: mute, pet-name, grant egg, adopt (including 1:N same-species pets), companion, polaroid
 	st, _ = doJSON(t, ts, "PATCH", "/api/child/mute", childTok, map[string]any{"muted": true})
 	if st != 200 {
 		t.Fatalf("mute failed: %d", st)
@@ -314,27 +314,49 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 	if st != 200 {
 		t.Fatalf("grant-egg failed: %d", st)
 	}
-	st, _ = doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
+	st, adoptRes1 := doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
 	if st != 200 {
 		t.Fatalf("adopt failed: %d", st)
 	}
-	st, compRes := doJSON(t, ts, "POST", "/api/child/companion", childTok, map[string]any{"speciesId": "b2"})
+	st, adoptRes2 := doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
+	if st != 200 {
+		t.Fatalf("second same-species adopt failed: %d", st)
+	}
+	pet1 := adoptRes1["adopted_pet"].(map[string]any)
+	pet2 := adoptRes2["adopted_pet"].(map[string]any)
+	if pet1["id"] == pet2["id"] || pet1["pet_name"] == pet2["pet_name"] {
+		t.Fatalf("expected distinct pets for same species: %+v vs %+v", pet1, pet2)
+	}
+	pet2ID := pet2["id"].(string)
+	st, compRes := doJSON(t, ts, "POST", "/api/child/companion", childTok, map[string]any{"petId": pet2ID, "speciesId": "b2"})
 	if st != 200 || compRes["state"] == nil {
 		t.Fatalf("companion failed: %d %+v", st, compRes)
+	}
+	st, _ = doJSON(t, ts, "PATCH", "/api/child/pet-name", childTok, map[string]any{"petId": pet2ID, "petName": "冰冰团"})
+	if st != 200 {
+		t.Fatalf("pet-name by petId failed: %d", st)
 	}
 	st, _ = doJSON(t, ts, "POST", "/api/child/polaroid", childTok, map[string]any{"avatarIdx": 1, "note": "开心打卡", "date": "2026-11-18"})
 	if st != 200 {
 		t.Fatalf("polaroid failed: %d", st)
 	}
 
-	// Verify state persisted correctly
+	// Verify state persisted correctly and starter pet kept its own independent name
 	st, cState := doJSON(t, ts, "GET", "/api/child/state?date=2026-11-18", childTok, nil)
 	if st != 200 {
 		t.Fatalf("child state failed: %d", st)
 	}
 	childObj := cState["child"].(map[string]any)
-	if childObj["pet_name"] != "糯米团" || childObj["muted"] != true || childObj["active_companion"] != "b2" {
+	if childObj["pet_name"] != "冰冰团" || childObj["muted"] != true || childObj["active_companion"] != "b2" || childObj["active_pet_id"] != pet2ID {
 		t.Fatalf("unexpected child state: %+v", childObj)
+	}
+	petsList := cState["pets"].([]any)
+	if len(petsList) != 3 {
+		t.Fatalf("expected 3 pets in 1:N child_pets list, got %d", len(petsList))
+	}
+	firstPet := petsList[0].(map[string]any)
+	if firstPet["pet_name"] != "糯米团" {
+		t.Fatalf("expected starter pet to keep independent name 糯米团, got %+v", firstPet)
 	}
 
 	// Admin login & CRUD

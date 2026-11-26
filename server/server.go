@@ -969,14 +969,38 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			s := mapStr(body, "active_companion")
 			compVal = &s
 		}
-		err = a.store.UpdateChildProfile(auth.FamilyID, targetChildID, mapOptStr(body, "pet_name"), compSet, compVal, mapOptBool(body, "muted"))
-		if errors.Is(err, ErrNotFound) {
-			writeJSON(w, 404, map[string]string{"error": "孩子档案不存在"})
-			return
+		activePetID := mapStr(body, "active_pet_id")
+		if activePetID != "" {
+			if err := a.store.SetActiveChildPet(auth.FamilyID, targetChildID, activePetID, ""); err != nil {
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+			compSet = false
+		} else if compSet && compVal != nil && *compVal != "" {
+			if err := a.store.SetActiveChildPet(auth.FamilyID, targetChildID, "", *compVal); err != nil {
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
 		}
-		if err != nil {
-			writeJSON(w, 400, map[string]string{"error": err.Error()})
-			return
+		if pn := mapOptStr(body, "pet_name"); pn != nil {
+			if _, err := a.store.UpdateChildPetName(auth.FamilyID, targetChildID, mapStr(body, "pet_id"), *pn); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					writeJSON(w, 404, map[string]string{"error": "孩子档案或宠物不存在"})
+					return
+				}
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		if muted := mapOptBool(body, "muted"); muted != nil {
+			if err := a.store.UpdateChildProfile(auth.FamilyID, targetChildID, nil, false, nil, muted); err != nil {
+				if errors.Is(err, ErrNotFound) {
+					writeJSON(w, 404, map[string]string{"error": "孩子档案不存在"})
+					return
+				}
+				writeJSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
 		}
 		writeJSON(w, 200, map[string]any{"ok": true})
 		return
@@ -1004,12 +1028,15 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+		petID := mapStr(body, "petId")
 		name := mapStr(body, "petName")
-		if err := a.store.UpdateChildProfile(auth.FamilyID, targetChildID, &name, false, nil, nil); err != nil {
+		finalName, err := a.store.UpdateChildPetName(auth.FamilyID, targetChildID, petID, name)
+		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"ok": true})
+		st, _ := a.store.GetChildState(auth.FamilyID, targetChildID, serverToday())
+		writeJSON(w, 200, map[string]any{"ok": true, "pet_name": finalName, "state": st})
 		return
 	}
 
@@ -1019,12 +1046,9 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
+		petID := mapStr(body, "petId")
 		spID := mapStr(body, "speciesId")
-		var comp *string
-		if spID != "" {
-			comp = &spID
-		}
-		if err := a.store.UpdateChildProfile(auth.FamilyID, targetChildID, nil, true, comp, nil); err != nil {
+		if err := a.store.SetActiveChildPet(auth.FamilyID, targetChildID, petID, spID); err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
@@ -1040,12 +1064,12 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		todayStr := sanitizeDate(mapStr(body, "date"))
-		sp, st, err := a.store.AdoptSpecies(auth.FamilyID, targetChildID, mapStr(body, "speciesId"), mapBool(body, "mystery"), todayStr)
+		sp, pet, st, err := a.store.AdoptSpecies(auth.FamilyID, targetChildID, mapStr(body, "speciesId"), mapBool(body, "mystery"), mapStr(body, "petName"), todayStr)
 		if err != nil {
 			writeJSON(w, 400, map[string]string{"error": err.Error()})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"adopted": sp, "state": st})
+		writeJSON(w, 200, map[string]any{"adopted": sp, "adopted_pet": pet, "state": st})
 		return
 	}
 

@@ -134,6 +134,120 @@ class DexActivity : AppCompatActivity() {
         binding.dexContainer.removeAllViews()
 
         val cols = ResponsiveUi.gridColumns(this, phoneCols = 2, tabletPortCols = 3, tabletLandCols = 4)
+
+        // 1) 我的宠物列表（1:N 独立宠物实例，支持同物种多只及单独改名/设为陪伴）
+        if (st.pets.isNotEmpty()) {
+            binding.dexContainer.addView(TextView(this).apply {
+                text = "🐾 我的宠物（共 ${st.pets.size} 只 · 可分别改名与切换陪伴）"
+                textSize = 15.5f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(0xFF2B2620.toInt())
+                setPadding(0, dp(2), 0, dp(8))
+            })
+            for (rowItems in st.pets.chunked(cols)) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(10) }
+                }
+                for (idx in 0 until cols) {
+                    val pet = rowItems.getOrNull(idx)
+                    if (pet == null) {
+                        row.addView(View(this).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, 1, 1f).apply {
+                                if (idx > 0) marginStart = dp(10)
+                            }
+                        })
+                        continue
+                    }
+                    val sp = st.catalog.find { it.id == pet.speciesId } ?: st.catalog.firstOrNull()
+                    val card = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        setPadding(dp(10), dp(12), dp(10), dp(12))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(if (pet.isActive) 0xFFF2FAF5.toInt() else Color.WHITE)
+                            setStroke(dp(if (pet.isActive) 2 else 1), if (pet.isActive) 0xFF2F6B4F.toInt() else 0xFFEAE2D3.toInt())
+                        }
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            if (idx > 0) marginStart = dp(10)
+                        }
+                    }
+                    val thumb = SpeciesThumbView(this).apply {
+                        if (sp != null) setSpecies(sp, isSilhouette = false) else setMainPet(c.level)
+                        layoutParams = LinearLayout.LayoutParams(dp(96), dp(84))
+                    }
+                    val petTitle = TextView(this).apply {
+                        text = pet.petName.ifBlank { GrowthMeta.defaultPetDisplayName(c.name, sp) }
+                        textSize = 14.5f
+                        setTypeface(null, Typeface.BOLD)
+                        setTextColor(0xFF2B2620.toInt())
+                        setPadding(0, dp(4), 0, 0)
+                    }
+                    val petSub = TextView(this).apply {
+                        val spLabel = sp?.name ?: "小团子"
+                        text = if (pet.adoptedDate.isNotEmpty()) "$spLabel · ${pet.adoptedDate}" else spLabel
+                        textSize = 11.5f
+                        setTextColor(0xFF8A7E6E.toInt())
+                    }
+                    val btnRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            dp(36)
+                        ).apply { topMargin = dp(8) }
+                    }
+                    val activeBtn = Button(this).apply {
+                        textSize = 11.5f
+                        setPadding(dp(4), 0, dp(4), 0)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+                        if (pet.isActive) {
+                            text = "✨ 陪伴中"
+                            isEnabled = false
+                            setBackgroundColor(0xFFE3F2E8.toInt())
+                            setTextColor(0xFF2F6B4F.toInt())
+                        } else {
+                            text = "陪伴我"
+                            setBackgroundColor(0xFF2F6B4F.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performSetCompanion(speciesId = pet.speciesId, petId = pet.id) }
+                        }
+                    }
+                    val renameBtn = Button(this).apply {
+                        text = "✏️ 改名"
+                        textSize = 11.5f
+                        setPadding(dp(6), 0, dp(6), 0)
+                        setBackgroundColor(0xFFF6EFE2.toInt())
+                        setTextColor(0xFF5C5347.toInt())
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.MATCH_PARENT
+                        ).apply { marginStart = dp(6) }
+                        setOnClickListener { showRenamePetDialog(pet, sp, c.name) }
+                    }
+                    btnRow.addView(activeBtn)
+                    btnRow.addView(renameBtn)
+                    card.addView(thumb)
+                    card.addView(petTitle)
+                    card.addView(petSub)
+                    card.addView(btnRow)
+                    row.addView(card)
+                }
+                binding.dexContainer.addView(row)
+            }
+            binding.dexContainer.addView(TextView(this).apply {
+                text = "✨ 宠物图鉴（可重复领养更多可爱伙伴）"
+                textSize = 15.5f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(0xFF2B2620.toInt())
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        }
+
+        // 2) 图鉴物种区（支持领养同物种多只宠物）
         for (rowItems in st.catalog.chunked(cols)) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -152,8 +266,10 @@ class DexActivity : AppCompatActivity() {
                     })
                     continue
                 }
-                val isOwned = st.owned.containsKey(sp.id)
-                val isActive = c.activeCompanion == sp.id
+                val ownedPetsOfSp = st.pets.filter { it.speciesId == sp.id }
+                val isOwned = ownedPetsOfSp.isNotEmpty() || st.owned.containsKey(sp.id)
+                val isActive = ownedPetsOfSp.any { it.isActive } || c.activeCompanion == sp.id
+                val adoptCount = ownedPetsOfSp.size
 
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -181,7 +297,7 @@ class DexActivity : AppCompatActivity() {
                     setPadding(0, dp(4), 0, 0)
                 }
                 val hintTv = TextView(this).apply {
-                    text = if (isOwned) "已拥有 · ${st.owned[sp.id]}" else sp.hint.ifEmpty { "等待孵化" }
+                    text = if (adoptCount > 0) "已领养 $adoptCount 只" else if (isOwned) "已拥有 · ${st.owned[sp.id]}" else sp.hint.ifEmpty { "等待孵化" }
                     textSize = 11.5f
                     setTextColor(if (isOwned) 0xFF2F6B4F.toInt() else 0xFF8A7E6E.toInt())
                 }
@@ -192,29 +308,29 @@ class DexActivity : AppCompatActivity() {
                         dp(38)
                     ).apply { topMargin = dp(8) }
                     when {
-                        isActive -> {
-                            text = "✨ 陪伴中"
-                            isEnabled = false
-                            setBackgroundColor(0xFFE3F2E8.toInt())
-                            setTextColor(0xFF2F6B4F.toInt())
-                        }
-                        isOwned -> {
-                            text = "设为陪伴伙伴"
-                            setBackgroundColor(0xFF2F6B4F.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performSetCompanion(sp.id) }
-                        }
                         c.coupons > 0 -> {
-                            text = "🥚 用 1 枚蛋领养"
+                            text = if (isOwned) "🥚 再领养 1 只" else "🥚 用 1 枚蛋领养"
                             setBackgroundColor(0xFFE8913A.toInt())
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
                         surplus >= 25 -> {
-                            text = "✨ 25 富余成长值兑换"
+                            text = if (isOwned) "✨ 25 富余值再领养" else "✨ 25 富余成长值兑换"
                             setBackgroundColor(0xFFE8913A.toInt())
                             setTextColor(Color.WHITE)
                             setOnClickListener { performAdopt(sp.id, mystery = false) }
+                        }
+                        isActive && st.pets.isEmpty() -> {
+                            text = "✨ 陪伴中"
+                            isEnabled = false
+                            setBackgroundColor(0xFFE3F2E8.toInt())
+                            setTextColor(0xFF2F6B4F.toInt())
+                        }
+                        isOwned && st.pets.isEmpty() -> {
+                            text = "设为陪伴伙伴"
+                            setBackgroundColor(0xFF2F6B4F.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performSetCompanion(speciesId = sp.id, petId = null) }
                         }
                         c.xp < matureXp -> {
                             text = "主宠成熟后可兑换"
@@ -241,6 +357,44 @@ class DexActivity : AppCompatActivity() {
         }
     }
 
+    private fun showRenamePetDialog(pet: ChildPet, sp: SpeciesItem?, childName: String) {
+        val defaultName = GrowthMeta.defaultPetDisplayName(childName, sp)
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(10), dp(18), dp(4))
+        }
+        val input = android.widget.EditText(this).apply {
+            hint = "留空恢复默认：$defaultName（最多 16 字）"
+            setText(pet.petName)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        wrap.addView(input)
+        AlertDialog.Builder(this)
+            .setTitle("给这只「${sp?.name ?: "小伙伴"}」起个名字")
+            .setView(wrap)
+            .setPositiveButton("保存") { _, _ ->
+                val name = input.text.toString().trim().take(16)
+                val payload = JSONObject().put("petId", pet.id).put("petName", name)
+                api.request("PATCH", "/api/child/pet-name", payload) { res ->
+                    if (res.ok) {
+                        hasChangedState = true
+                        setResult(RESULT_OK)
+                        sound.playPat()
+                        res.json?.optJSONObject("state")?.let {
+                            val ns = GrowthMeta.parseChildState(it)
+                            state = ns
+                            renderDex(ns)
+                            renderPolaroids(ns)
+                        } ?: loadState()
+                    } else {
+                        Toast.makeText(this, res.error ?: "改名失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun performAdopt(speciesId: String?, mystery: Boolean) {
         val payload = JSONObject().apply {
             put("mystery", mystery)
@@ -252,7 +406,9 @@ class DexActivity : AppCompatActivity() {
                 hasChangedState = true
                 setResult(RESULT_OK)
                 sound.playWin()
-                val adoptedName = res.json.optJSONObject("adopted")?.optString("name", "新伙伴") ?: "新伙伴"
+                val adoptedName = res.json.optJSONObject("adopted_pet")?.optString("pet_name")?.ifBlank { null }
+                    ?: res.json.optJSONObject("adopted")?.optString("name", "新伙伴")
+                    ?: "新伙伴"
                 res.json.optJSONObject("state")?.let {
                     val ns = GrowthMeta.parseChildState(it)
                     state = ns
@@ -262,7 +418,7 @@ class DexActivity : AppCompatActivity() {
                 sound.speak("恭喜你，领养了新伙伴${adoptedName}")
                 AlertDialog.Builder(this)
                     .setTitle("🎉 新伙伴来啦！")
-                    .setMessage("欢迎「$adoptedName」加入你的图鉴，现在可以带它出来陪你一起成长啦！")
+                    .setMessage("欢迎「$adoptedName」加入你的宠物大家庭，可以在「我的宠物」里为它单独改名或设为陪伴伙伴！")
                     .setPositiveButton("太棒啦！", null)
                     .show()
             } else {
@@ -272,13 +428,20 @@ class DexActivity : AppCompatActivity() {
         }
     }
 
-    private fun performSetCompanion(speciesId: String) {
-        api.request("POST", "/api/child/companion", JSONObject().put("speciesId", speciesId)) { res ->
+    private fun performSetCompanion(speciesId: String, petId: String?) {
+        val payload = JSONObject().put("speciesId", speciesId)
+        if (!petId.isNullOrBlank()) payload.put("petId", petId)
+        api.request("POST", "/api/child/companion", payload) { res ->
             if (res.ok) {
                 hasChangedState = true
                 setResult(RESULT_OK)
                 sound.playPat()
-                loadState()
+                res.json?.optJSONObject("state")?.let {
+                    val ns = GrowthMeta.parseChildState(it)
+                    state = ns
+                    renderDex(ns)
+                    renderPolaroids(ns)
+                } ?: loadState()
                 Toast.makeText(this, "已更换陪伴伙伴！", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, res.error ?: "设置失败", Toast.LENGTH_SHORT).show()

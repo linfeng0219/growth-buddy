@@ -192,10 +192,8 @@ func (s *Store) initSchema() error {
 			password_hash TEXT NOT NULL DEFAULT '',
 			password_plain TEXT NOT NULL DEFAULT '',
 			pin TEXT NOT NULL DEFAULT '',
-			pet_name TEXT NOT NULL DEFAULT '',
 			xp INTEGER NOT NULL DEFAULT 0,
 			coupons INTEGER NOT NULL DEFAULT 0,
-			active_companion TEXT,
 			muted INTEGER NOT NULL DEFAULT 0,
 			pet_health TEXT NOT NULL DEFAULT 'normal',
 			heal_progress INTEGER NOT NULL DEFAULT 0,
@@ -206,6 +204,17 @@ func (s *Store) initSchema() error {
 			adventure_win_xp INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS child_pets (
+			id TEXT PRIMARY KEY,
+			child_id TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
+			species_id TEXT NOT NULL DEFAULT 'b1',
+			pet_name TEXT NOT NULL DEFAULT '',
+			is_active INTEGER NOT NULL DEFAULT 0,
+			adopted_date TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_child_pets_child ON child_pets(child_id, is_active DESC, created_at ASC);
 
 		CREATE TABLE IF NOT EXISTS tasks (
 			id TEXT PRIMARY KEY,
@@ -476,7 +485,7 @@ func (s *Store) initSchema() error {
 		return err
 	}
 
-	return s.db.WithLock(func(tx *Tx) error {
+	if err := s.db.WithLock(func(tx *Tx) error {
 		var emptyIDs []string
 		_ = tx.Query("SELECT id FROM children WHERE friend_code = ''", func(r SQLiteRow) error {
 			emptyIDs = append(emptyIDs, r.String(0))
@@ -503,6 +512,9 @@ func (s *Store) initSchema() error {
 		for _, fid := range famIDs {
 			_ = s.syncFamilyGroupLocked(tx, fid)
 		}
+		if err := s.migrateChildPetsLocked(tx); err != nil {
+			return err
+		}
 		var count int
 		_ = tx.QueryRow("SELECT COUNT(*) FROM admins", func(r SQLiteRow) error {
 			count = r.Int(0)
@@ -524,7 +536,240 @@ func (s *Store) initSchema() error {
 			return err
 		}
 		return nil
+	}); err != nil {
+		return err
+	}
+	// 如果旧表存在直接挂载在 children 上的宠物字段，在迁移至 child_pets 后安全移除
+	for _, dropCol := range []string{"pet_name", "active_companion"} {
+		hasCol := false
+		_ = s.db.WithLock(func(tx *Tx) error {
+			return tx.Query("PRAGMA table_info(children)", func(r SQLiteRow) error {
+				if r.String(1) == dropCol {
+					hasCol = true
+				}
+				return nil
+			})
+		})
+		if hasCol {
+			_ = s.db.ExecRaw("ALTER TABLE children DROP COLUMN " + dropCol)
+		}
+	}
+	return nil
+}
+
+func formatDefaultPetName(childName, speciesName string, dupIndex int) string {
+	sp := strings.TrimSpace(speciesName)
+	if sp == "" {
+		sp = "小团子"
+	}
+	cn := strings.TrimSpace(childName)
+	base := sp
+	if cn != "" {
+		base = cn + "的" + sp
+	}
+	if dupIndex > 1 {
+		base = fmt.Sprintf("%s%d", base, dupIndex)
+	}
+	return truncateRunes(base, 16)
+}
+
+func (s *Store) speciesNameLocked(tx *Tx, familyID, speciesID string) string {
+	for _, b := range BuiltinSpecies {
+		if b.ID == speciesID {
+			return b.Name
+		}
+	}
+	var name string
+	if familyID != "" && speciesID != "" {
+		_ = tx.QueryRow("SELECT name FROM custom_species WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			name = r.String(0)
+			return nil
+		}, speciesID, familyID)
+	}
+	if strings.TrimSpace(name) == "" {
+		return "小团子"
+	}
+	return strings.TrimSpace(name)
+}
+
+func (s *Store) migrateChildPetsLocked(tx *Tx) error {
+	hasPetNameCol := false
+	hasActiveCompCol := false
+	_ = tx.Query("PRAGMA table_info(children)", func(r SQLiteRow) error {
+		switch r.String(1) {
+		case "pet_name":
+			hasPetNameCol = true
+		case "active_companion":
+			hasActiveCompCol = true
+		}
+		return nil
 	})
+
+	type migChild struct {
+		id, famID, name, petName string
+		activeComp               *string
+		createdAt                int64
+	}
+	kids := make([]migChild, 0)
+	querySQL := "SELECT id, family_id, name, '', NULL, created_at FROM children ORDER BY created_at ASC"
+	if hasPetNameCol && hasActiveCompCol {
+		querySQL = "SELECT id, family_id, name, pet_name, active_companion, created_at FROM children ORDER BY created_at ASC"
+	} else if hasPetNameCol {
+		querySQL = "SELECT id, family_id, name, pet_name, NULL, created_at FROM children ORDER BY created_at ASC"
+	} else if hasActiveCompCol {
+		querySQL = "SELECT id, family_id, name, '', active_companion, created_at FROM children ORDER BY created_at ASC"
+	}
+	_ = tx.Query(querySQL, func(r SQLiteRow) error {
+		kids = append(kids, migChild{
+			id:         r.String(0),
+			famID:      r.String(1),
+			name:       r.String(2),
+			petName:    strings.TrimSpace(r.String(3)),
+			activeComp: r.NullableString(4),
+			createdAt:  r.Int64(5),
+		})
+		return nil
+	})
+
+	today := serverToday()
+	for _, k := range kids {
+		var existing int
+		_ = tx.QueryRow("SELECT COUNT(*) FROM child_pets WHERE child_id = ?", func(r SQLiteRow) error {
+			existing = r.Int(0)
+			return nil
+		}, k.id)
+		if existing > 0 {
+			continue
+		}
+
+		type ownedRow struct {
+			speciesID   string
+			adoptedDate string
+		}
+		ownedRows := make([]ownedRow, 0)
+		_ = tx.Query("SELECT species_id, adopted_date FROM child_owned_species WHERE child_id = ? ORDER BY adopted_date ASC", func(r SQLiteRow) error {
+			ownedRows = append(ownedRows, ownedRow{speciesID: r.String(0), adoptedDate: r.String(1)})
+			return nil
+		}, k.id)
+
+		hasStarter := false
+		for _, ow := range ownedRows {
+			if ow.speciesID == "b1" {
+				hasStarter = true
+				break
+			}
+		}
+		activeSpecies := ""
+		if k.activeComp != nil {
+			activeSpecies = strings.TrimSpace(*k.activeComp)
+		}
+		if !hasStarter {
+			starterDate := today
+			if k.createdAt > 0 {
+				starterDate = time.UnixMilli(k.createdAt).Format("2006-01-02")
+			}
+			ownedRows = append([]ownedRow{{speciesID: "b1", adoptedDate: starterDate}}, ownedRows...)
+		}
+		if activeSpecies == "" {
+			activeSpecies = ownedRows[0].speciesID
+		}
+
+		activated := false
+		for idx, ow := range ownedRows {
+			isAct := 0
+			if !activated && ow.speciesID == activeSpecies {
+				isAct = 1
+				activated = true
+			} else if !activated && idx == len(ownedRows)-1 {
+				isAct = 1
+				activated = true
+			}
+			pName := ""
+			if isAct == 1 && k.petName != "" {
+				pName = k.petName
+			} else {
+				pName = formatDefaultPetName(k.name, s.speciesNameLocked(tx, k.famID, ow.speciesID), 1)
+			}
+			cAt := k.createdAt
+			if cAt <= 0 {
+				cAt = nowMs()
+			}
+			if _, err := tx.Exec(
+				"INSERT INTO child_pets (id, child_id, species_id, pet_name, is_active, adopted_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				GenID("pet_"), k.id, ow.speciesID, pName, isAct, ow.adoptedDate, cAt+int64(idx),
+			); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureStarterPetLocked(tx *Tx, familyID, childID, childName, todayStr string) (ChildPetDTO, error) {
+	if todayStr == "" {
+		todayStr = serverToday()
+	}
+	pet := ChildPetDTO{
+		ID:          GenID("pet_"),
+		ChildID:     childID,
+		SpeciesID:   "b1",
+		PetName:     formatDefaultPetName(childName, s.speciesNameLocked(tx, familyID, "b1"), 1),
+		IsActive:    true,
+		AdoptedDate: todayStr,
+		CreatedAt:   nowMs(),
+	}
+	_, err := tx.Exec(
+		"INSERT INTO child_pets (id, child_id, species_id, pet_name, is_active, adopted_date, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+		pet.ID, pet.ChildID, pet.SpeciesID, pet.PetName, pet.AdoptedDate, pet.CreatedAt,
+	)
+	return pet, err
+}
+
+func (s *Store) listChildPetsLocked(tx *Tx, familyID, childID, childName string) ([]ChildPetDTO, ChildPetDTO) {
+	pets := make([]ChildPetDTO, 0)
+	_ = tx.Query(
+		"SELECT id, child_id, species_id, pet_name, is_active, adopted_date, created_at FROM child_pets WHERE child_id = ? ORDER BY created_at ASC",
+		func(r SQLiteRow) error {
+			spID := strings.TrimSpace(r.String(2))
+			if spID == "" {
+				spID = "b1"
+			}
+			pName := strings.TrimSpace(r.String(3))
+			if pName == "" {
+				pName = formatDefaultPetName(childName, s.speciesNameLocked(tx, familyID, spID), 1)
+			}
+			pets = append(pets, ChildPetDTO{
+				ID:          r.String(0),
+				ChildID:     r.String(1),
+				SpeciesID:   spID,
+				PetName:     pName,
+				IsActive:    r.Int(4) != 0,
+				AdoptedDate: r.String(5),
+				CreatedAt:   r.Int64(6),
+			})
+			return nil
+		}, childID,
+	)
+	if len(pets) == 0 {
+		starter, err := s.ensureStarterPetLocked(tx, familyID, childID, childName, serverToday())
+		if err == nil {
+			return []ChildPetDTO{starter}, starter
+		}
+		return pets, starter
+	}
+	activeIdx := -1
+	for i := range pets {
+		if pets[i].IsActive {
+			activeIdx = i
+			break
+		}
+	}
+	if activeIdx < 0 {
+		activeIdx = 0
+		pets[0].IsActive = true
+		_, _ = tx.Exec("UPDATE child_pets SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE child_id = ?", pets[0].ID, childID)
+	}
+	return pets, pets[activeIdx]
 }
 
 func (s *Store) ensureColumn(table, col, ddl string) error {
@@ -698,12 +943,23 @@ type PolaroidDTO struct {
 	Note      string `json:"note"`
 }
 
+type ChildPetDTO struct {
+	ID          string `json:"id"`
+	ChildID     string `json:"child_id"`
+	SpeciesID   string `json:"species_id"`
+	PetName     string `json:"pet_name"`
+	IsActive    bool   `json:"is_active"`
+	AdoptedDate string `json:"adopted_date"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
 type ChildSummaryDTO struct {
 	ID               string  `json:"id"`
 	Name             string  `json:"name"`
 	AvatarIdx        int     `json:"avatar_idx"`
 	AvatarURL        string  `json:"avatar_url"`
 	PetName          string  `json:"pet_name"`
+	ActivePetID      string  `json:"active_pet_id"`
 	XP               int     `json:"xp"`
 	Coupons          int     `json:"coupons"`
 	ActiveCompanion  *string `json:"active_companion"`
@@ -729,6 +985,7 @@ type ChildStateDTO struct {
 	TodayDoneIDs []string          `json:"today_done_ids"`
 	Logs         []CheckinLogDTO   `json:"logs"`
 	Owned        map[string]string `json:"owned"`
+	Pets         []ChildPetDTO     `json:"pets"`
 	Catalog      []Species         `json:"catalog"`
 	Polaroids    []PolaroidDTO     `json:"polaroids"`
 	Today        string            `json:"today"`
@@ -842,9 +1099,12 @@ func (s *Store) RegisterFamily(in RegisterFamilyInput) (*RegisterFamilyResult, e
 			childPassPlain = in.ChildPassword
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, friend_code, created_at) VALUES (?, ?, ?, 0, ?, ?, ?, '', '', 0, 0, ?, ?)",
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, xp, coupons, friend_code, created_at) VALUES (?, ?, ?, 0, ?, ?, ?, '', 0, 0, ?, ?)",
 			childID, familyID, firstChildName, cleanChildUser, childPassHash, childPassPlain, s.uniqueFriendCodeLocked(tx), now,
 		); err != nil {
+			return err
+		}
+		if _, err := s.ensureStarterPetLocked(tx, familyID, childID, firstChildName, ""); err != nil {
 			return err
 		}
 
@@ -1068,35 +1328,33 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	s.syncChildHealthLocked(tx, childID, todayStr)
 	var child ChildSummaryDTO
 	err := tx.QueryRow(`
-		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, pet_name, xp, coupons, active_companion, muted, pin, pet_health, heal_progress, age, quiz_difficulty, adventure_win_date, adventure_win_xp
+		SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, xp, coupons, muted, pin, pet_health, heal_progress, age, quiz_difficulty, adventure_win_date, adventure_win_xp
 		FROM children WHERE id = ? AND family_id = ?
 	`, func(r SQLiteRow) error {
 		cid := r.String(0)
-		h := r.String(11)
+		h := r.String(9)
 		if h == "" {
 			h = "normal"
 		}
-		advDate := r.String(15)
+		advDate := r.String(13)
 		advXP := 0
 		if advDate == todayStr {
-			advXP = r.Int(16)
+			advXP = r.Int(14)
 		}
 		child = ChildSummaryDTO{
 			ID:               cid,
 			Name:             r.String(1),
 			AvatarIdx:        clampAvatarIdx(r.Int(2)),
 			AvatarURL:        avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-			PetName:          r.String(5),
-			XP:               r.Int(6),
-			Coupons:          r.Int(7),
-			ActiveCompanion:  r.NullableString(8),
-			Muted:            r.Int(9) != 0,
-			HasPin:           r.String(10) != "",
+			XP:               r.Int(5),
+			Coupons:          r.Int(6),
+			Muted:            r.Int(7) != 0,
+			HasPin:           r.String(8) != "",
 			PetHealth:        h,
-			HealProgress:     r.Int(12),
+			HealProgress:     r.Int(10),
 			HealTarget:       healTargetForHealth(h),
-			Age:              NormalizeAge(r.Int(13)),
-			QuizDifficulty:   NormalizeDifficulty(r.String(14)),
+			Age:              NormalizeAge(r.Int(11)),
+			QuizDifficulty:   NormalizeDifficulty(r.String(12)),
 			AdventureXPToday: advXP,
 			AdventureXPLimit: DailyAdventureXPLimit,
 		}
@@ -1105,6 +1363,11 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	if err != nil {
 		return nil, err
 	}
+	pets, activePet := s.listChildPetsLocked(tx, familyID, childID, child.Name)
+	child.ActivePetID = activePet.ID
+	child.PetName = activePet.PetName
+	spRef := activePet.SpeciesID
+	child.ActiveCompanion = &spRef
 	var unreadLetters int
 	_ = tx.QueryRow(
 		"SELECT COUNT(*) FROM family_letters WHERE child_id = ? AND sender_role = 'parent' AND is_read = 0",
@@ -1190,10 +1453,11 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 	}, childID)
 
 	owned := make(map[string]string)
-	_ = tx.Query("SELECT species_id, adopted_date FROM child_owned_species WHERE child_id = ?", func(r SQLiteRow) error {
-		owned[r.String(0)] = r.String(1)
-		return nil
-	}, childID)
+	for _, p := range pets {
+		if _, exists := owned[p.SpeciesID]; !exists {
+			owned[p.SpeciesID] = p.AdoptedDate
+		}
+	}
 
 	catalog, err := s.getCatalogForChildLocked(tx, familyID, childID)
 	if err != nil {
@@ -1232,6 +1496,7 @@ func (s *Store) getChildStateLocked(tx *Tx, familyID, childID, todayStr string) 
 		TodayDoneIDs: todayDone,
 		Logs:         logs,
 		Owned:        owned,
+		Pets:         pets,
 		Catalog:      catalog,
 		Polaroids:    polaroids,
 		Today:        todayStr,
@@ -1695,27 +1960,14 @@ func (s *Store) GetParentCheckinLogs(familyID, childID, period, dateStr string) 
 
 func (s *Store) UpdateChildProfile(familyID, childID string, petName *string, activeCompSet bool, activeComp *string, muted *bool) error {
 	return s.db.WithTx(func(tx *Tx) error {
-		var curPet string
-		var curComp *string
+		var childName string
 		var curMuted int
-		if err := tx.QueryRow("SELECT pet_name, active_companion, muted FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			curPet = r.String(0)
-			curComp = r.NullableString(1)
-			curMuted = r.Int(2)
+		if err := tx.QueryRow("SELECT name, muted FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			childName = r.String(0)
+			curMuted = r.Int(1)
 			return nil
 		}, childID, familyID); err != nil {
 			return ErrNotFound
-		}
-		if petName != nil {
-			curPet = truncateRunes(strings.TrimSpace(*petName), 12)
-		}
-		if activeCompSet {
-			if activeComp != nil && strings.TrimSpace(*activeComp) != "" {
-				v := strings.TrimSpace(*activeComp)
-				curComp = &v
-			} else {
-				curComp = nil
-			}
 		}
 		if muted != nil {
 			if *muted {
@@ -1723,21 +1975,119 @@ func (s *Store) UpdateChildProfile(familyID, childID string, petName *string, ac
 			} else {
 				curMuted = 0
 			}
+			if _, err := tx.Exec("UPDATE children SET muted = ? WHERE id = ? AND family_id = ?", curMuted, childID, familyID); err != nil {
+				return err
+			}
 		}
-		_, err := tx.Exec("UPDATE children SET pet_name = ?, active_companion = ?, muted = ? WHERE id = ? AND family_id = ?",
-			curPet, curComp, curMuted, childID, familyID)
-		return err
+		if activeCompSet && activeComp != nil && strings.TrimSpace(*activeComp) != "" {
+			if err := s.setActiveChildPetLocked(tx, familyID, childID, childName, "", strings.TrimSpace(*activeComp)); err != nil {
+				return err
+			}
+		}
+		if petName != nil {
+			if _, err := s.updateChildPetNameLocked(tx, familyID, childID, childName, "", *petName); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
-func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, todayStr string) (*Species, *ChildStateDTO, error) {
+func (s *Store) updateChildPetNameLocked(tx *Tx, familyID, childID, childName, petID, petName string) (string, error) {
+	pets, activePet := s.listChildPetsLocked(tx, familyID, childID, childName)
+	target := activePet
+	if cleanPetID := strings.TrimSpace(petID); cleanPetID != "" {
+		found := false
+		for _, p := range pets {
+			if p.ID == cleanPetID {
+				target = p
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", errors.New("未找到对应的宠物档案")
+		}
+	}
+	finalName := truncateRunes(strings.TrimSpace(petName), 16)
+	if finalName == "" {
+		finalName = formatDefaultPetName(childName, s.speciesNameLocked(tx, familyID, target.SpeciesID), 1)
+	}
+	if _, err := tx.Exec("UPDATE child_pets SET pet_name = ? WHERE id = ? AND child_id = ?", finalName, target.ID, childID); err != nil {
+		return "", err
+	}
+	return finalName, nil
+}
+
+func (s *Store) UpdateChildPetName(familyID, childID, petID, petName string) (string, error) {
+	var finalName string
+	err := s.db.WithTx(func(tx *Tx) error {
+		var childName string
+		if err := tx.QueryRow("SELECT name FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			childName = r.String(0)
+			return nil
+		}, childID, familyID); err != nil {
+			return ErrNotFound
+		}
+		var e error
+		finalName, e = s.updateChildPetNameLocked(tx, familyID, childID, childName, petID, petName)
+		return e
+	})
+	return finalName, err
+}
+
+func (s *Store) setActiveChildPetLocked(tx *Tx, familyID, childID, childName, petID, speciesID string) error {
+	pets, _ := s.listChildPetsLocked(tx, familyID, childID, childName)
+	var targetID string
+	if cleanPetID := strings.TrimSpace(petID); cleanPetID != "" {
+		for _, p := range pets {
+			if p.ID == cleanPetID {
+				targetID = p.ID
+				break
+			}
+		}
+	} else if cleanSpID := strings.TrimSpace(speciesID); cleanSpID != "" {
+		for _, p := range pets {
+			if p.SpeciesID == cleanSpID {
+				targetID = p.ID
+				break
+			}
+		}
+	}
+	if targetID == "" {
+		return errors.New("未找到已领养的对应宠物")
+	}
+	_, err := tx.Exec("UPDATE child_pets SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END WHERE child_id = ?", targetID, childID)
+	return err
+}
+
+func (s *Store) SetActiveChildPet(familyID, childID, petID, speciesID string) error {
+	return s.db.WithTx(func(tx *Tx) error {
+		var childName string
+		if err := tx.QueryRow("SELECT name FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			childName = r.String(0)
+			return nil
+		}, childID, familyID); err != nil {
+			return ErrNotFound
+		}
+		return s.setActiveChildPetLocked(tx, familyID, childID, childName, petID, speciesID)
+	})
+}
+
+func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, petName, todayStr string) (*Species, *ChildPetDTO, *ChildStateDTO, error) {
 	var adopted *Species
+	var adoptedPet *ChildPetDTO
 	var st *ChildStateDTO
+	if todayStr == "" {
+		todayStr = serverToday()
+	}
 	err := s.db.WithTx(func(tx *Tx) error {
 		var xp, coupons int
-		if err := tx.QueryRow("SELECT xp, coupons FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			xp = r.Int(0)
-			coupons = r.Int(1)
+		var childName string
+		if err := tx.QueryRow("SELECT name, xp, coupons FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			childName = r.String(0)
+			xp = r.Int(1)
+			coupons = r.Int(2)
 			return nil
 		}, childID, familyID); err != nil {
 			return errors.New("孩子档案不存在")
@@ -1762,25 +2112,29 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 		if err != nil {
 			return err
 		}
-		owned := make(map[string]bool)
-		_ = tx.Query("SELECT species_id FROM child_owned_species WHERE child_id = ?", func(r SQLiteRow) error {
-			owned[r.String(0)] = true
-			return nil
-		}, childID)
+		pets, _ := s.listChildPetsLocked(tx, familyID, childID, childName)
+		owned := make(map[string]int)
+		for _, p := range pets {
+			owned[p.SpeciesID]++
+		}
 
 		var target *Species
 		if mystery {
 			unowned := make([]Species, 0)
 			for _, sp := range catalog {
-				if !owned[sp.ID] {
+				if owned[sp.ID] == 0 {
 					unowned = append(unowned, sp)
 				}
 			}
-			if len(unowned) == 0 {
-				return errors.New("图鉴已经全部集齐啦！")
+			if len(unowned) > 0 {
+				pick := unowned[rand.Intn(len(unowned))]
+				target = &pick
+			} else if len(catalog) > 0 {
+				pick := catalog[rand.Intn(len(catalog))]
+				target = &pick
+			} else {
+				return errors.New("暂无可领养的图鉴宠物")
 			}
-			pick := unowned[rand.Intn(len(unowned))]
-			target = &pick
 		} else {
 			for i := range catalog {
 				if catalog[i].ID == speciesID {
@@ -1791,28 +2145,42 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 			if target == nil {
 				return errors.New("图鉴伙伴不存在")
 			}
-			if owned[target.ID] {
-				return errors.New("已经领养过这位伙伴啦")
-			}
 		}
 
 		if useCoupon {
-			if _, err := tx.Exec("UPDATE children SET coupons = coupons - 1, active_companion = COALESCE(active_companion, ?) WHERE id = ?", target.ID, childID); err != nil {
+			if _, err := tx.Exec("UPDATE children SET coupons = coupons - 1 WHERE id = ?", childID); err != nil {
 				return err
 			}
 		} else {
-			if _, err := tx.Exec("UPDATE children SET xp = MAX(?, xp - ?), active_companion = COALESCE(active_companion, ?) WHERE id = ?", matureXP, eggCost, target.ID, childID); err != nil {
+			if _, err := tx.Exec("UPDATE children SET xp = MAX(?, xp - ?) WHERE id = ?", matureXP, eggCost, childID); err != nil {
 				return err
 			}
 		}
-		if _, err := tx.Exec("INSERT INTO child_owned_species (child_id, species_id, adopted_date) VALUES (?, ?, ?)", childID, target.ID, todayStr); err != nil {
+		finalName := truncateRunes(strings.TrimSpace(petName), 16)
+		if finalName == "" {
+			finalName = formatDefaultPetName(childName, target.Name, owned[target.ID]+1)
+		}
+		newPet := ChildPetDTO{
+			ID:          GenID("pet_"),
+			ChildID:     childID,
+			SpeciesID:   target.ID,
+			PetName:     finalName,
+			IsActive:    false,
+			AdoptedDate: todayStr,
+			CreatedAt:   nowMs(),
+		}
+		if _, err := tx.Exec(
+			"INSERT INTO child_pets (id, child_id, species_id, pet_name, is_active, adopted_date, created_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
+			newPet.ID, newPet.ChildID, newPet.SpeciesID, newPet.PetName, newPet.AdoptedDate, newPet.CreatedAt,
+		); err != nil {
 			return err
 		}
 		adopted = target
+		adoptedPet = &newPet
 		st, err = s.getChildStateLocked(tx, familyID, childID, todayStr)
 		return err
 	})
-	return adopted, st, err
+	return adopted, adoptedPet, st, err
 }
 
 func (s *Store) UpdateParentAvatar(familyID, parentID string, avatarIdx *int, avatarData *string) (*ParentDTO, error) {
@@ -1933,11 +2301,10 @@ func (s *Store) TakePolaroid(familyID, childID string, avatarIdx int, noteText, 
 	var st *ChildStateDTO
 	err := s.db.WithTx(func(tx *Tx) error {
 		var xp, kidAvatarIdx int
-		var kidAvatarData string
-		var activeComp *string
-		if err := tx.QueryRow("SELECT xp, active_companion, avatar_idx, avatar_data FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
-			xp = r.Int(0)
-			activeComp = r.NullableString(1)
+		var childName, kidAvatarData string
+		if err := tx.QueryRow("SELECT name, xp, avatar_idx, avatar_data FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+			childName = r.String(0)
+			xp = r.Int(1)
 			kidAvatarIdx = clampAvatarIdx(r.Int(2))
 			kidAvatarData = r.String(3)
 			return nil
@@ -1951,9 +2318,10 @@ func (s *Store) TakePolaroid(familyID, childID string, avatarIdx int, noteText, 
 		}, childID, todayStr); err == nil && dup != "" {
 			return errors.New("今天的合影已经拍过啦，明天再来拍一张吧！")
 		}
+		_, activePet := s.listChildPetsLocked(tx, familyID, childID, childName)
 		petRef := "main"
-		if activeComp != nil && *activeComp != "" {
-			petRef = *activeComp
+		if activePet.SpeciesID != "" {
+			petRef = activePet.SpeciesID
 		}
 		id := GenID("pho_")
 		note := truncateRunes(strings.TrimSpace(noteText), 24)
@@ -2062,11 +2430,10 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 		}, familyID)
 
 		type rawKid struct {
-			id, name, username, passHash, pin, petName, petHealth, quizDiff string
-			avatarIdx, xp, coupons, healProgress, age                       int
-			hasAvatarData                                                   bool
-			avatarUpdatedAt                                                 int64
-			activeComp                                                      *string
+			id, name, username, passHash, pin, petHealth, quizDiff string
+			avatarIdx, xp, coupons, healProgress, age              int
+			hasAvatarData                                          bool
+			avatarUpdatedAt                                        int64
 		}
 		kidIDs := make([]string, 0)
 		_ = tx.Query("SELECT id FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
@@ -2077,8 +2444,8 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 			s.syncChildHealthLocked(tx, kidID, todayStr)
 		}
 		rawKids := make([]rawKid, 0)
-		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, pet_name, xp, coupons, active_companion, pet_health, heal_progress, age, quiz_difficulty FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
-			h := r.String(12)
+		_ = tx.Query("SELECT id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, pin, xp, coupons, pet_health, heal_progress, age, quiz_difficulty FROM children WHERE family_id = ? ORDER BY created_at ASC", func(r SQLiteRow) error {
+			h := r.String(10)
 			if h == "" {
 				h = "normal"
 			}
@@ -2086,9 +2453,9 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				id: r.String(0), name: r.String(1), avatarIdx: clampAvatarIdx(r.Int(2)),
 				hasAvatarData: r.Int(3) != 0, avatarUpdatedAt: r.Int64(4),
 				username: r.String(5), passHash: r.String(6), pin: r.String(7),
-				petName: r.String(8), xp: r.Int(9), coupons: r.Int(10), activeComp: r.NullableString(11),
-				petHealth: h, healProgress: r.Int(13),
-				age: NormalizeAge(r.Int(14)), quizDiff: NormalizeDifficulty(r.String(15)),
+				xp: r.Int(8), coupons: r.Int(9),
+				petHealth: h, healProgress: r.Int(11),
+				age: NormalizeAge(r.Int(12)), quizDiff: NormalizeDifficulty(r.String(13)),
 			})
 			return nil
 		}, familyID)
@@ -2119,15 +2486,13 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				return nil
 			}, c.id)
 
-			var totalDays, ownedCount int
+			var totalDays int
 			_ = tx.QueryRow("SELECT COUNT(DISTINCT checkin_date) FROM checkin_logs WHERE child_id = ?", func(r SQLiteRow) error {
 				totalDays = r.Int(0)
 				return nil
 			}, c.id)
-			_ = tx.QueryRow("SELECT COUNT(*) FROM child_owned_species WHERE child_id = ?", func(r SQLiteRow) error {
-				ownedCount = r.Int(0)
-				return nil
-			}, c.id)
+			pets, activePet := s.listChildPetsLocked(tx, familyID, c.id, c.name)
+			activeSp := activePet.SpeciesID
 
 			childrenEnriched = append(childrenEnriched, map[string]any{
 				"id":               c.id,
@@ -2137,7 +2502,9 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				"username":         c.username,
 				"has_password":     c.passHash != "",
 				"has_pin":          c.pin != "",
-				"pet_name":         c.petName,
+				"pet_name":         activePet.PetName,
+				"active_pet_id":    activePet.ID,
+				"pets":             pets,
 				"xp":               c.xp,
 				"level":            LevelForXP(c.xp),
 				"coupons":          c.coupons,
@@ -2146,12 +2513,12 @@ func (s *Store) GetParentOverview(familyID, parentID, todayStr string) (map[stri
 				"heal_target":      healTargetForHealth(c.petHealth),
 				"age":              c.age,
 				"quiz_difficulty":  c.quizDiff,
-				"active_companion": c.activeComp,
+				"active_companion": &activeSp,
 				"tasks":            myTasks,
 				"today_done_ids":   todayDone,
 				"recent_logs":      recentLogs,
 				"total_days":       totalDays,
-				"owned_count":      ownedCount,
+				"owned_count":      len(pets),
 			})
 		}
 
@@ -2433,9 +2800,12 @@ func (s *Store) CreateChild(familyID, name string, avatarIdx int, pin, username,
 			passPlain = password
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, pet_name, xp, coupons, age, quiz_difficulty, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 0, 0, ?, ?, ?, ?)",
+			"INSERT INTO children (id, family_id, name, avatar_idx, username, password_hash, password_plain, pin, xp, coupons, age, quiz_difficulty, friend_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
 			id, familyID, cleanName, clampAvatarIdx(avatarIdx), cleanUser, passHash, passPlain, cleanPin, normAge, normDiff, s.uniqueFriendCodeLocked(tx), nowMs(),
 		); err != nil {
+			return err
+		}
+		if _, err := s.ensureStarterPetLocked(tx, familyID, id, cleanName, ""); err != nil {
 			return err
 		}
 		res = map[string]any{"id": id, "name": cleanName, "username": cleanUser, "age": normAge, "quiz_difficulty": normDiff}
@@ -2459,10 +2829,10 @@ type UpdateChildInput struct {
 }
 
 func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChildInput) (map[string]any, error) {
-	var curName, curUser, curPassHash, curPassPlain, curPin, curPet, curAvatarData, curDiff string
+	var curName, curUser, curPassHash, curPassPlain, curPin, curAvatarData, curDiff string
 	var curAvatar, curAge int
 	var curAvatarUpdated int64
-	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, password_plain, pin, pet_name, age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
+	if err := tx.QueryRow("SELECT name, avatar_idx, avatar_data, avatar_updated_at, username, password_hash, password_plain, pin, age, quiz_difficulty FROM children WHERE id = ? AND family_id = ?", func(r SQLiteRow) error {
 		curName = r.String(0)
 		curAvatar = clampAvatarIdx(r.Int(1))
 		curAvatarData = r.String(2)
@@ -2471,9 +2841,8 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 		curPassHash = r.String(5)
 		curPassPlain = r.String(6)
 		curPin = r.String(7)
-		curPet = r.String(8)
-		curAge = NormalizeAge(r.Int(9))
-		curDiff = NormalizeDifficulty(r.String(10))
+		curAge = NormalizeAge(r.Int(8))
+		curDiff = NormalizeDifficulty(r.String(9))
 		return nil
 	}, childID, familyID); err != nil {
 		return nil, ErrNotFound
@@ -2503,7 +2872,9 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 		curPin = truncateRunes(strings.TrimSpace(*in.Pin), 6)
 	}
 	if in.PetName != nil {
-		curPet = truncateRunes(strings.TrimSpace(*in.PetName), 12)
+		if _, err := s.updateChildPetNameLocked(tx, familyID, childID, curName, "", *in.PetName); err != nil {
+			return nil, err
+		}
 	}
 	if in.Username != nil {
 		u, err := normalizeChildUsername(*in.Username)
@@ -2545,8 +2916,8 @@ func (s *Store) updateChildLocked(tx *Tx, familyID, childID string, in UpdateChi
 	}
 
 	if _, err := tx.Exec(
-		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, password_plain = ?, pin = ?, pet_name = ?, age = ?, quiz_difficulty = ? WHERE id = ? AND family_id = ?",
-		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPassPlain, curPin, curPet, curAge, curDiff, childID, familyID,
+		"UPDATE children SET name = ?, avatar_idx = ?, avatar_data = ?, avatar_updated_at = ?, username = ?, password_hash = ?, password_plain = ?, pin = ?, age = ?, quiz_difficulty = ? WHERE id = ? AND family_id = ?",
+		curName, curAvatar, curAvatarData, curAvatarUpdated, curUser, curPassHash, curPassPlain, curPin, curAge, curDiff, childID, familyID,
 	); err != nil {
 		return nil, err
 	}
@@ -2938,7 +3309,16 @@ func (s *Store) DeleteCustomSpecies(familyID, speciesID string) error {
 			return ErrNotFound
 		}
 		_, _ = tx.Exec("DELETE FROM child_owned_species WHERE species_id = ?", speciesID)
-		_, _ = tx.Exec("UPDATE children SET active_companion = NULL WHERE family_id = ? AND active_companion = ?", familyID, speciesID)
+		_, _ = tx.Exec("DELETE FROM child_pets WHERE species_id = ? AND child_id IN (SELECT id FROM children WHERE family_id = ?)", speciesID, familyID)
+		type famKid struct{ id, name string }
+		var kids []famKid
+		_ = tx.Query("SELECT id, name FROM children WHERE family_id = ?", func(r SQLiteRow) error {
+			kids = append(kids, famKid{id: r.String(0), name: r.String(1)})
+			return nil
+		}, familyID)
+		for _, k := range kids {
+			_, _ = s.listChildPetsLocked(tx, familyID, k.id, k.name)
+		}
 		return nil
 	})
 }
@@ -2998,7 +3378,12 @@ func (s *Store) GetAdminOverview(todayStr string) (map[string]any, error) {
 
 		childrenByFam := make(map[string][]map[string]any)
 		childCount := 0
-		_ = tx.Query("SELECT id, family_id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, password_plain, pin, pet_name, xp, coupons, created_at FROM children ORDER BY created_at ASC", func(r SQLiteRow) error {
+		_ = tx.Query(`
+			SELECT id, family_id, name, avatar_idx, LENGTH(avatar_data) > 0, avatar_updated_at, username, password_hash, password_plain, pin,
+			       COALESCE((SELECT cp.pet_name FROM child_pets cp WHERE cp.child_id = children.id ORDER BY cp.is_active DESC, cp.created_at ASC LIMIT 1), ''),
+			       xp, coupons, created_at
+			FROM children ORDER BY created_at ASC
+		`, func(r SQLiteRow) error {
 			cid := r.String(0)
 			fid := r.String(1)
 			xp := r.Int(11)

@@ -1419,6 +1419,7 @@
       var compSp=(data.catalog||[]).find(function(x){return x.id===c.active_companion;});
       var spName=(compSp&&compSp.name)||((data.catalog&&data.catalog[0]&&data.catalog[0].name)||"小团子");
       var petDisplay=(c.pet_name||"").trim()||(c.name?c.name+"的"+spName:spName);
+      var petCount=(c.pets&&c.pets.length)?c.pets.length:(c.owned_count||1);
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
         +'<div class="info">'
@@ -1427,7 +1428,7 @@
         +'<span>'+lvName+' ('+c.xp+' XP)</span>'
         +healthBadge
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
-        +'<span>图鉴 '+c.owned_count+' 只</span>'
+        +'<span>宠物 '+petCount+' 只</span>'
         +'</div></div></div>';
       g.appendChild(box);
     });

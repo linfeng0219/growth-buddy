@@ -796,7 +796,8 @@ class MainActivity : AppCompatActivity() {
         val lv = GrowthMeta.levelForXp(c.xp)
         val lvSpec = GrowthMeta.LEVELS[lv]
         val asleep = isAsleep(st.logs)
-        val activeComp = st.catalog.find { it.id == c.activeCompanion }
+        val activePet = GrowthMeta.findActivePet(st.pets, c.activePetId)
+        val activeComp = st.catalog.find { it.id == (activePet?.speciesId ?: c.activeCompanion) }
 
         bindAvatarView(binding.ivHeaderAvatar, c.avatarIdx, c.avatarUrl)
         ServerPrefs.updateAccountProfile(
@@ -851,7 +852,7 @@ class MainActivity : AppCompatActivity() {
             st.logs.isEmpty() -> GrowthMeta.LEVELS[0].talk
             else -> lvSpec.talk
         }
-        binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(c, st.catalog)
+        binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(c, st.catalog, activePet)
 
         val msgBadge = c.unreadChat + c.pendingFriendRequests + c.unreadLetters
         if (msgBadge > 0) {
@@ -1480,12 +1481,18 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(6), 0, dp(10))
         }
         val curState = state
+        val activePet = curState?.let { s -> GrowthMeta.findActivePet(s.pets, s.child.activePetId) }
         val defaultPetName = curState?.let {
-            GrowthMeta.resolvePetDisplayName(it.child.copy(petName = ""), it.catalog)
+            GrowthMeta.defaultPetDisplayName(
+                it.child.name,
+                it.catalog.find { sp -> sp.id == (activePet?.speciesId ?: it.child.activeCompanion) },
+                it.catalog.firstOrNull()?.name ?: "小团子"
+            )
         } ?: "小团子"
+        val currentPetName = activePet?.petName?.ifEmpty { null } ?: curState?.child?.petName ?: ""
         val input = EditText(this).apply {
-            hint = "留空默认：$defaultPetName（最多 10 字）"
-            setText(curState?.child?.petName ?: "")
+            hint = "留空默认：$defaultPetName（最多 16 字）"
+            setText(currentPetName)
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
         populateQuickChips(row1, listOf("团子", "糯米", "豆包", "可乐")) { name ->
@@ -1507,17 +1514,27 @@ class MainActivity : AppCompatActivity() {
             .setTitle("给小伙伴起个名字")
             .setView(wrap)
             .setPositiveButton("保存") { _, _ ->
-                val name = input.text.toString().trim().take(10)
-                api.request("PATCH", "/api/child/pet-name", JSONObject().put("petName", name)) { res ->
+                val name = input.text.toString().trim().take(16)
+                val payload = JSONObject().put("petName", name)
+                if (!activePet?.id.isNullOrBlank()) {
+                    payload.put("petId", activePet!!.id)
+                }
+                api.request("PATCH", "/api/child/pet-name", payload) { res ->
                     if (res.ok) {
-                        val updatedState = state?.let { s ->
-                            s.copy(child = s.child.copy(petName = name))
-                        }
-                        if (updatedState != null) {
-                            state = updatedState
-                            binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(updatedState.child, updatedState.catalog)
+                        val serverState = res.json?.optJSONObject("state")?.let { GrowthMeta.parseChildState(it) }
+                        if (serverState != null) {
+                            state = serverState
+                            renderAll(serverState)
                         } else {
-                            binding.tvPetName.text = name.ifEmpty { defaultPetName }
+                            val resolved = res.json?.optString("pet_name", "")?.ifBlank { null }
+                                ?: name.ifEmpty { defaultPetName }
+                            state = state?.let { s ->
+                                val nextPets = s.pets.map { p ->
+                                    if (activePet != null && p.id == activePet.id) p.copy(petName = resolved) else p
+                                }
+                                s.copy(child = s.child.copy(petName = resolved), pets = nextPets)
+                            }
+                            binding.tvPetName.text = resolved
                         }
                         sound.playPat()
                     }

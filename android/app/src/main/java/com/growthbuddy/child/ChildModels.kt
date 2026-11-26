@@ -19,6 +19,7 @@ data class ChildInfo(
     val level: Int,
     val coupons: Int,
     val activeCompanion: String?,
+    val activePetId: String = "",
     val muted: Boolean,
     val petHealth: String = "normal",
     val healProgress: Int = 0,
@@ -30,6 +31,16 @@ data class ChildInfo(
     val pendingFriendRequests: Int = 0,
     val adventureXpToday: Int = 0,
     val adventureXpLimit: Int = 10
+)
+
+data class ChildPet(
+    val id: String,
+    val childId: String,
+    val speciesId: String,
+    val petName: String,
+    val isActive: Boolean,
+    val adoptedDate: String,
+    val createdAt: Long = 0L
 )
 
 data class TaskItem(
@@ -90,6 +101,7 @@ data class ChildState(
     val logs: List<CheckinLog>,
     val catalog: List<SpeciesItem>,
     val owned: Map<String, String>,
+    val pets: List<ChildPet> = emptyList(),
     val polaroids: List<PolaroidItem>
 )
 
@@ -146,14 +158,23 @@ object GrowthMeta {
         return if (cleanChildName.isEmpty()) petSpeciesName else "${cleanChildName}的${petSpeciesName}"
     }
 
-    /** 解析宠物展示名称：有自定义名字时优先展示，否则使用默认「孩子名+宠物名」。 */
+    /** 按激活标记或宠物 ID 解析当前陪伴的宠物实例。 */
+    fun findActivePet(pets: List<ChildPet>, activePetId: String = ""): ChildPet? =
+        pets.find { it.isActive }
+            ?: pets.find { activePetId.isNotBlank() && it.id == activePetId }
+            ?: pets.firstOrNull()
+
+    /** 解析宠物展示名称：优先使用当前宠物独立名称，否则使用默认「孩子名+宠物名」。 */
     fun resolvePetDisplayName(
         child: ChildInfo,
-        catalog: List<SpeciesItem> = emptyList()
+        catalog: List<SpeciesItem> = emptyList(),
+        activePet: ChildPet? = null
     ): String {
+        val petCustom = activePet?.petName?.trim().orEmpty()
+        if (petCustom.isNotEmpty()) return petCustom
         val custom = child.petName.trim()
         if (custom.isNotEmpty()) return custom
-        val activeComp = catalog.find { it.id == child.activeCompanion }
+        val activeComp = catalog.find { it.id == (activePet?.speciesId ?: child.activeCompanion) }
         val defaultSpecies = catalog.firstOrNull()?.name?.ifBlank { null } ?: "小团子"
         return defaultPetDisplayName(child.name, activeComp, defaultSpecies)
     }
@@ -258,8 +279,26 @@ object GrowthMeta {
             )
         }
 
-        val comp = if (childObj.isNull("active_companion")) null
-        else childObj.optString("active_companion", "").ifEmpty { null }
+        val pets = mutableListOf<ChildPet>()
+        val petArr = obj.optJSONArray("pets") ?: JSONArray()
+        for (i in 0 until petArr.length()) {
+            val pt = petArr.getJSONObject(i)
+            pets.add(
+                ChildPet(
+                    id = pt.optString("id", ""),
+                    childId = pt.optString("child_id", ""),
+                    speciesId = pt.optString("species_id", "b1"),
+                    petName = pt.optString("pet_name", ""),
+                    isActive = pt.optBoolean("is_active", false),
+                    adoptedDate = pt.optString("adopted_date", ""),
+                    createdAt = pt.optLong("created_at", 0L)
+                )
+            )
+        }
+
+        val activePet = findActivePet(pets, childObj.optString("active_pet_id", ""))
+        val comp = if (childObj.isNull("active_companion")) activePet?.speciesId
+        else childObj.optString("active_companion", "").ifEmpty { activePet?.speciesId }
 
         return ChildState(
             today = obj.optString("today", ""),
@@ -273,11 +312,12 @@ object GrowthMeta {
                 name = childObj.optString("name", "小朋友"),
                 avatarIdx = childObj.optInt("avatar_idx", 0),
                 avatarUrl = childObj.optString("avatar_url", ""),
-                petName = childObj.optString("pet_name", ""),
+                petName = childObj.optString("pet_name", "").ifEmpty { activePet?.petName ?: "" },
                 xp = childObj.optInt("xp", 0),
                 level = childObj.optInt("level", levelForXp(childObj.optInt("xp", 0))),
                 coupons = childObj.optInt("coupons", 0),
                 activeCompanion = comp,
+                activePetId = childObj.optString("active_pet_id", "").ifEmpty { activePet?.id ?: "" },
                 muted = childObj.optBoolean("muted", false),
                 petHealth = childObj.optString("pet_health", "normal"),
                 healProgress = childObj.optInt("heal_progress", 0),
@@ -296,6 +336,7 @@ object GrowthMeta {
             logs = logs,
             catalog = catalog,
             owned = owned,
+            pets = pets,
             polaroids = polaroids
         )
     }
