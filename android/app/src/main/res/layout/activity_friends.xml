@@ -31,55 +31,18 @@
             android:textColor="#2F6B4F"
             android:textSize="12.5sp" />
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/tvFriendsTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:gravity="center"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:id="@+id/msgModeTrack"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="3dp">
-
-                <Button
-                    android:id="@+id/btnMsgModeChat"
-                    android:layout_width="wrap_content"
-                    android:layout_height="32dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:minWidth="0dp"
-                    android:minHeight="0dp"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="0dp"
-                    android:singleLine="true"
-                    android:text="💬 好友"
-                    android:textAllCaps="false"
-                    android:textSize="12.5sp"
-                    android:textStyle="bold" />
-
-                <Button
-                    android:id="@+id/btnMsgModeMail"
-                    android:layout_width="wrap_content"
-                    android:layout_height="32dp"
-                    android:layout_marginStart="4dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:minWidth="0dp"
-                    android:minHeight="0dp"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="0dp"
-                    android:singleLine="true"
-                    android:text="📬 信箱"
-                    android:textAllCaps="false"
-                    android:textSize="12.5sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="💬 消息"
+            android:textColor="#233128"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/btnAddFriend"
@@ -98,25 +61,6 @@
             android:textColor="#FFFFFF"
             android:textSize="12sp"
             android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnMsgWriteLetter"
-            android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:layout_marginStart="6dp"
-            android:backgroundTint="#E8913A"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="0dp"
-            android:singleLine="true"
-            android:text="✉️ 写信"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
     </LinearLayout>
 
     <ProgressBar
@@ -188,7 +132,7 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- 平板横屏右侧嵌入式聊天窗格 -->
+        <!-- 右侧/子页内容窗格（平板横屏右侧显示；手机竖屏点信箱文件夹时展开显示） -->
         <FrameLayout
             android:id="@+id/friendsChatPaneWrap"
             android:layout_width="0dp"
@@ -203,27 +147,87 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
+            <LinearLayout
+                android:id="@+id/friendsMailBox"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingBottom="8dp">
+
+                    <Button
+                        android:id="@+id/btnMailFolderBack"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginEnd="6dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="0dp"
+                        android:singleLine="true"
+                        android:text="← 消息"
+                        android:textColor="#2F6B4F"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/tvMailFolderTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:text="📥 收件箱"
+                        android:textColor="#233128"
+                        android:textSize="15.5sp"
+                        android:textStyle="bold" />
+
+                    <Button
+                        android:id="@+id/btnMailPaneWrite"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:backgroundTint="#E8913A"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="0dp"
+                        android:singleLine="true"
+                        android:text="✉️ 写信"
+                        android:textColor="#FFFFFF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <include
+                    android:id="@+id/friendsMailPane"
+                    layout="@layout/view_mailbox_pane"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/tvSplitChatPlaceholder"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:padding="24dp"
-                android:text="👈 请在左侧点击好友或群聊开始对话"
+                android:text="👈 请在左侧点击好友、群聊或信箱文件夹"
                 android:textColor="#8A7E6E"
                 android:textSize="15sp"
                 android:visibility="gone" />
         </FrameLayout>
     </LinearLayout>
-
-    <!-- 家长信箱分栏（复用 view_mailbox_pane） -->
-    <include
-        android:id="@+id/friendsMailPane"
-        layout="@layout/view_mailbox_pane"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:visibility="gone" />
 
 </LinearLayout>

@@ -31,10 +31,12 @@ data class LetterItem(
     val createdAt: Long
 )
 
+enum class MailFolder { ALL, INBOX, SENT }
+
 /**
  * 家长信箱共享控制器：
- * - 同时服务于独立 [MailboxActivity] 与统一消息中心 [FriendsActivity]（📬 家长信箱分栏）。
- * - 负责拉取双向信件列表、响应式单/双列卡片渲染、拆信领奖励以及给爸妈写信弹窗。
+ * - 同时服务于独立 [MailboxActivity] 与统一消息中心 [FriendsActivity]（📬 家长信箱折叠分组）。
+ * - 负责拉取双向信件列表、按文件夹（全部/收件箱/已发送）过滤排序、响应式单/双列卡片渲染、拆信领奖励以及写信/回信弹窗。
  */
 class ChildMailboxPaneController(
     private val activity: Activity,
@@ -42,9 +44,19 @@ class ChildMailboxPaneController(
     private val api: ApiClient,
     private val sound: NativeSoundEngine,
     private val onChanged: () -> Unit = {},
-    private val onUnreadCount: (Int) -> Unit = {}
+    private val onUnreadCount: (Int) -> Unit = {},
+    private val onSummaryChanged: (letters: List<LetterItem>, unreadInboxCount: Int) -> Unit = { _, _ -> }
 ) {
     private var cachedLetters: List<LetterItem> = emptyList()
+    private var currentFolder: MailFolder = MailFolder.ALL
+    private var unreadInboxCount: Int = 0
+
+    fun setFolder(folder: MailFolder) {
+        currentFolder = folder
+        renderCurrentFolder()
+    }
+
+    fun getFolder(): MailFolder = currentFolder
 
     fun loadLetters(silent: Boolean = false) {
         if (!silent) binding.mailLoading.visibility = View.VISIBLE
@@ -57,12 +69,8 @@ class ChildMailboxPaneController(
                 return@request
             }
             val unread = res.json.optInt("unread_count", 0)
+            unreadInboxCount = unread
             onUnreadCount(unread)
-            binding.tvMailHint.text = if (unread > 0) {
-                "📬 收到 $unread 封来自爸爸妈妈的新信件！点击信封拆开看看吧~"
-            } else {
-                "💌 爸爸妈妈寄来的鼓励信和你的小回信都会保存在这里~"
-            }
             val arr = res.json.optJSONArray("letters")
             val list = mutableListOf<LetterItem>()
             if (arr != null) {
@@ -83,22 +91,51 @@ class ChildMailboxPaneController(
                     )
                 }
             }
-            renderLetters(list)
+            cachedLetters = list
+            onSummaryChanged(list, unread)
+            renderCurrentFolder()
         }
     }
 
     fun rerenderCached() {
-        if (cachedLetters.isNotEmpty()) {
-            renderLetters(cachedLetters)
+        renderCurrentFolder()
+    }
+
+    private fun renderCurrentFolder() {
+        val filtered = when (currentFolder) {
+            MailFolder.INBOX -> cachedLetters
+                .filter { it.senderRole == "parent" }
+                .sortedWith(compareBy<LetterItem> { it.isRead }.thenByDescending { it.createdAt })
+            MailFolder.SENT -> cachedLetters
+                .filter { it.senderRole != "parent" }
+                .sortedByDescending { it.createdAt }
+            MailFolder.ALL -> cachedLetters
         }
+        binding.tvMailHint.text = when (currentFolder) {
+            MailFolder.INBOX -> if (unreadInboxCount > 0) {
+                "📥 收件箱：收到 $unreadInboxCount 封未拆封的新信件，点击拆开看看吧~"
+            } else {
+                "📥 收件箱：共有 ${filtered.size} 封来自爸爸妈妈的鼓励信，点击可回信"
+            }
+            MailFolder.SENT -> "📤 已发送：共寄给爸爸妈妈 ${filtered.size} 封信"
+            MailFolder.ALL -> if (unreadInboxCount > 0) {
+                "📬 收到 $unreadInboxCount 封来自爸爸妈妈的新信件！点击信封拆开看看吧~"
+            } else {
+                "💌 爸爸妈妈寄来的鼓励信和你的小回信都会保存在这里~"
+            }
+        }
+        renderLetters(filtered)
     }
 
     private fun renderLetters(list: List<LetterItem>) {
-        cachedLetters = list
         binding.lettersContainer.removeAllViews()
         if (list.isEmpty()) {
             val emptyTv = TextView(activity).apply {
-                text = "📭 信箱还是空的哦~\n点击右上角「✉️ 给爸妈写信」，给爸爸妈妈一个惊喜吧！"
+                text = when (currentFolder) {
+                    MailFolder.INBOX -> "📭 收件箱还是空的哦~\n爸爸妈妈给你寄信后就会出现在这里！"
+                    MailFolder.SENT -> "📤 还没有寄过信哦~\n点击「✉️ 写信」给爸爸妈妈说句悄悄话吧！"
+                    MailFolder.ALL -> "📭 信箱还是空的哦~\n点击右上角「✉️ 给爸妈写信」，给爸爸妈妈一个惊喜吧！"
+                }
                 gravity = Gravity.CENTER
                 textSize = 14.5f
                 setTextColor(Color.parseColor("#8A7E6E"))
@@ -238,6 +275,32 @@ class ChildMailboxPaneController(
                 card.addView(bodyTv)
 
                 if (isParent) {
+                    val actionRow = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.END
+                        setPadding(0, dp(8), 0, 0)
+                    }
+                    val btnReply = Button(activity).apply {
+                        text = "↩ 回信"
+                        textSize = 11.5f
+                        setAllCaps(false)
+                        setTextColor(Color.parseColor("#2F6B4F"))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(99).toFloat()
+                            setColor(Color.parseColor("#E8F2EC"))
+                        }
+                        setPadding(dp(12), 0, dp(12), 0)
+                        minWidth = 0
+                        minimumWidth = 0
+                        minHeight = 0
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28))
+                        setOnClickListener {
+                            sound.playPat()
+                            showComposeDialog(replyTitle = "回复 ${item.senderName}：${item.title}")
+                        }
+                    }
+                    actionRow.addView(btnReply)
+                    card.addView(actionRow)
                     card.setOnClickListener { openParentLetterDialog(item) }
                 }
                 if (row != null) row.addView(card) else binding.lettersContainer.addView(card)

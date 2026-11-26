@@ -35,10 +35,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 儿童端「💬 消息」统一消息中心（合并 好友聊天 + 家长信箱）：
- * - 顶部双段切换：「💬 好友聊天」与「📬 家长信箱」，右上角动作按钮随分栏切换为「➕ 加好友」/「✉️ 写信」。
- * - 好友分栏在手机/竖屏单栏点击进入独立 ChatActivity，平板横屏左侧联系人分组、右侧直接内嵌聊天窗口。
- * - 支持点击分组名（群聊 / 家庭 / 朋友）展开或折叠组内元素，展示好友在线/离线状态。
+ * 儿童端「💬 消息」统一消息中心：
+ * - 分组展示：👥 群聊（➕ 建群）、👨‍👩‍👧 家庭、🧒 朋友、📬 家长信箱（固定展开为 📥 收件箱 / 📤 已发送，右侧快捷 ✉️ 写信）。
+ * - 手机/竖屏单栏点击联系人进入 ChatActivity、点击邮箱文件夹在本页展开列表；平板横屏左侧分组 + 右侧即嵌聊天或信箱面板。
  */
 class FriendsActivity : AppCompatActivity() {
 
@@ -52,9 +51,9 @@ class FriendsActivity : AppCompatActivity() {
     private lateinit var chatController: ChildChatPaneController
     private lateinit var mailController: ChildMailboxPaneController
 
-    private var msgMode: String = "chat" // "chat" | "mail"
+    private var cachedLetters: List<LetterItem> = emptyList()
     private var unreadMailCount: Int = 0
-    private var unreadChatAndReqCount: Int = 0
+    private var phoneMailOpen: Boolean = false
     private var overview: SocialOverview? = null
     private val collapsedGroups = mutableMapOf<String, Boolean>()
     private var selectedPeerType: String = ""
@@ -145,34 +144,52 @@ class FriendsActivity : AppCompatActivity() {
             },
             onUnreadCount = { cnt ->
                 unreadMailCount = cnt
-                updateModeTabsUi()
+            },
+            onSummaryChanged = { letters, unread ->
+                cachedLetters = letters
+                unreadMailCount = unread
+                overview?.let { renderFriendsList(it) }
             }
         )
 
-        binding.msgModeTrack.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#EFE8DA"))
-            cornerRadius = dp(99).toFloat()
+        val closeOrReturn: () -> Unit = {
+            val isSplit = ResponsiveUi.metrics(this).isDesktopSplit
+            if (!isSplit && phoneMailOpen) {
+                phoneMailOpen = false
+                applyResponsiveLayout()
+            } else {
+                if (hasChangedState) setResult(RESULT_OK)
+                finish()
+            }
         }
-        binding.btnMsgModeChat.setOnClickListener {
+
+        binding.btnFriendsBack.setOnClickListener { closeOrReturn() }
+        binding.btnMailFolderBack.setOnClickListener {
             sound.playPat()
-            setMsgMode("chat")
-        }
-        binding.btnMsgModeMail.setOnClickListener {
-            sound.playPat()
-            setMsgMode("mail")
-        }
-        binding.btnFriendsBack.setOnClickListener {
-            if (hasChangedState) setResult(RESULT_OK)
-            finish()
+            phoneMailOpen = false
+            applyResponsiveLayout()
         }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
-        binding.btnMsgWriteLetter.setOnClickListener {
+        binding.btnMailPaneWrite.setOnClickListener {
             sound.playPat()
             mailController.showComposeDialog()
         }
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                closeOrReturn()
+            }
+        })
 
         val initial = intent.getStringExtra(EXTRA_INITIAL_MODE) ?: "chat"
-        setMsgMode(if (initial == "mail") "mail" else "chat", reload = false)
+        if (initial == "mail") {
+            selectedPeerType = "mail"
+            selectedPeerId = "inbox"
+            binding.tvMailFolderTitle.text = "📥 收件箱"
+            mailController.setFolder(MailFolder.INBOX)
+            if (!ResponsiveUi.metrics(this).isDesktopSplit) {
+                phoneMailOpen = true
+            }
+        }
         applyResponsiveLayout()
         loadOverview(silent = false)
         mailController.loadLetters(silent = initial != "mail")
@@ -181,9 +198,9 @@ class FriendsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         isResumed = true
-        loadOverview(silent = msgMode != "chat")
-        mailController.loadLetters(silent = msgMode != "mail")
-        chatController.setActive(msgMode == "chat" && ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
+        loadOverview(silent = false)
+        mailController.loadLetters(silent = true)
+        applyResponsiveLayout()
         mainHandler.removeCallbacks(overviewPollTicker)
         mainHandler.postDelayed(overviewPollTicker, 10_000L)
     }
@@ -212,47 +229,14 @@ class FriendsActivity : AppCompatActivity() {
         mailController.rerenderCached()
     }
 
-    private fun setMsgMode(mode: String, reload: Boolean = true) {
-        msgMode = mode
-        val isChat = mode == "chat"
-        binding.friendsBodySplit.visibility = if (isChat) View.VISIBLE else View.GONE
-        binding.friendsMailPane.root.visibility = if (isChat) View.GONE else View.VISIBLE
-        binding.btnAddFriend.visibility = if (isChat) View.VISIBLE else View.GONE
-        binding.btnMsgWriteLetter.visibility = if (isChat) View.GONE else View.VISIBLE
-        chatController.setActive(isResumed && isChat && ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
-        updateModeTabsUi()
-        if (reload) {
-            if (isChat) loadOverview(silent = true) else mailController.loadLetters(silent = false)
-        }
-    }
-
-    private fun updateModeTabsUi() {
-        val isChat = msgMode == "chat"
-        binding.btnMsgModeChat.text = if (unreadChatAndReqCount > 0) "💬 好友($unreadChatAndReqCount)" else "💬 好友"
-        binding.btnMsgModeMail.text = if (unreadMailCount > 0) "📬 信箱($unreadMailCount)" else "📬 信箱"
-
-        binding.btnMsgModeChat.background = GradientDrawable().apply {
-            setColor(if (isChat) Color.WHITE else Color.TRANSPARENT)
-            cornerRadius = dp(99).toFloat()
-        }
-        binding.btnMsgModeChat.setTextColor(Color.parseColor(if (isChat) "#233128" else "#6B6052"))
-
-        binding.btnMsgModeMail.background = GradientDrawable().apply {
-            setColor(if (!isChat) Color.WHITE else Color.TRANSPARENT)
-            cornerRadius = dp(99).toFloat()
-        }
-        binding.btnMsgModeMail.setTextColor(Color.parseColor(if (!isChat) "#233128" else "#6B6052"))
-    }
-
     private fun dp(v: Int): Int = ResponsiveUi.dp(this, v)
 
     private fun applyResponsiveLayout() {
         val m = ResponsiveUi.metrics(this)
         val maxW = if (m.isDesktopSplit) 1180 else if (m.isTablet) 740 else 1200
+        binding.tvFriendsTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (m.isTablet) 18f else 17f)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsTopBar, maxW, horizontalReserveDp = 28)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsBodySplit, maxW, horizontalReserveDp = 28)
-        val mailMaxW = if (m.isDesktopSplit) 1040 else if (m.isTablet) 740 else 1200
-        ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsMailPane.root, mailMaxW, horizontalReserveDp = 28)
 
         val listLp = binding.friendsListScroll.layoutParams as LinearLayout.LayoutParams
         val chatLp = binding.friendsChatPaneWrap.layoutParams as LinearLayout.LayoutParams
@@ -261,6 +245,7 @@ class FriendsActivity : AppCompatActivity() {
 
         if (m.isDesktopSplit) {
             binding.friendsBodySplit.orientation = LinearLayout.HORIZONTAL
+            binding.friendsListScroll.visibility = View.VISIBLE
             listLp.width = 0
             listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
             listLp.weight = 0.88f
@@ -269,20 +254,45 @@ class FriendsActivity : AppCompatActivity() {
             chatLp.weight = 1.18f
             chatLp.marginStart = dp(14)
             binding.friendsChatPaneWrap.visibility = View.VISIBLE
-            chatController.setActive(isResumed && msgMode == "chat" && selectedPeerId.isNotBlank())
+            binding.btnMailFolderBack.visibility = View.GONE
+            updateRightPaneVisibility(isSplit = true)
         } else {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
-            listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
-            listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
-            listLp.weight = 0f
-            chatLp.width = 0
-            chatLp.weight = 0f
-            chatLp.marginStart = 0
-            binding.friendsChatPaneWrap.visibility = View.GONE
             chatController.setActive(false)
+            if (phoneMailOpen) {
+                binding.friendsListScroll.visibility = View.GONE
+                binding.friendsChatPaneWrap.visibility = View.VISIBLE
+                chatLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                chatLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                chatLp.weight = 1f
+                chatLp.marginStart = 0
+                binding.btnMailFolderBack.visibility = View.VISIBLE
+                binding.friendsMailBox.visibility = View.VISIBLE
+                binding.friendsChatPane.root.visibility = View.GONE
+                binding.tvSplitChatPlaceholder.visibility = View.GONE
+            } else {
+                binding.friendsListScroll.visibility = View.VISIBLE
+                listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+                listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+                listLp.weight = 0f
+                chatLp.width = 0
+                chatLp.weight = 0f
+                chatLp.marginStart = 0
+                binding.friendsChatPaneWrap.visibility = View.GONE
+            }
         }
         binding.friendsListScroll.layoutParams = listLp
         binding.friendsChatPaneWrap.layoutParams = chatLp
+    }
+
+    private fun updateRightPaneVisibility(isSplit: Boolean) {
+        if (!isSplit) return
+        val isMail = selectedPeerType == "mail" && (selectedPeerId == "inbox" || selectedPeerId == "sent")
+        val hasChatSel = !isMail && selectedPeerId.isNotBlank()
+        binding.friendsMailBox.visibility = if (isMail) View.VISIBLE else View.GONE
+        binding.friendsChatPane.root.visibility = if (hasChatSel) View.VISIBLE else View.GONE
+        binding.tvSplitChatPlaceholder.visibility = if (!isMail && !hasChatSel) View.VISIBLE else View.GONE
+        chatController.setActive(isResumed && hasChatSel)
     }
 
     private fun loadOverview(silent: Boolean = false) {
@@ -295,10 +305,6 @@ class FriendsActivity : AppCompatActivity() {
             }
             val parsed = SocialParser.parseOverview(res.json)
             overview = parsed
-            unreadChatAndReqCount = parsed.incomingRequests.size +
-                parsed.chatGroups.sumOf { it.unreadCount } +
-                parsed.friends.sumOf { it.unreadCount }
-            updateModeTabsUi()
             renderRequests(parsed.incomingRequests)
             applyResponsiveLayout()
             syncSplitSelectionAndPane(parsed)
@@ -309,6 +315,12 @@ class FriendsActivity : AppCompatActivity() {
     private fun syncSplitSelectionAndPane(ov: SocialOverview) {
         val split = ResponsiveUi.metrics(this).isDesktopSplit
         if (!split) return
+
+        val validMail = selectedPeerType == "mail" && (selectedPeerId == "inbox" || selectedPeerId == "sent")
+        if (validMail) {
+            updateRightPaneVisibility(isSplit = true)
+            return
+        }
 
         val validGroup = selectedPeerType == "group" && ov.chatGroups.any { it.id == selectedPeerId }
         val validFriend = selectedPeerType != "group" && ov.friends.any { it.peerType == selectedPeerType && it.peerId == selectedPeerId }
@@ -345,19 +357,15 @@ class FriendsActivity : AppCompatActivity() {
             chatController.updatePeerPresence("child".takeIf { f.peerType == "child" } ?: f.peerType, f.peerId, f.name, f.groupName, f.roleLabel, f.isOnline)
         }
 
-        val hasSel = selectedPeerId.isNotBlank()
-        binding.friendsChatPane.root.visibility = if (hasSel) View.VISIBLE else View.GONE
-        binding.tvSplitChatPlaceholder.visibility = if (hasSel) View.GONE else View.VISIBLE
-        chatController.setActive(isResumed && msgMode == "chat" && hasSel)
+        updateRightPaneVisibility(isSplit = true)
     }
 
     private fun openGroupInSplit(g: ChatGroupItem) {
         hasChangedState = true
         selectedPeerType = "group"
         selectedPeerId = g.id
-        binding.friendsChatPane.root.visibility = View.VISIBLE
-        binding.tvSplitChatPlaceholder.visibility = View.GONE
-        chatController.setActive(isResumed)
+        phoneMailOpen = false
+        updateRightPaneVisibility(isSplit = true)
         chatController.openPeer(
             peerType = "group",
             peerId = g.id,
@@ -373,9 +381,8 @@ class FriendsActivity : AppCompatActivity() {
         hasChangedState = true
         selectedPeerType = f.peerType
         selectedPeerId = f.peerId
-        binding.friendsChatPane.root.visibility = View.VISIBLE
-        binding.tvSplitChatPlaceholder.visibility = View.GONE
-        chatController.setActive(isResumed)
+        phoneMailOpen = false
+        updateRightPaneVisibility(isSplit = true)
         chatController.openPeer(
             peerType = f.peerType,
             peerId = f.peerId,
@@ -386,6 +393,22 @@ class FriendsActivity : AppCompatActivity() {
             avatarUrl = f.avatarUrl,
             isOnline = f.isOnline
         )
+        overview?.let { renderFriendsList(it) }
+    }
+
+    private fun openMailFolder(folder: MailFolder) {
+        sound.playPat()
+        selectedPeerType = "mail"
+        selectedPeerId = if (folder == MailFolder.INBOX) "inbox" else "sent"
+        binding.tvMailFolderTitle.text = if (folder == MailFolder.INBOX) "📥 收件箱" else "📤 已发送"
+        mailController.setFolder(folder)
+        if (!ResponsiveUi.metrics(this).isDesktopSplit) {
+            phoneMailOpen = true
+            applyResponsiveLayout()
+        } else {
+            updateRightPaneVisibility(isSplit = true)
+        }
+        mailController.loadLetters(silent = true)
         overview?.let { renderFriendsList(it) }
     }
 
@@ -896,6 +919,210 @@ class FriendsActivity : AppCompatActivity() {
                 binding.friendsListContainer.addView(row)
             }
         }
+
+        // 3. 家长信箱可折叠分组（展开固定显示 📥 收件箱 / 📤 已发送，右侧固定 ✉️ 写信）
+        renderMailboxGroupSection(fmt, isSplit)
+    }
+
+    private fun renderMailboxGroupSection(fmt: SimpleDateFormat, isSplit: Boolean) {
+        val mailCollapsed = collapsedGroups["家长信箱"] == true
+        val inboxList = cachedLetters.filter { it.senderRole == "parent" }.sortedByDescending { it.createdAt }
+        val sentList = cachedLetters.filter { it.senderRole != "parent" }.sortedByDescending { it.createdAt }
+
+        val mailHeaderRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(12), dp(2), dp(6))
+            setOnClickListener {
+                collapsedGroups["家长信箱"] = !mailCollapsed
+                overview?.let { renderFriendsList(it) }
+            }
+        }
+        val mailHeader = TextView(this).apply {
+            val arrow = if (mailCollapsed) "▶ " else "▼ "
+            text = if (unreadMailCount > 0) {
+                "${arrow}📬 家长信箱（$unreadMailCount 封新信）"
+            } else {
+                "${arrow}📬 家长信箱（收 ${inboxList.size} · 发 ${sentList.size}）"
+            }
+            textSize = 13.5f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor(if (unreadMailCount > 0) "#B8621B" else "#4B4339"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val btnWrite = Button(this).apply {
+            text = "✉️ 写信"
+            textSize = 11.5f
+            setAllCaps(false)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(99).toFloat()
+                setColor(Color.parseColor("#E8913A"))
+            }
+            setPadding(dp(10), 0, dp(10), 0)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28))
+            setOnClickListener {
+                sound.playPat()
+                mailController.showComposeDialog()
+            }
+        }
+        mailHeaderRow.addView(mailHeader)
+        mailHeaderRow.addView(btnWrite)
+        binding.friendsListContainer.addView(mailHeaderRow)
+
+        if (mailCollapsed) return
+
+        val latestIn = inboxList.firstOrNull()
+        val latestOut = sentList.firstOrNull()
+        addMailFolderRow(
+            fmt = fmt,
+            isSplit = isSplit,
+            folder = MailFolder.INBOX,
+            folderKey = "inbox",
+            icon = "📥",
+            title = "收件箱",
+            countTag = "${inboxList.size} 封",
+            unreadCount = unreadMailCount,
+            previewText = if (latestIn != null) "${latestIn.stamp} ${latestIn.title}" else "来自爸爸妈妈的鼓励信和礼物",
+            latestTs = latestIn?.createdAt ?: 0L,
+            iconBgHex = "#FFF4DF"
+        )
+        addMailFolderRow(
+            fmt = fmt,
+            isSplit = isSplit,
+            folder = MailFolder.SENT,
+            folderKey = "sent",
+            icon = "📤",
+            title = "已发送",
+            countTag = "${sentList.size} 封",
+            unreadCount = 0,
+            previewText = if (latestOut != null) "${latestOut.stamp} ${latestOut.title}" else "我写给爸爸妈妈的回信记录",
+            latestTs = latestOut?.createdAt ?: 0L,
+            iconBgHex = "#E3F2E8"
+        )
+    }
+
+    private fun addMailFolderRow(
+        fmt: SimpleDateFormat,
+        isSplit: Boolean,
+        folder: MailFolder,
+        folderKey: String,
+        icon: String,
+        title: String,
+        countTag: String,
+        unreadCount: Int,
+        previewText: String,
+        latestTs: Long,
+        iconBgHex: String
+    ) {
+        val isSelected = isSplit && selectedPeerType == "mail" && selectedPeerId == folderKey
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.parseColor(if (isSelected) "#EAF5EE" else "#FFFFFF"))
+                setStroke(
+                    dp(if (isSelected || unreadCount > 0) 2 else 1),
+                    Color.parseColor(if (isSelected) "#2F6B4F" else if (unreadCount > 0) "#E8913A" else "#E5DCCB")
+                )
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        val iconTv = TextView(this).apply {
+            text = icon
+            textSize = 20f
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(23).toFloat()
+                setColor(Color.parseColor(iconBgHex))
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(12) }
+        }
+        val centerCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val nameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        nameRow.addView(TextView(this).apply {
+            text = title
+            textSize = 15.5f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#233128"))
+        })
+        nameRow.addView(TextView(this).apply {
+            text = countTag
+            textSize = 10.5f
+            setTextColor(Color.parseColor("#8A5A2B"))
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(99).toFloat()
+                setColor(Color.parseColor("#FFF4DF"))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(6) }
+        })
+        centerCol.addView(nameRow)
+        centerCol.addView(TextView(this).apply {
+            text = previewText
+            textSize = 12.5f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTextColor(Color.parseColor("#7D7263"))
+            setPadding(0, dp(3), 0, 0)
+        })
+
+        val rightCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(8) }
+        }
+        if (latestTs > 0L) {
+            rightCol.addView(TextView(this).apply {
+                text = fmt.format(Date(latestTs))
+                textSize = 11f
+                setTextColor(Color.parseColor("#9A8E7D"))
+            })
+        }
+        if (unreadCount > 0) {
+            rightCol.addView(TextView(this).apply {
+                text = unreadCount.toString()
+                textSize = 11f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dp(7), dp(2), dp(7), dp(2))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(99).toFloat()
+                    setColor(Color.parseColor("#E11D48"))
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(4) }
+            })
+        }
+
+        row.addView(iconTv)
+        row.addView(centerCol)
+        row.addView(rightCol)
+        row.setOnClickListener { openMailFolder(folder) }
+        binding.friendsListContainer.addView(row)
     }
 
     private fun openGroupChat(g: ChatGroupItem) {

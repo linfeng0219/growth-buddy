@@ -675,16 +675,15 @@
       <div class="panel chat-panel-flush">
         <div class="panel-head" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;justify-content:space-between">
           <div class="seg-switch">
-            <button type="button" class="on" id="btnChatModeMine">💬 好友聊天 <span id="mineChatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:2px"></span></button>
+            <button type="button" class="on" id="btnChatModeMine">💬 我的消息 <span id="mineChatUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:2px"></span></button>
             <button type="button" id="btnChatModeKids">👀 孩子好友</button>
-            <button type="button" id="btnChatModeMail">📬 家长信箱 <span id="mailboxUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:2px"></span></button>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:nowrap;margin-left:auto" id="pSocialTopActions">
             <button type="button" class="sm amber" id="btnAddParentFriend" style="white-space:nowrap">➕ 加好友</button>
           </div>
         </div>
 
-        <!-- 模式 1：家长自己的好友列表 + 群聊 + 对话 -->
+        <!-- 模式 1：家长自己的消息列表（群聊 / 家庭 / 朋友 / 家长信箱[收件箱|已发送]） + 右侧对话或信箱 -->
         <div id="pSocialMineView" class="social-shell">
           <div class="social-pane-list">
             <div id="pIncomingReqSection" style="display:none;background:#fff8ef;border:1px solid #ecd1aa;border-radius:12px;padding:9px;margin-bottom:8px">
@@ -696,29 +695,96 @@
           </div>
 
           <div class="social-pane-chat">
-            <div class="chat-head-bar">
-              <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                <button type="button" class="sm social-back-btn" id="btnPMineBack">← 列表</button>
-                <div id="pChatHeadAvatar" style="flex:none"></div>
-                <div style="min-width:0">
-                  <div id="pChatHeadTitle" style="font-weight:700;font-size:14.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">请选择好友或群聊</div>
-                  <div id="pChatHeadSub" style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">家长端支持与家人、家庭群以及家长好友对话</div>
+            <div id="pChatPaneInner">
+              <div class="chat-head-bar">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                  <button type="button" class="sm social-back-btn" id="btnPMineBack">← 列表</button>
+                  <div id="pChatHeadAvatar" style="flex:none"></div>
+                  <div style="min-width:0">
+                    <div id="pChatHeadTitle" style="font-weight:700;font-size:14.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">请选择好友或群聊</div>
+                    <div id="pChatHeadSub" style="font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">家长端支持与家人、家庭群以及家长好友对话</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex:none">
+                  <button type="button" class="sm" id="btnPGroupManage" style="display:none;white-space:nowrap">👥 群员</button>
+                  <button type="button" class="sm danger" id="btnPRemoveFriend" style="display:none;white-space:nowrap">解除好友</button>
                 </div>
               </div>
-              <div style="display:flex;gap:6px;flex:none">
-                <button type="button" class="sm" id="btnPGroupManage" style="display:none;white-space:nowrap">👥 群员</button>
-                <button type="button" class="sm danger" id="btnPRemoveFriend" style="display:none;white-space:nowrap">解除好友</button>
+              <div id="parentChatBox" class="chat-scroll-box"></div>
+              <div class="chat-compose-row">
+                <input type="file" id="pChatImgFile" accept="image/*" style="display:none">
+                <button type="button" class="sm" id="btnPChatImg" title="发送图片" style="flex:none;padding:7px 10px">🖼️</button>
+                <button type="button" class="sm" id="btnPChatVoice" title="录制语音" style="flex:none;padding:7px 10px;white-space:nowrap">🎤</button>
+                <input type="text" id="pChatInput" class="gb-input" maxlength="500" placeholder="输入消息..." style="flex:1;min-width:0">
+                <button type="button" class="primary sm" id="btnPChatSend" style="flex:none;padding:8px 14px;white-space:nowrap">发送</button>
               </div>
+              <div class="msg" id="pChatMsg"></div>
             </div>
-            <div id="parentChatBox" class="chat-scroll-box"></div>
-            <div class="chat-compose-row">
-              <input type="file" id="pChatImgFile" accept="image/*" style="display:none">
-              <button type="button" class="sm" id="btnPChatImg" title="发送图片" style="flex:none;padding:7px 10px">🖼️</button>
-              <button type="button" class="sm" id="btnPChatVoice" title="录制语音" style="flex:none;padding:7px 10px;white-space:nowrap">🎤</button>
-              <input type="text" id="pChatInput" class="gb-input" maxlength="500" placeholder="输入消息..." style="flex:1;min-width:0">
-              <button type="button" class="primary sm" id="btnPChatSend" style="flex:none;padding:8px 14px;white-space:nowrap">发送</button>
+
+            <div id="pMailPaneInner" style="display:none;flex-direction:column;gap:8px">
+              <div class="chat-head-bar" style="flex-wrap:wrap;gap:6px">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                  <button type="button" class="sm social-back-btn" id="btnPMailBack">← 列表</button>
+                  <div style="min-width:0">
+                    <div id="pMailPaneTitle" style="font-weight:700;font-size:14.5px;color:var(--ink)">📥 收件箱</div>
+                    <div id="pMailPaneSub" style="font-size:11.5px;color:var(--muted)">来自孩子的信件与回信</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                  <select id="mailFilterChild" style="width:auto;min-width:96px;padding:4px 8px;font-size:12px"><option value="">全部孩子</option></select>
+                  <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部已读</button>
+                  <button type="button" class="sm amber" id="btnOpenMailCompose">✉️ 写信</button>
+                </div>
+              </div>
+
+              <div id="pMailComposeWrap" style="display:none;background:#fffaf2;border:1px solid #ead4b0;border-radius:14px;padding:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+                  <div style="font-weight:700;font-size:14px;color:var(--ink)">✉️ 写一封暖心信 / 回信</div>
+                  <button type="button" class="sm" id="btnCloseMailCompose">✕ 收起</button>
+                </div>
+                <div class="row3">
+                  <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
+                  <div class="field"><label>信封邮票</label>
+                    <select id="mailStamp">
+                      <option value="💌">💌 暖心表扬</option>
+                      <option value="🌟">🌟 加油打气</option>
+                      <option value="🎁">🎁 惊喜小礼</option>
+                      <option value="🌙">🌙 睡前寄语</option>
+                      <option value="❤️">❤️ 爸爸妈妈爱的话</option>
+                    </select>
+                  </div>
+                  <div class="field"><label>附带鼓励成长值</label>
+                    <select id="mailBonusXp">
+                      <option value="0">不附带（纯信件）</option>
+                      <option value="2">+2 成长值（孩子拆信领取）</option>
+                      <option value="5">+5 成长值（孩子拆信领取）</option>
+                      <option value="10">+10 成长值（大奖励！）</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>信件标题（可点选或自填）</label>
+                  <input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友">
+                  <div class="quick-chips">
+                    <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🌟 今天表现真棒！">🌟 今天表现真棒！</button>
+                    <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💌 给你的一封表扬信">💌 给你的一封表扬信</button>
+                    <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💪 加油鼓励小纸条">💪 加油鼓励小纸条</button>
+                    <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🎈 周末开心小约定">🎈 周末开心小约定</button>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+                  <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
+                  <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
+                  <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
+                  <button type="button" class="sm mail-tpl" data-tpl="早点休息养足精神，明天又是活力满满的一天，晚安宝贝！">🌙 晚安寄语</button>
+                </div>
+                <div class="field"><label>正文内容</label><textarea id="mailContent" rows="3" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
+                <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
+                <div class="msg" id="mailMsg"></div>
+              </div>
+
+              <div id="parentMailboxList" style="max-height:calc(100dvh - 280px);overflow-y:auto;padding-right:2px"></div>
             </div>
-            <div class="msg" id="pChatMsg"></div>
           </div>
         </div>
 
@@ -742,65 +808,6 @@
               </div>
               <div id="pOversightChatBox" class="chat-scroll-box"></div>
             </div>
-          </div>
-        </div>
-        <!-- 模式 3：家长信箱（家长与孩子双向写信互动） -->
-        <div id="pSocialMailView" style="display:none">
-          <div class="panel" style="margin-top:4px">
-            <div class="panel-head">
-              <h2>✉️ 给孩子写一封暖心信</h2>
-              <span class="pill" style="background:#fff6eb;color:#b8621b;border-color:#efd2ab">孩子会在 App 收到新信提醒并可回复</span>
-            </div>
-            <div class="row3">
-              <div class="field"><label>收信孩子</label><select id="mailToChild"><option value="all">全体孩子</option></select></div>
-              <div class="field"><label>信封邮票</label>
-                <select id="mailStamp">
-                  <option value="💌">💌 暖心表扬</option>
-                  <option value="🌟">🌟 加油打气</option>
-                  <option value="🎁">🎁 惊喜小礼</option>
-                  <option value="🌙">🌙 睡前寄语</option>
-                  <option value="❤️">❤️ 爸爸妈妈爱的话</option>
-                </select>
-              </div>
-              <div class="field"><label>附带鼓励成长值</label>
-                <select id="mailBonusXp">
-                  <option value="0">不附带（纯信件）</option>
-                  <option value="2">+2 成长值（孩子拆信领取）</option>
-                  <option value="5">+5 成长值（孩子拆信领取）</option>
-                  <option value="10">+10 成长值（大奖励！）</option>
-                </select>
-              </div>
-            </div>
-            <div class="field">
-              <label>信件标题（可点选或自填）</label>
-              <input type="text" id="mailTitle" maxlength="40" placeholder="例如：致努力进步的小朋友">
-              <div class="quick-chips">
-                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🌟 今天表现真棒！">🌟 今天表现真棒！</button>
-                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💌 给你的一封表扬信">💌 给你的一封表扬信</button>
-                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="💪 加油鼓励小纸条">💪 加油鼓励小纸条</button>
-                <button type="button" class="qchip" data-qtarget="mailTitle" data-qval="🎈 周末开心小约定">🎈 周末开心小约定</button>
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-              <button type="button" class="sm mail-tpl" data-tpl="今天主动完成作业特别棒，爸爸妈妈为你骄傲！">👍 表扬自觉</button>
-              <button type="button" class="sm mail-tpl" data-tpl="遇到难题别着急，爸爸妈妈永远支持你，加油！">💪 鼓励加油</button>
-              <button type="button" class="sm mail-tpl" data-tpl="这周表现超棒，周末带你去玩你喜欢的地方！">🎈 约定惊喜</button>
-              <button type="button" class="sm mail-tpl" data-tpl="早点休息养足精神，明天又是活力满满的一天，晚安宝贝！">🌙 晚安寄语</button>
-            </div>
-            <div class="field"><label>正文内容</label><textarea id="mailContent" rows="4" maxlength="600" style="width:100%;padding:10px 12px;border:1px solid var(--hair-2);border-radius:10px;font-family:inherit;font-size:13.5px;resize:vertical" placeholder="写下对孩子的鼓励、悄悄话或小约定吧~"></textarea></div>
-            <button type="button" class="primary" id="btnSendParentLetter" style="width:100%">📮 投递到孩子信箱</button>
-            <div class="msg" id="mailMsg"></div>
-          </div>
-
-          <div class="panel">
-            <div class="panel-head">
-              <h2>📬 家庭往来信件墙</h2>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <select id="mailFilterChild" style="width:auto;min-width:110px;padding:4px 8px;font-size:12.5px"><option value="">全部孩子</option></select>
-                <button type="button" class="sm" id="btnMarkAllMailRead">✓ 全部标为已读</button>
-              </div>
-            </div>
-            <div id="parentMailboxList"></div>
           </div>
         </div>
       </div>
@@ -1510,9 +1517,8 @@
       if(activeMainTab!==tg) return;
       if(tg==="logs"){loadCheckinLogs();}
       if(tg==="chat"){
-        if(pChatMode==="mail"){loadParentMailbox();}
-        else if(pChatMode==="kids"){loadChildOversightOverview(true);}
-        else{loadParentChatContacts(true);}
+        if(pChatMode==="kids"){loadChildOversightOverview(true);}
+        else{loadParentChatContacts(true);loadParentMailbox(true);}
       }
     };
     if(dir){
@@ -2594,21 +2600,19 @@
     }catch(e){note("hwMsg",e.message,true);}
   });
 
-  /* ==================== 家长信箱 & 统一消息未读红点 ==================== */
+  /* ==================== 家长信箱（作为消息折叠分组：[📥 收件箱 / 📤 已发送]） & 统一消息未读红点 ==================== */
   var cachedChatUnreadCount=0;
   var cachedMailUnreadCount=0;
+  var cachedAllLetters=[];
+  var activeMailFolder="inbox"; // inbox | sent
+  var mailComposeVisible=false;
   function updateParentMsgBadge(){
+    var total=cachedChatUnreadCount+cachedMailUnreadCount;
     var mBadge=$id("mineChatUnreadBadge");
     if(mBadge){
-      if(cachedChatUnreadCount>0){mBadge.style.display="inline-block";mBadge.textContent=cachedChatUnreadCount;}
+      if(total>0){mBadge.style.display="inline-block";mBadge.textContent=total;}
       else{mBadge.style.display="none";}
     }
-    var mailBadge=$id("mailboxUnreadBadge");
-    if(mailBadge){
-      if(cachedMailUnreadCount>0){mailBadge.style.display="inline-block";mailBadge.textContent=cachedMailUnreadCount;}
-      else{mailBadge.style.display="none";}
-    }
-    var total=cachedChatUnreadCount+cachedMailUnreadCount;
     var topBadge=$id("msgUnreadBadge");
     if(topBadge){
       if(total>0){topBadge.style.display="inline-block";topBadge.textContent=total;}
@@ -2636,67 +2640,116 @@
     });
   });
 
-  async function loadParentMailbox(){
+  function setMailComposeOpen(open){
+    mailComposeVisible=!!open;
+    $id("pMailComposeWrap").style.display=mailComposeVisible?"block":"none";
+    if(mailComposeVisible){
+      setTimeout(function(){ try{$id("mailContent").focus();}catch(e){} }, 30);
+    }
+  }
+  $id("btnOpenMailCompose").addEventListener("click",function(){setMailComposeOpen(!mailComposeVisible);});
+  $id("btnCloseMailCompose").addEventListener("click",function(){setMailComposeOpen(false);});
+
+  function openParentMailFolder(folder, openCompose){
+    activeMailFolder=(folder==="sent")?"sent":"inbox";
+    activeChatPeerType="mail";
+    activeChatPeerId=activeMailFolder;
+    setMailComposeOpen(!!openCompose);
+    $id("pChatPaneInner").style.display="none";
+    $id("pMailPaneInner").style.display="flex";
+    $id("pSocialMineView").classList.add("chat-open");
+    renderParentSidebarList();
+    renderParentMailboxFolder();
+    loadParentMailbox(true);
+  }
+
+  function renderParentMailboxFolder(){
+    var isInbox=(activeMailFolder==="inbox");
+    $id("pMailPaneTitle").textContent=isInbox?"📥 收件箱（孩子来信）":"📤 已发送（寄给孩子）";
+    $id("pMailPaneSub").textContent=isInbox?"优先置顶未读来信，点击「↩ 回信」直接回复对应孩子":"查看历史鼓励信及孩子拆阅状态";
+    $id("btnMarkAllMailRead").style.display=isInbox?"inline-block":"none";
+    var cid=$id("mailFilterChild").value||"";
+    var box=$id("parentMailboxList");
+    var list=cachedAllLetters.filter(function(l){
+      var matchRole=isInbox?(l.sender_role==="child"):(l.sender_role!=="child");
+      var matchChild=!cid||(l.child_id===cid);
+      return matchRole&&matchChild;
+    });
+    if(isInbox){
+      list.sort(function(a,b){
+        if(!!a.is_read!==!!b.is_read) return a.is_read?1:-1;
+        return (b.created_at||0)-(a.created_at||0);
+      });
+    }else{
+      list.sort(function(a,b){return (b.created_at||0)-(a.created_at||0);});
+    }
+    if(!list.length){
+      box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:18px 4px;text-align:center">'
+        +(isInbox?"📥 收件箱还没有孩子寄来的信件~":"📤 还没有寄出过信件，点击右上角「✉️ 写信」给孩子一个惊喜吧~")
+        +'</div>';
+      return;
+    }
+    box.innerHTML="";
+    list.forEach(function(l){
+      var isChild=(l.sender_role==="child");
+      var dt=new Date(l.created_at);
+      var tmStr=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
+      var card=document.createElement("div");
+      card.style.cssText="border:1px solid "+(isChild&&!l.is_read?"#e8913a":(isChild?"#e8c89b":"#cfe2d4"))+";background:"+(isChild?"#fffaf1":"#f6fbf7")+";border-radius:14px;padding:12px 14px;margin-bottom:10px";
+      var statusTag=isChild
+        ?(l.is_read?'<span class="tag-all">已读</span>':'<span style="background:#e11d48;color:#fff;font-size:11px;padding:2px 7px;border-radius:999px">新来信</span>')
+        :(l.is_read?'<span class="tag-all">孩子已拆阅 ✓</span>':'<span class="tag-sel">待孩子拆阅</span>');
+      var giftBadge=(l.bonus_xp>0)?('<span class="tag-sel" style="background:#fff4d6;color:#b8621b">🎁 +'+l.bonus_xp+' XP</span>'):"";
+      var whoLabel=isChild?("👧 "+GBArt.esc(l.sender_name)+" 写给爸妈"):("👨‍👩‍👧 "+GBArt.esc(l.sender_name)+" → "+GBArt.esc(l.child_name||"孩子"));
+      card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+        +'<div style="font-size:13px;font-weight:700">'+GBArt.esc(l.stamp||"💌")+' '+GBArt.esc(l.title)+' <span style="font-weight:400;color:var(--muted);font-size:12px">('+whoLabel+')</span></div>'
+        +'<div style="display:flex;gap:6px;align-items:center">'+giftBadge+statusTag+'</div>'
+        +'</div>'
+        +'<div style="font-size:13.5px;line-height:1.6;margin:8px 0;white-space:pre-wrap;color:var(--ink)">'+GBArt.esc(l.content)+'</div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
+        +'<span style="font-size:11.5px;color:var(--muted)">'+tmStr+'</span>'
+        +'<div style="display:flex;gap:6px">'
+        +(isChild?'<button type="button" class="sm amber reply-l">↩ 回信</button>':"")
+        +(isChild&&!l.is_read?'<button type="button" class="sm read-l">✓ 标已读</button>':"")
+        +'<button type="button" class="sm danger del-l">删除</button>'
+        +'</div></div>';
+      var repBtn=card.querySelector(".reply-l");
+      if(repBtn) repBtn.addEventListener("click",function(){
+        $id("mailToChild").value=l.child_id||"all";
+        $id("mailTitle").value="回复 "+l.sender_name+"："+l.title;
+        setMailComposeOpen(true);
+      });
+      var rdBtn=card.querySelector(".read-l");
+      if(rdBtn) rdBtn.addEventListener("click",async function(){
+        await api("/api/parent/letters/read",{method:"POST",body:JSON.stringify({letterId:l.id})});
+        loadParentMailbox(false);
+      });
+      card.querySelector(".del-l").addEventListener("click",async function(){
+        await api("/api/parent/letters/"+l.id,{method:"DELETE"});
+        loadParentMailbox(false);
+      });
+      box.appendChild(card);
+    });
+  }
+
+  async function loadParentMailbox(quiet){
     try{
-      var cid=$id("mailFilterChild").value||"";
-      var r=await api("/api/parent/letters?childId="+encodeURIComponent(cid));
+      var r=await api("/api/parent/letters");
+      cachedAllLetters=r.letters||[];
       cachedMailUnreadCount=r.unread_from_child||0;
       updateParentMsgBadge();
-      var box=$id("parentMailboxList");
-      var list=r.letters||[];
-      if(!list.length){
-        box.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0">信箱里还没有信件，快写第一封表扬信给孩子一个惊喜吧~</div>';
-        return;
+      renderParentSidebarList();
+      if(activeChatPeerType==="mail"){
+        renderParentMailboxFolder();
       }
-      box.innerHTML="";
-      list.forEach(function(l){
-        var isChild=(l.sender_role==="child");
-        var dt=new Date(l.created_at);
-        var tmStr=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0")+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
-        var card=document.createElement("div");
-        card.style.cssText="border:1px solid "+(isChild?"#e8c89b":"#cfe2d4")+";background:"+(isChild?"#fffaf1":"#f6fbf7")+";border-radius:14px;padding:12px 14px;margin-bottom:10px";
-        var statusTag=isChild
-          ?(l.is_read?'<span class="tag-all">已读</span>':'<span style="background:#e11d48;color:#fff;font-size:11px;padding:2px 7px;border-radius:999px">新来信</span>')
-          :(l.is_read?'<span class="tag-all">孩子已拆阅</span>':'<span class="tag-sel">待孩子拆阅</span>');
-        var giftBadge=(l.bonus_xp>0)?('<span class="tag-sel" style="background:#fff4d6;color:#b8621b">🎁 +'+l.bonus_xp+' XP</span>'):"";
-        var whoLabel=isChild?("👧 "+GBArt.esc(l.sender_name)+" 写给爸妈"):("👨‍👩‍👧 "+GBArt.esc(l.sender_name)+" → "+GBArt.esc(l.child_name||"孩子"));
-        card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-          +'<div style="font-size:13px;font-weight:700">'+GBArt.esc(l.stamp||"💌")+' '+GBArt.esc(l.title)+' <span style="font-weight:400;color:var(--muted);font-size:12px">('+whoLabel+')</span></div>'
-          +'<div style="display:flex;gap:6px;align-items:center">'+giftBadge+statusTag+'</div>'
-          +'</div>'
-          +'<div style="font-size:13.5px;line-height:1.6;margin:8px 0;white-space:pre-wrap;color:var(--ink)">'+GBArt.esc(l.content)+'</div>'
-          +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'
-          +'<span style="font-size:11.5px;color:var(--muted)">'+tmStr+'</span>'
-          +'<div style="display:flex;gap:6px">'
-          +(isChild?'<button type="button" class="sm reply-l">↩ 回复</button>':"")
-          +(isChild&&!l.is_read?'<button type="button" class="sm read-l">✓ 标已读</button>':"")
-          +'<button type="button" class="sm danger del-l">删除</button>'
-          +'</div></div>';
-        var repBtn=card.querySelector(".reply-l");
-        if(repBtn) repBtn.addEventListener("click",function(){
-          $id("mailToChild").value=l.child_id;
-          $id("mailTitle").value="回复 "+l.sender_name+"："+l.title;
-          $id("mailContent").focus();
-        });
-        var rdBtn=card.querySelector(".read-l");
-        if(rdBtn) rdBtn.addEventListener("click",async function(){
-          await api("/api/parent/letters/read",{method:"POST",body:JSON.stringify({letterId:l.id})});
-          loadParentMailbox();
-        });
-        card.querySelector(".del-l").addEventListener("click",async function(){
-          await api("/api/parent/letters/"+l.id,{method:"DELETE"});
-          loadParentMailbox();
-        });
-        box.appendChild(card);
-      });
     }catch(e){}
   }
 
-  $id("mailFilterChild").addEventListener("change",loadParentMailbox);
+  $id("mailFilterChild").addEventListener("change",renderParentMailboxFolder);
   $id("btnMarkAllMailRead").addEventListener("click",async function(){
     try{
       await api("/api/parent/letters/read",{method:"POST",body:JSON.stringify({childId:$id("mailFilterChild").value||""})});
-      loadParentMailbox();
+      loadParentMailbox(false);
     }catch(e){}
   });
   $id("btnSendParentLetter").addEventListener("click",async function(){
@@ -2715,7 +2768,7 @@
       $id("mailContent").value="";
       $id("mailBonusXp").value="0";
       note("mailMsg","信件已投递到孩子信箱！");
-      loadParentMailbox();
+      await loadParentMailbox(false);
     }catch(e){note("mailMsg",e.message,true);}
   });
 
@@ -2810,25 +2863,26 @@
   }
 
   function setParentChatMode(mode){
+    if(mode==="mail"){
+      setParentChatMode("mine");
+      openParentMailFolder("inbox",false);
+      return;
+    }
     pChatMode=mode;
     $id("btnChatModeMine").classList.toggle("on",mode==="mine");
     $id("btnChatModeKids").classList.toggle("on",mode==="kids");
-    $id("btnChatModeMail").classList.toggle("on",mode==="mail");
     $id("pSocialMineView").style.display=(mode==="mine")?"":"none";
     $id("pSocialKidsView").style.display=(mode==="kids")?"":"none";
-    $id("pSocialMailView").style.display=(mode==="mail")?"":"none";
     $id("pSocialTopActions").style.display=(mode==="mine")?"flex":"none";
     if(mode==="kids"){
       loadChildOversightOverview(true);
-    }else if(mode==="mail"){
-      loadParentMailbox();
     }else{
       loadParentChatContacts(true);
+      loadParentMailbox(true);
     }
   }
   $id("btnChatModeMine").addEventListener("click",function(){setParentChatMode("mine");});
   $id("btnChatModeKids").addEventListener("click",function(){setParentChatMode("kids");});
-  $id("btnChatModeMail").addEventListener("click",function(){setParentChatMode("mail");});
 
   function renderParentRequests(reqs){
     var sec=$id("pIncomingReqSection");
@@ -2891,6 +2945,8 @@
             +(g.unread_count>0?'<span class="sr-badge">'+g.unread_count+'</span>':"")+'</div>';
           btn.addEventListener("click",function(){
             activeChatPeerType="group";activeChatPeerId=g.id;
+            $id("pMailPaneInner").style.display="none";
+            $id("pChatPaneInner").style.display="block";
             $id("pSocialMineView").classList.add("chat-open");
             renderParentSidebarList();updateParentChatHeader();loadParentChatMessages();
           });
@@ -2923,12 +2979,55 @@
           +(f.unread_count>0?'<span class="sr-badge">'+f.unread_count+'</span>':"")+'</div>';
         btn.addEventListener("click",function(){
           activeChatPeerType=f.peer_type;activeChatPeerId=f.peer_id;
+          $id("pMailPaneInner").style.display="none";
+          $id("pChatPaneInner").style.display="block";
           $id("pSocialMineView").classList.add("chat-open");
           renderParentSidebarList();updateParentChatHeader();loadParentChatMessages();
         });
         box.appendChild(btn);
       });
     });
+
+    // 4. 📬 家长信箱可折叠分组（展开固定显示 📥 收件箱 / 📤 已发送，右侧固定 ✉️ 写信）
+    var inboxAll=cachedAllLetters.filter(function(l){return l.sender_role==="child";});
+    var sentAll=cachedAllLetters.filter(function(l){return l.sender_role!=="child";});
+    var mailHeadLabel=cachedMailUnreadCount>0
+      ?("📬 家长信箱（"+cachedMailUnreadCount+" 封未读）")
+      :("📬 家长信箱（收 "+inboxAll.length+" · 发 "+sentAll.length+"）");
+    box.appendChild(createCollapsibleHead(
+      "mine:信箱",
+      mailHeadLabel,
+      renderParentSidebarList,
+      {text:"✉️ 写信",cls:"sm amber",onClick:function(){openParentMailFolder("inbox",true);}}
+    ));
+    if(!pCollapsedGroups["mine:信箱"]){
+      var latestIn=inboxAll.slice().sort(function(a,b){return (b.created_at||0)-(a.created_at||0);})[0];
+      var latestOut=sentAll.slice().sort(function(a,b){return (b.created_at||0)-(a.created_at||0);})[0];
+      [
+        {
+          key:"inbox",icon:"📥",name:"收件箱",tag:inboxAll.length+" 封",
+          sub:latestIn?(latestIn.stamp+" "+latestIn.title):"孩子寄来的来信与回复",
+          ts:latestIn?latestIn.created_at:0,unread:cachedMailUnreadCount,cls:"custom"
+        },
+        {
+          key:"sent",icon:"📤",name:"已发送",tag:sentAll.length+" 封",
+          sub:latestOut?(latestOut.stamp+" "+latestOut.title):"寄给孩子的鼓励信记录",
+          ts:latestOut?latestOut.created_at:0,unread:0,cls:""
+        }
+      ].forEach(function(fd){
+        var isOn=(activeChatPeerType==="mail"&&activeChatPeerId===fd.key);
+        var b=document.createElement("button");b.type="button";
+        b.className="social-row"+(isOn?" on":"");
+        b.innerHTML='<div class="grp-icon-badge '+fd.cls+'">'+fd.icon+'</div>'
+          +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+fd.name+'</span>'
+          +'<span class="sr-tag">'+fd.tag+'</span></div>'
+          +'<div class="sr-sub">'+GBArt.esc(fd.sub)+'</div></div>'
+          +'<div class="sr-right">'+(fd.ts?'<span class="sr-time">'+fmtShortTime(fd.ts)+'</span>':"")
+          +(fd.unread>0?'<span class="sr-badge">'+fd.unread+'</span>':"")+'</div>';
+        b.addEventListener("click",function(){openParentMailFolder(fd.key,false);});
+        box.appendChild(b);
+      });
+    }
   }
 
   function updateParentChatHeader(){
@@ -2968,7 +3067,8 @@
       updateParentMsgBadge();
       renderParentRequests(reqs);
 
-      var found=(activeChatPeerType==="group"&&groups.some(function(g){return g.id===activeChatPeerId;}))
+      var found=(activeChatPeerType==="mail")
+        ||(activeChatPeerType==="group"&&groups.some(function(g){return g.id===activeChatPeerId;}))
         ||(activeChatPeerType!=="group"&&friends.some(function(c){return c.peer_type===activeChatPeerType&&c.peer_id===activeChatPeerId;}));
       if(!found){
         if(groups.length){activeChatPeerType="group";activeChatPeerId=groups[0].id;}
@@ -2976,8 +3076,12 @@
         else{activeChatPeerType="";activeChatPeerId="";}
       }
       renderParentSidebarList();
-      updateParentChatHeader();
-      if(loadMessages&&activeChatPeerId) await loadParentChatMessages();
+      if(activeChatPeerType!=="mail"){
+        $id("pMailPaneInner").style.display="none";
+        $id("pChatPaneInner").style.display="block";
+        updateParentChatHeader();
+        if(loadMessages&&activeChatPeerId) await loadParentChatMessages();
+      }
     }catch(e){}
   }
 
@@ -3500,6 +3604,7 @@
   });
 
   $id("btnPMineBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
+  $id("btnPMailBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
   $id("btnPKidsBack").addEventListener("click",function(){$id("pOversightShell").classList.remove("chat-open");});
   ["pMyCardModal","pAddFriendChoiceModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
     $id(mid).addEventListener("click",function(e){if(e.target===$id(mid)) $id(mid).classList.remove("show");});
@@ -3512,11 +3617,11 @@
     if(pChatMode==="kids"){
       loadChildOversightMessages(true);
       if(chatPollTick%3===0) loadChildOversightOverview(false);
-    }else if(pChatMode==="mail"){
-      if(chatPollTick%3===0) loadParentMailbox();
+    }else if(activeChatPeerType==="mail"){
+      if(chatPollTick%3===0) loadParentMailbox(true);
     }else if(activeChatPeerId){
       loadParentChatMessages(true);
-      if(chatPollTick%3===0) loadParentChatContacts(false);
+      if(chatPollTick%3===0){loadParentChatContacts(false);loadParentMailbox(true);}
     }
   },4000);
   setInterval(function(){
@@ -3532,7 +3637,7 @@
       if(history&&history.replaceState) history.replaceState(null,"",location.pathname+location.search);
     }
   }catch(e){}
-  if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); loadParentChatContacts(false); } else showAuth();
+  if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); loadParentChatContacts(false); loadParentMailbox(true); } else showAuth();
 })();
 </script>
 </body>
