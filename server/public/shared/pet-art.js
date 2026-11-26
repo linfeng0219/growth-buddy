@@ -125,6 +125,8 @@
     } else if (ear === "pointy") {
       s += '<path d="M62 78 L78 24 L98 68 Z" fill="' + bodyC + '"/><path d="M158 78 L142 24 L122 68 Z" fill="' + bodyC + '"/>';
       if (!sil) s += '<path d="M67 70 L78 34 L91 64 Z" fill="#fff" opacity=".28"/><path d="M153 70 L142 34 L129 64 Z" fill="#fff" opacity=".28"/>';
+    } else if (ear === "floppy") {
+      s += '<g transform="rotate(18 58 106)"><ellipse cx="58" cy="106" rx="13" ry="27" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="58" cy="108" rx="6" ry="17" fill="#fff" opacity=".34"/>' : "") + '</g><g transform="rotate(-18 162 106)"><ellipse cx="162" cy="106" rx="13" ry="27" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="162" cy="108" rx="6" ry="17" fill="#fff" opacity=".34"/>' : "") + "</g>";
     } else if (ear === "horn") {
       s += '<path d="M74 68 L64 30 L88 56 Z" fill="' + (sil ? "#bfb8ac" : "#f0c24b") + '"/><path d="M146 68 L156 30 L132 56 Z" fill="' + (sil ? "#bfb8ac" : "#f0c24b") + '"/><path d="M58 88 L46 68 L70 76 Z" fill="' + bodyC + '"/><path d="M162 88 L174 68 L150 76 Z" fill="' + bodyC + '"/>';
     } else if (ear === "unicorn") {
@@ -257,7 +259,7 @@
 
     if (lv === 1) {
       // 破壳啦：从裂缝蛋壳中探出该物种小脑袋，不含完整期配饰与翅膀
-      var ear = sp.ear || "round";
+      var ear = sp.ear || "round", mouth = sp.mouth || "smile";
       var s1 = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "破壳中") + '">';
       s1 += '<defs>'
         + '<radialGradient id="peg1_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="#fff8eb"/><stop offset="65%" stop-color="#f3e5cb"/><stop offset="100%" stop-color="#dfd0b2"/></radialGradient>'
@@ -269,15 +271,19 @@
       if (ear === "round") s1 += '<circle cx="80" cy="82" r="12" fill="' + bodyC + '"/><circle cx="140" cy="82" r="12" fill="' + bodyC + '"/>';
       else if (ear === "tall") s1 += '<ellipse cx="86" cy="64" rx="8" ry="20" fill="' + bodyC + '"/><ellipse cx="134" cy="64" rx="8" ry="20" fill="' + bodyC + '"/>';
       else if (ear === "pointy") s1 += '<path d="M72 86 L84 48 L100 78 Z" fill="' + bodyC + '"/><path d="M148 86 L136 48 L120 78 Z" fill="' + bodyC + '"/>';
+      else if (ear === "floppy") s1 += '<g transform="rotate(16 70 108)"><ellipse cx="70" cy="108" rx="9" ry="19" fill="' + bodyC + '"/><ellipse cx="70" cy="109" rx="4" ry="12" fill="#fff" opacity=".32"/></g><g transform="rotate(-16 150 108)"><ellipse cx="150" cy="108" rx="9" ry="19" fill="' + bodyC + '"/><ellipse cx="150" cy="109" rx="4" ry="12" fill="#fff" opacity=".32"/></g>';
       else if (ear === "horn") s1 += '<path d="M84 82 L76 52 L94 74 Z" fill="#f0c24b"/><path d="M136 82 L144 52 L126 74 Z" fill="#f0c24b"/><path d="M72 96 L62 80 L80 86 Z" fill="' + bodyC + '"/><path d="M148 96 L158 80 L140 86 Z" fill="' + bodyC + '"/>';
       else if (ear === "unicorn") s1 += '<path d="M105 68 L110 40 L115 68 Z" fill="#f4c74e"/>';
       if (sp.ahoge) s1 += '<path d="M110 84 q-7 -13 3 -18 q8 -4 6 5" stroke="' + bodyC + '" stroke-width="4.5" fill="none" stroke-linecap="round"/>';
       s1 += '<ellipse cx="110" cy="118" rx="40" ry="36" fill="' + bodyC + '"/>'
         + '<ellipse cx="110" cy="102" rx="26" ry="15" fill="#fff" opacity=".32"/>'
         + eyesSVG(114, 94, 126, !!o.sleep, uid)
-        + '<ellipse cx="78" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><ellipse cx="142" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/>'
-        + '<path d="M103 128 q7 5 14 0" stroke="#3a2f22" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
-        + '</g>'
+        + '<ellipse cx="78" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><ellipse cx="142" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/>';
+      if (mouth === "cat") s1 += '<ellipse cx="110" cy="121" rx="2.8" ry="2" fill="#e28395"/><path d="M102 126 q4 4 8 0 q4 4 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/>';
+      else if (mouth === "buck") s1 += '<ellipse cx="110" cy="120" rx="3" ry="2" fill="#f09bb0"/><path d="M102 125 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/><path d="M107.5 128 l2.5 3.4 l2.5 -3.4 z" fill="#fff"/>';
+      else if (mouth === "fang") s1 += '<path d="M102 125 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/><path d="M115 126 l2.8 4 l-4.2 .7 z" fill="#fff"/>';
+      else s1 += '<path d="M102 126 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/>';
+      s1 += '</g>'
         + '<path d="M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z" fill="url(#peg1_' + uid + ')" stroke="#d7c29e" stroke-width="2"/>'
         + '</g></svg>';
       return s1;
@@ -290,15 +296,16 @@
     } else if (lv >= 5 && (!sp.acc || sp.acc === "none")) {
       spDraw = Object.assign({}, sp, { acc: "crown" });
     }
-    var svg = speciesSVG(spDraw, o);
-    if (lv === 2) {
-      // 幼年体略小一点，区分少年/成年形态
-      svg = svg.replace('<g class="breathe">', '<g class="breathe" transform="translate(110 170) scale(0.86) translate(-110 -170)">');
-    } else if (lv === 3 || lv === 4) {
-      svg = svg.replace('<g class="breathe">', '<circle cx="110" cy="110" r="' + (lv === 4 ? 78 : 70) + '" fill="#f3c653" opacity="' + (lv === 4 ? "0.18" : "0.12") + '"/><g class="breathe">');
-    } else if (lv >= 5) {
-      svg = svg.replace('<g class="breathe">', '<circle cx="110" cy="108" r="82" fill="#f4c74e" opacity="0.24"/><g class="breathe">');
-    }
+    var stageO = Object.assign({}, o, { noBase: true });
+    var svg = speciesSVG(spDraw, stageO);
+    var stageBase = (lv >= 4 && base === "grass") ? "sand" : base;
+    var stageScale = lv === 2 ? 0.86 : (lv === 3 ? 0.95 : (lv === 4 ? 1.0 : 1.05));
+    var baseInsert = o.noBase ? "" : pedestalSVG(stageBase);
+    var haloInsert = "";
+    if (lv === 3) haloInsert = '<circle cx="110" cy="110" r="72" fill="#f3c653" opacity="0.14"/>';
+    else if (lv === 4) haloInsert = '<circle cx="110" cy="110" r="78" fill="#f3c653" opacity="0.18"/>';
+    else if (lv >= 5) haloInsert = '<circle cx="110" cy="108" r="82" fill="#f4c74e" opacity="0.24"/>';
+    svg = svg.replace('<g class="breathe">', baseInsert + haloInsert + '<g class="breathe" transform="translate(110 174) scale(' + stageScale + ') translate(-110 -174)">');
     return svg;
   }
 

@@ -146,10 +146,24 @@ object PetArtCanvas {
             }
 
             1 -> {
-                // 破壳啦
+                // 破壳啦（与网页端 mainPetSVG Lv.1 完全对齐：含头顶呆毛与斜扣小蛋壳帽）
                 paint.style = Paint.Style.FILL
                 paint.shader = bodyShader
                 canvas.drawOval(RectF(cx - 40f * scale, cy - 22f * scale, cx + 40f * scale, cy + 56f * scale), paint)
+                paint.shader = null
+                paint.color = 0x55FFF3D9
+                canvas.drawOval(RectF(cx - 28f * scale, cy - 18f * scale, cx + 28f * scale, cy + 10f * scale), paint)
+                // 小呆毛
+                paint.style = Paint.Style.STROKE
+                paint.color = 0xFFEB9A45.toInt()
+                paint.strokeWidth = 5f * scale
+                paint.strokeCap = Paint.Cap.ROUND
+                val ahoge = Path().apply {
+                    moveTo(cx, cy - 20f * scale)
+                    quadTo(cx - 7f * scale, cy - 33f * scale, cx + 3f * scale, cy - 38f * scale)
+                    quadTo(cx + 11f * scale, cy - 42f * scale, cx + 9f * scale, cy - 33f * scale)
+                }
+                canvas.drawPath(ahoge, paint)
                 drawEyes(canvas, cx - 16f * scale, cx + 16f * scale, cy + 12f * scale, scale, sleep, paint)
                 // 腮红与微笑
                 paint.shader = null
@@ -165,6 +179,28 @@ object PetArtCanvas {
                     quadTo(cx, cy + 32f * scale, cx + 7f * scale, cy + 26f * scale)
                 }
                 canvas.drawPath(m, paint)
+                // 顶部斜扣小蛋壳帽
+                canvas.save()
+                canvas.rotate(-12f, cx, cy - 28f * scale)
+                val cap = Path().apply {
+                    moveTo(cx - 32f * scale, cy - 16f * scale)
+                    arcTo(RectF(cx - 34f * scale, cy - 48f * scale, cx + 34f * scale, cy + 6f * scale), 185f, 170f, false)
+                    lineTo(cx + 22f * scale, cy - 22f * scale)
+                    lineTo(cx + 11f * scale, cy - 15f * scale)
+                    lineTo(cx, cy - 23f * scale)
+                    lineTo(cx - 11f * scale, cy - 15f * scale)
+                    lineTo(cx - 22f * scale, cy - 22f * scale)
+                    close()
+                }
+                paint.style = Paint.Style.FILL
+                paint.shader = eggShader
+                canvas.drawPath(cap, paint)
+                paint.shader = null
+                paint.style = Paint.Style.STROKE
+                paint.color = 0xFFD7C29E.toInt()
+                paint.strokeWidth = 2f * scale
+                canvas.drawPath(cap, paint)
+                canvas.restore()
                 // 下半蛋壳
                 paint.style = Paint.Style.FILL
                 paint.shader = eggShader
@@ -179,14 +215,19 @@ object PetArtCanvas {
                     close()
                 }
                 canvas.drawPath(shell, paint)
+                paint.shader = null
+                paint.style = Paint.Style.STROKE
+                paint.color = 0xFFD7C29E.toInt()
+                paint.strokeWidth = 2f * scale
+                canvas.drawPath(shell, paint)
             }
 
             else -> {
-                // Lv.2 幼年体 / Lv.3 少年体 / Lv.4 成年体 / Lv.5 守护兽
+                // Lv.2 幼年体 / Lv.3 少年体 / Lv.4 成年体 / Lv.5 守护兽（与网页端 mainPetSVG 对齐）
                 paint.shader = null
                 paint.style = Paint.Style.FILL
 
-                // 守护兽翅膀
+                // 守护兽翅膀 + 翼内高光
                 if (lv >= 5) {
                     paint.color = 0xFFD97224.toInt()
                     val lw = Path().apply {
@@ -203,38 +244,126 @@ object PetArtCanvas {
                     }
                     canvas.drawPath(lw, paint)
                     canvas.drawPath(rw, paint)
+                    paint.color = 0xB3FFCF8C.toInt()
+                    val li = Path().apply {
+                        moveTo(cx - 58f * scale, cy - 4f * scale)
+                        quadTo(cx - 86f * scale, cy - 26f * scale, cx - 72f * scale, cy - 44f * scale)
+                        quadTo(cx - 54f * scale, cy - 36f * scale, cx - 48f * scale, cy - 14f * scale)
+                        close()
+                    }
+                    val ri = Path().apply {
+                        moveTo(cx + 58f * scale, cy - 4f * scale)
+                        quadTo(cx + 86f * scale, cy - 26f * scale, cx + 72f * scale, cy - 44f * scale)
+                        quadTo(cx + 54f * scale, cy - 36f * scale, cx + 48f * scale, cy - 14f * scale)
+                        close()
+                    }
+                    canvas.drawPath(li, paint)
+                    canvas.drawPath(ri, paint)
                 }
 
-                // 尾巴
-                if (lv >= 3) {
-                    paint.color = if (lv >= 4) 0xFFD87526.toInt() else 0xFFF8D29C.toInt()
-                    canvas.drawCircle(cx + 52f * scale, cy + 40f * scale, 14f * scale, paint)
-                    canvas.drawCircle(cx + 62f * scale, cy + 30f * scale, 10f * scale, paint)
+                // 尾巴（Lv.3 蓬松奶黄球尾；Lv.4 上扬活力弧线尾）
+                if (lv == 3) {
+                    paint.color = 0xFFF8D29C.toInt()
+                    canvas.drawCircle(cx + 48f * scale, cy + 42f * scale, 14f * scale, paint)
+                    paint.color = 0xFFFCE4BE.toInt()
+                    canvas.drawCircle(cx + 56f * scale, cy + 34f * scale, 10f * scale, paint)
+                } else if (lv == 4) {
+                    paint.style = Paint.Style.STROKE
+                    paint.color = 0xFFD87526.toInt()
+                    paint.strokeWidth = 11f * scale
+                    paint.strokeCap = Paint.Cap.ROUND
+                    val t4 = Path().apply {
+                        moveTo(cx + 52f * scale, cy + 40f * scale)
+                        quadTo(cx + 78f * scale, cy + 46f * scale, cx + 76f * scale, cy + 24f * scale)
+                        quadTo(cx + 74f * scale, cy + 13f * scale, cx + 63f * scale, cy + 15f * scale)
+                    }
+                    canvas.drawPath(t4, paint)
+                    paint.style = Paint.Style.FILL
                 }
 
-                // 耳朵
-                paint.color = 0xFFEB9540.toInt()
+                // 耳朵（Lv.2 圆耳 / Lv.3 软折耳 / Lv.4-5 灵动弯耳）
                 if (lv == 2) {
+                    paint.color = 0xFFEB9540.toInt()
                     canvas.drawCircle(cx - 38f * scale, cy - 24f * scale, 15f * scale, paint)
                     canvas.drawCircle(cx + 38f * scale, cy - 24f * scale, 15f * scale, paint)
                     paint.color = 0xFFFBD2A2.toInt()
                     canvas.drawCircle(cx - 36f * scale, cy - 22f * scale, 7f * scale, paint)
                     canvas.drawCircle(cx + 36f * scale, cy - 22f * scale, 7f * scale, paint)
-                } else {
+                } else if (lv == 3) {
+                    paint.color = 0xFFEB9540.toInt()
                     val le = Path().apply {
-                        moveTo(cx - 48f * scale, cy - 14f * scale)
-                        lineTo(cx - 44f * scale, cy - 56f * scale)
-                        lineTo(cx - 18f * scale, cy - 30f * scale)
+                        moveTo(cx - 48f * scale, cy - 18f * scale)
+                        quadTo(cx - 54f * scale, cy - 58f * scale, cx - 24f * scale, cy - 44f * scale)
+                        quadTo(cx - 20f * scale, cy - 30f * scale, cx - 32f * scale, cy - 14f * scale)
                         close()
                     }
                     val re = Path().apply {
-                        moveTo(cx + 48f * scale, cy - 14f * scale)
-                        lineTo(cx + 44f * scale, cy - 56f * scale)
-                        lineTo(cx + 18f * scale, cy - 30f * scale)
+                        moveTo(cx + 48f * scale, cy - 18f * scale)
+                        quadTo(cx + 54f * scale, cy - 58f * scale, cx + 24f * scale, cy - 44f * scale)
+                        quadTo(cx + 20f * scale, cy - 30f * scale, cx + 32f * scale, cy - 14f * scale)
                         close()
                     }
                     canvas.drawPath(le, paint)
                     canvas.drawPath(re, paint)
+                    paint.color = 0xFFFBD2A2.toInt()
+                    val li = Path().apply {
+                        moveTo(cx - 42f * scale, cy - 22f * scale)
+                        quadTo(cx - 45f * scale, cy - 46f * scale, cx - 28f * scale, cy - 38f * scale)
+                        close()
+                    }
+                    val ri = Path().apply {
+                        moveTo(cx + 42f * scale, cy - 22f * scale)
+                        quadTo(cx + 45f * scale, cy - 46f * scale, cx + 28f * scale, cy - 38f * scale)
+                        close()
+                    }
+                    canvas.drawPath(li, paint)
+                    canvas.drawPath(ri, paint)
+                } else {
+                    paint.color = if (lv >= 5) 0xFFE8892E.toInt() else 0xFFEC9139.toInt()
+                    val le = Path().apply {
+                        moveTo(cx - 50f * scale, cy - 8f * scale)
+                        quadTo(cx - 66f * scale, cy - 48f * scale, cx - 32f * scale, cy - 50f * scale)
+                        quadTo(cx - 18f * scale, cy - 36f * scale, cx - 26f * scale, cy - 8f * scale)
+                        close()
+                    }
+                    val re = Path().apply {
+                        moveTo(cx + 50f * scale, cy - 8f * scale)
+                        quadTo(cx + 66f * scale, cy - 48f * scale, cx + 32f * scale, cy - 50f * scale)
+                        quadTo(cx + 18f * scale, cy - 36f * scale, cx + 26f * scale, cy - 8f * scale)
+                        close()
+                    }
+                    canvas.drawPath(le, paint)
+                    canvas.drawPath(re, paint)
+                    if (lv == 4) {
+                        paint.color = 0xB3FBD2A2.toInt()
+                        val li = Path().apply {
+                            moveTo(cx - 45f * scale, cy - 12f * scale)
+                            quadTo(cx - 56f * scale, cy - 36f * scale, cx - 34f * scale, cy - 38f * scale)
+                            close()
+                        }
+                        val ri = Path().apply {
+                            moveTo(cx + 45f * scale, cy - 12f * scale)
+                            quadTo(cx + 56f * scale, cy - 36f * scale, cx + 34f * scale, cy - 38f * scale)
+                            close()
+                        }
+                        canvas.drawPath(li, paint)
+                        canvas.drawPath(ri, paint)
+                    }
+                }
+
+                // 头顶呆毛（Lv.2、Lv.3）
+                if (lv == 2 || lv == 3) {
+                    paint.style = Paint.Style.STROKE
+                    paint.color = 0xFFEB9540.toInt()
+                    paint.strokeWidth = 5.5f * scale
+                    paint.strokeCap = Paint.Cap.ROUND
+                    val ah = Path().apply {
+                        moveTo(cx, cy - 32f * scale)
+                        quadTo(cx - 9f * scale, cy - 48f * scale, cx + 4f * scale, cy - 54f * scale)
+                        quadTo(cx + 14f * scale, cy - 59f * scale, cx + 11f * scale, cy - 48f * scale)
+                    }
+                    canvas.drawPath(ah, paint)
+                    paint.style = Paint.Style.FILL
                 }
 
                 // 成年体小角 / 守护兽王冠
@@ -265,6 +394,11 @@ object PetArtCanvas {
                         close()
                     }
                     canvas.drawPath(crown, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.color = 0xFFE2A929.toInt()
+                    paint.strokeWidth = 1.5f * scale
+                    canvas.drawPath(crown, paint)
+                    paint.style = Paint.Style.FILL
                 }
 
                 // 主体
@@ -279,7 +413,7 @@ object PetArtCanvas {
                 canvas.drawOval(RectF(cx - rx * 0.72f, cy - ry + 20f * scale, cx + rx * 0.72f, cy + 4f * scale), paint)
 
                 // 小脚丫
-                paint.color = 0xFFD87526.toInt()
+                paint.color = if (lv >= 5) 0xFFB85617.toInt() else 0xFFD87526.toInt()
                 canvas.drawOval(RectF(cx - 46f * scale, cy + 52f * scale, cx - 20f * scale, cy + 68f * scale), paint)
                 canvas.drawOval(RectF(cx + 20f * scale, cy + 52f * scale, cx + 46f * scale, cy + 68f * scale), paint)
 
@@ -305,6 +439,20 @@ object PetArtCanvas {
                     quadTo(cx + 5f * scale, cy + 27f * scale, cx + 10f * scale, cy + 22f * scale)
                 }
                 canvas.drawPath(mouth, paint)
+
+                // 闪耀星芒（Lv.3..5 对齐网页端）
+                paint.style = Paint.Style.FILL
+                if (lv == 3) {
+                    paint.color = 0xE6FFDF8E.toInt()
+                    drawStar(canvas, cx + 40f * scale, cy - 30f * scale, 7.5f * scale, 3.2f * scale, paint)
+                } else if (lv == 4) {
+                    paint.color = 0xFFFFDF8E.toInt()
+                    drawStar(canvas, cx - 66f * scale, cy - 34f * scale, 9f * scale, 4f * scale, paint)
+                } else if (lv >= 5) {
+                    paint.color = 0xFFF4C74E.toInt()
+                    drawStar(canvas, cx - 74f * scale, cy - 52f * scale, 10.5f * scale, 4.6f * scale, paint)
+                    drawStar(canvas, cx + 72f * scale, cy - 64f * scale, 8.5f * scale, 3.8f * scale, paint)
+                }
             }
         }
         canvas.restore()
@@ -375,22 +523,15 @@ object PetArtCanvas {
         }
 
         if (lv == 1) {
-            // 物种破壳期：蛋壳里探出选定物种的小脑袋
+            // 物种破壳期：蛋壳里探出选定物种的小脑袋（与网页端 petStageSVG Lv.1 对齐）
             drawPedestal(canvas, baseType, cx, cy + 72f * scale, scale, paint)
             canvas.save()
             canvas.scale(1f - breath * 0.015f, 1f + breath * 0.025f, cx, cy + 68f * scale)
-            val babySp = species.copy(acc = "none")
+            val babySp = species.copy(acc = "none", tail = "none")
             canvas.save()
-            canvas.clipRect(cx - 72f * scale, cy - 86f * scale, cx + 72f * scale, cy + 44f * scale)
-            drawSpecies(canvas, babySp, cx, cy - 4f * scale, scale * 0.86f, silhouette = false, paint = paint)
+            canvas.clipRect(cx - 76f * scale, cy - 90f * scale, cx + 76f * scale, cy + 44f * scale)
+            drawSpeciesCore(canvas, babySp, cx, cy - 2f * scale, scale * 0.86f, silhouette = false, drawBase = false, sleep = sleep, paint = paint)
             canvas.restore()
-            if (sleep) {
-                paint.shader = null
-                paint.style = Paint.Style.FILL
-                paint.color = bodyTint
-                canvas.drawOval(RectF(cx - 32f * scale, cy - 12f * scale, cx + 32f * scale, cy + 16f * scale), paint)
-                drawEyes(canvas, cx - 16f * scale, cx + 16f * scale, cy + 2f * scale, scale * 0.86f, true, paint)
-            }
             paint.style = Paint.Style.FILL
             paint.shader = RadialGradient(
                 cx - 12f * scale, cy + 20f * scale, 60f * scale,
@@ -410,41 +551,49 @@ object PetArtCanvas {
             }
             canvas.drawPath(shell, paint)
             paint.shader = null
+            paint.style = Paint.Style.STROKE
+            paint.color = 0xFFD7C29E.toInt()
+            paint.strokeWidth = 2f * scale
+            canvas.drawPath(shell, paint)
             canvas.restore()
             return
         }
 
-        // Lv.2..5 成长形态：随阶段增大体格与光环
+        // Lv.2..5 成长形态：与网页端 petStageSVG 统一光环、缩放、配件解锁节奏
         drawPedestal(canvas, baseType, cx, cy + 72f * scale, scale, paint)
         if (lv >= 3) {
             paint.style = Paint.Style.FILL
             paint.shader = null
-            paint.color = if (lv >= 5) 0x36F4C74E else 0x24F3C653
-            canvas.drawCircle(cx, cy + 6f * scale, (78f + (lv - 3) * 6f) * scale, paint)
+            paint.color = when (lv) {
+                3 -> 0x24F3C653
+                4 -> 0x2EF3C653
+                else -> 0x3DF4C74E
+            }
+            val haloR = when (lv) {
+                3 -> 72f
+                4 -> 78f
+                else -> 82f
+            }
+            canvas.drawCircle(cx, cy + 4f * scale, haloR * scale, paint)
         }
         val stageMul = when (lv) {
-            2 -> 0.92f
-            3 -> 0.98f
-            4 -> 1.04f
-            else -> 1.08f
+            2 -> 0.86f
+            3 -> 0.95f
+            4 -> 1.00f
+            else -> 1.05f
+        }
+        val evolvedSp = when {
+            lv == 2 -> species.copy(acc = "none", tail = if (species.tail == "wing") "puff" else species.tail)
+            lv >= 5 && (species.acc.isBlank() || species.acc == "none") -> species.copy(acc = "crown")
+            else -> species
         }
         canvas.save()
         canvas.scale(1f - breath * 0.015f, 1f + breath * 0.025f, cx, cy + 68f * scale)
-        val evolvedSp = if (lv >= 5 && species.acc == "none") species.copy(acc = "crown") else species
-        drawSpeciesNoPedestal(canvas, evolvedSp, cx, cy + 4f * scale, scale * stageMul, paint)
-        if (sleep) {
-            paint.shader = null
-            paint.style = Paint.Style.FILL
-            paint.color = bodyTint
-            val eyeY = cy + 4f * scale + 4f * scale * stageMul
-            canvas.drawOval(RectF(cx - 32f * scale * stageMul, eyeY - 11f * scale * stageMul, cx + 32f * scale * stageMul, eyeY + 11f * scale * stageMul), paint)
-            drawEyes(canvas, cx - 19f * scale * stageMul, cx + 19f * scale * stageMul, eyeY, scale * stageMul, true, paint)
-        }
+        // 围绕底座上方脚底重心 (cy + 62*scale) 等比缩放，确保幼年体不浮空、守护兽脚踏底座
+        val anchorY = cy + 62f * scale
+        val drawCy = anchorY - 52f * scale * stageMul
+        drawSpeciesCore(canvas, evolvedSp, cx, drawCy, scale * stageMul, silhouette = false, drawBase = false, sleep = sleep, paint = paint)
         canvas.restore()
-    }
-
-    private fun drawSpeciesNoPedestal(canvas: Canvas, sp: SpeciesItem, cx: Float, cy: Float, scale: Float, paint: Paint) {
-        drawSpeciesCore(canvas, sp, cx, cy, scale, silhouette = false, drawBase = false, paint = paint)
     }
 
     private fun drawSpeciesCore(
@@ -455,6 +604,7 @@ object PetArtCanvas {
         scale: Float,
         silhouette: Boolean,
         drawBase: Boolean,
+        sleep: Boolean = false,
         paint: Paint
     ) {
         val bodyC = if (silhouette) 0xFFBFB8AC.toInt() else parseColorSafe(sp.color)
@@ -605,6 +755,28 @@ object PetArtCanvas {
                     paint.color = bodyC
                 }
             }
+            "floppy" -> {
+                // 暖萌软垂耳（如暖宝）
+                canvas.save()
+                canvas.rotate(18f, cx - 52f * scale, cy - 6f * scale)
+                canvas.drawOval(RectF(cx - 65f * scale, cy - 33f * scale, cx - 39f * scale, cy + 21f * scale), paint)
+                if (!silhouette) {
+                    paint.color = 0x57FFFFFF
+                    canvas.drawOval(RectF(cx - 58f * scale, cy - 21f * scale, cx - 46f * scale, cy + 13f * scale), paint)
+                    paint.color = bodyC
+                }
+                canvas.restore()
+
+                canvas.save()
+                canvas.rotate(-18f, cx + 52f * scale, cy - 6f * scale)
+                canvas.drawOval(RectF(cx + 39f * scale, cy - 33f * scale, cx + 65f * scale, cy + 21f * scale), paint)
+                if (!silhouette) {
+                    paint.color = 0x57FFFFFF
+                    canvas.drawOval(RectF(cx + 46f * scale, cy - 21f * scale, cx + 58f * scale, cy + 13f * scale), paint)
+                    paint.color = bodyC
+                }
+                canvas.restore()
+            }
             "horn" -> {
                 // 双角 + 双侧耳（果果、焰焰）
                 paint.color = if (silhouette) bodyC else 0xFFF0C24B.toInt()
@@ -688,18 +860,37 @@ object PetArtCanvas {
 
         // 身体
         paint.color = bodyC
-        canvas.drawOval(RectF(cx - 52f * scale, cy - 36f * scale, cx + 52f * scale, cy + 56f * scale), paint)
+        canvas.drawOval(RectF(cx - 56f * scale, cy - 36f * scale, cx + 56f * scale, cy + 56f * scale), paint)
 
         // 小脚
-        canvas.drawOval(RectF(cx - 48f * scale, cy + 44f * scale, cx - 22f * scale, cy + 61f * scale), paint)
-        canvas.drawOval(RectF(cx + 22f * scale, cy + 44f * scale, cx + 48f * scale, cy + 61f * scale), paint)
+        canvas.drawOval(RectF(cx - 53f * scale, cy + 41.5f * scale, cx - 27f * scale, cy + 58.5f * scale), paint)
+        canvas.drawOval(RectF(cx + 27f * scale, cy + 41.5f * scale, cx + 53f * scale, cy + 58.5f * scale), paint)
 
         if (!silhouette) {
-            // 高光 + 肚皮
-            paint.color = 0x55FFFFFF
-            canvas.drawOval(RectF(cx - 36f * scale, cy - 28f * scale, cx + 36f * scale, cy - 2f * scale), paint)
+            // 糖霜渐变高光 + 小爪印 + 肚皮（对齐网页端 gb_ 渐变）
+            paint.shader = RadialGradient(
+                cx - 12f * scale, cy - 26f * scale, 84f * scale,
+                intArrayOf(0x8CFFFFFF.toInt(), 0x00FFFFFF),
+                floatArrayOf(0f, 1f),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawOval(RectF(cx - 54f * scale, cy - 33f * scale, cx + 54f * scale, cy + 53f * scale), paint)
+            paint.shader = null
             paint.color = 0x7AFFFFFF
-            canvas.drawOval(RectF(cx - 30f * scale, cy + 10f * scale, cx + 30f * scale, cy + 48f * scale), paint)
+            canvas.drawOval(RectF(cx - 33f * scale, cy + 4f * scale, cx + 33f * scale, cy + 50f * scale), paint)
+
+            paint.style = Paint.Style.STROKE
+            paint.color = 0x38000000
+            paint.strokeWidth = 1.2f * scale
+            paint.strokeCap = Paint.Cap.ROUND
+            val paws = Path().apply {
+                moveTo(cx - 46f * scale, cy + 50f * scale); quadTo(cx - 43f * scale, cy + 47.6f * scale, cx - 40f * scale, cy + 50f * scale)
+                moveTo(cx - 38f * scale, cy + 50f * scale); quadTo(cx - 35f * scale, cy + 47.6f * scale, cx - 32f * scale, cy + 50f * scale)
+                moveTo(cx + 34f * scale, cy + 50f * scale); quadTo(cx + 37f * scale, cy + 47.6f * scale, cx + 40f * scale, cy + 50f * scale)
+                moveTo(cx + 42f * scale, cy + 50f * scale); quadTo(cx + 45f * scale, cy + 47.6f * scale, cx + 48f * scale, cy + 50f * scale)
+            }
+            canvas.drawPath(paws, paint)
+            paint.style = Paint.Style.FILL
 
             // 配饰
             when (sp.acc) {
@@ -751,18 +942,18 @@ object PetArtCanvas {
                 }
             }
 
-            drawEyes(canvas, cx - 19f * scale, cx + 19f * scale, cy + 4f * scale, scale, false, paint)
+            drawEyes(canvas, cx - 22f * scale, cx + 22f * scale, cy, scale, sleep, paint)
             paint.shader = null
             paint.style = Paint.Style.FILL
             paint.color = 0x6BF28B82
-            canvas.drawOval(RectF(cx - 44f * scale, cy + 14f * scale, cx - 26f * scale, cy + 25f * scale), paint)
-            canvas.drawOval(RectF(cx + 26f * scale, cy + 14f * scale, cx + 44f * scale, cy + 25f * scale), paint)
+            canvas.drawOval(RectF(cx - 53.5f * scale, cy + 10f * scale, cx - 34.5f * scale, cy + 22f * scale), paint)
+            canvas.drawOval(RectF(cx + 34.5f * scale, cy + 10f * scale, cx + 53.5f * scale, cy + 22f * scale), paint)
 
             // 嘴型（smile / cat / buck / fang 与网页端完全一致）
-            val my = cy + 16f * scale
+            val my = cy + 14f * scale
             if (sp.mouth == "cat" || sp.mouth == "buck") {
                 paint.color = if (sp.mouth == "buck") 0xFFF09BB0.toInt() else 0xFFE28395.toInt()
-                canvas.drawOval(RectF(cx - 3.4f * scale, cy + 9.5f * scale, cx + 3.4f * scale, cy + 14.2f * scale), paint)
+                canvas.drawOval(RectF(cx - 3.4f * scale, cy + 7.5f * scale, cx + 3.4f * scale, cy + 12.2f * scale), paint)
             }
             paint.style = Paint.Style.STROKE
             paint.color = 0xFF3A2F22.toInt()
@@ -1251,7 +1442,7 @@ class SpeciesThumbView @JvmOverloads constructor(
         val h = height.toFloat().coerceAtLeast(1f)
         val cx = w * 0.5f
         val cy = h * 0.54f
-        val scale = min(w / 185f, h / 170f)
+        val scale = min(w / 192f, h / 182f)
 
         avatarBitmap?.let { bmp ->
             if (!bmp.isRecycled) {

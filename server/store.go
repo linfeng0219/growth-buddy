@@ -69,6 +69,7 @@ var BuiltinSpecies = []Species{
 	{ID: "b6", Name: "汤圆", Color: "#4c5261", Ear: "none", Acc: "bow", Tail: "puff", Mouth: "smile", Base: "snow", Ahoge: 0, Hint: "南极选民", AddedAt: 0},
 	{ID: "b7", Name: "糖糖", Color: "#f2a8bc", Ear: "unicorn", Acc: "star", Tail: "wing", Mouth: "smile", Base: "cloud", Ahoge: 0, Hint: "梦幻限定", AddedAt: 0},
 	{ID: "b8", Name: "焰焰", Color: "#d96338", Ear: "horn", Acc: "crown", Tail: "wing", Mouth: "fang", Base: "sand", Ahoge: 0, Hint: "传说守护", AddedAt: 0},
+	{ID: "b9", Name: "暖宝", Color: "#f3c15a", Ear: "floppy", Acc: "scarf", Tail: "fox", Mouth: "cat", Base: "cloud", Ahoge: 1, Hint: "暖洋洋的陪伴", AddedAt: 0},
 }
 
 func LevelForXP(xp int) int {
