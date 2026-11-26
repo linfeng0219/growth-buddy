@@ -319,152 +319,7 @@ object PetArtCanvas {
         silhouette: Boolean,
         paint: Paint
     ) {
-        val bodyC = if (silhouette) 0xFFBFB8AC.toInt() else parseColorSafe(sp.color)
-        if (!silhouette) {
-            drawPedestal(canvas, sp.base, cx, cy + 66f * scale, scale, paint)
-        }
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = bodyC
-
-        // 尾巴
-        when (sp.tail) {
-            "puff" -> {
-                canvas.drawCircle(cx + 52f * scale, cy + 36f * scale, 13f * scale, paint)
-                canvas.drawCircle(cx + 60f * scale, cy + 28f * scale, 8f * scale, paint)
-            }
-            "fox", "dragon" -> {
-                val p = Path().apply {
-                    moveTo(cx + 42f * scale, cy + 38f * scale)
-                    quadTo(cx + 76f * scale, cy + 42f * scale, cx + 70f * scale, cy + 12f * scale)
-                    quadTo(cx + 56f * scale, cy + 14f * scale, cx + 44f * scale, cy + 26f * scale)
-                    close()
-                }
-                canvas.drawPath(p, paint)
-            }
-            "wing" -> {
-                val lw = Path().apply {
-                    moveTo(cx - 50f * scale, cy + 8f * scale)
-                    quadTo(cx - 82f * scale, cy - 16f * scale, cx - 64f * scale, cy - 36f * scale)
-                    quadTo(cx - 46f * scale, cy - 28f * scale, cx - 42f * scale, cy - 4f * scale)
-                    close()
-                }
-                val rw = Path().apply {
-                    moveTo(cx + 50f * scale, cy + 8f * scale)
-                    quadTo(cx + 82f * scale, cy - 16f * scale, cx + 64f * scale, cy - 36f * scale)
-                    quadTo(cx + 46f * scale, cy - 28f * scale, cx + 42f * scale, cy - 4f * scale)
-                    close()
-                }
-                canvas.drawPath(lw, paint)
-                canvas.drawPath(rw, paint)
-            }
-        }
-
-        // 耳朵
-        when (sp.ear) {
-            "tall" -> {
-                canvas.drawOval(RectF(cx - 38f * scale, cy - 72f * scale, cx - 16f * scale, cy - 14f * scale), paint)
-                canvas.drawOval(RectF(cx + 16f * scale, cy - 72f * scale, cx + 38f * scale, cy - 14f * scale), paint)
-            }
-            "pointy" -> {
-                val le = Path().apply {
-                    moveTo(cx - 46f * scale, cy - 14f * scale)
-                    lineTo(cx - 32f * scale, cy - 64f * scale)
-                    lineTo(cx - 12f * scale, cy - 24f * scale)
-                    close()
-                }
-                val re = Path().apply {
-                    moveTo(cx + 46f * scale, cy - 14f * scale)
-                    lineTo(cx + 32f * scale, cy - 64f * scale)
-                    lineTo(cx + 12f * scale, cy - 24f * scale)
-                    close()
-                }
-                canvas.drawPath(le, paint)
-                canvas.drawPath(re, paint)
-            }
-            "horn", "unicorn" -> {
-                paint.color = if (silhouette) bodyC else 0xFFF0C24B.toInt()
-                val h = Path().apply {
-                    moveTo(cx - 12f * scale, cy - 36f * scale)
-                    lineTo(cx, cy - 72f * scale)
-                    lineTo(cx + 12f * scale, cy - 36f * scale)
-                    close()
-                }
-                canvas.drawPath(h, paint)
-                paint.color = bodyC
-            }
-            "none" -> {}
-            else -> {
-                canvas.drawCircle(cx - 36f * scale, cy - 28f * scale, 16f * scale, paint)
-                canvas.drawCircle(cx + 36f * scale, cy - 28f * scale, 16f * scale, paint)
-            }
-        }
-
-        // 身体
-        paint.color = bodyC
-        canvas.drawOval(RectF(cx - 52f * scale, cy - 36f * scale, cx + 52f * scale, cy + 56f * scale), paint)
-
-        if (!silhouette) {
-            // 高光 + 肚皮
-            paint.color = 0x55FFFFFF
-            canvas.drawOval(RectF(cx - 36f * scale, cy - 28f * scale, cx + 36f * scale, cy - 2f * scale), paint)
-            paint.color = 0xB8FFFDF8.toInt()
-            canvas.drawOval(RectF(cx - 30f * scale, cy + 10f * scale, cx + 30f * scale, cy + 48f * scale), paint)
-
-            // 配饰
-            when (sp.acc) {
-                "scarf" -> {
-                    paint.color = 0xFFC95742.toInt()
-                    canvas.drawRoundRect(
-                        RectF(cx - 38f * scale, cy + 28f * scale, cx + 38f * scale, cy + 40f * scale),
-                        8f * scale, 8f * scale, paint
-                    )
-                }
-                "crown" -> {
-                    paint.color = 0xFFF2C44D.toInt()
-                    val cr = Path().apply {
-                        moveTo(cx - 18f * scale, cy - 36f * scale)
-                        lineTo(cx - 10f * scale, cy - 56f * scale)
-                        lineTo(cx, cy - 42f * scale)
-                        lineTo(cx + 10f * scale, cy - 56f * scale)
-                        lineTo(cx + 18f * scale, cy - 36f * scale)
-                        close()
-                    }
-                    canvas.drawPath(cr, paint)
-                }
-                "bow" -> {
-                    paint.color = 0xFFE2758E.toInt()
-                    canvas.drawCircle(cx - 12f * scale, cy - 34f * scale, 8f * scale, paint)
-                    canvas.drawCircle(cx + 12f * scale, cy - 34f * scale, 8f * scale, paint)
-                    canvas.drawCircle(cx, cy - 34f * scale, 5f * scale, paint)
-                }
-                "star" -> {
-                    paint.color = 0xFFF2C44D.toInt()
-                    canvas.drawCircle(cx, cy - 40f * scale, 7f * scale, paint)
-                }
-            }
-
-            drawEyes(canvas, cx - 19f * scale, cx + 19f * scale, cy + 4f * scale, scale, false, paint)
-            paint.shader = null
-            paint.style = Paint.Style.FILL
-            paint.color = 0x7AF28B82
-            canvas.drawOval(RectF(cx - 42f * scale, cy + 14f * scale, cx - 26f * scale, cy + 24f * scale), paint)
-            canvas.drawOval(RectF(cx + 26f * scale, cy + 14f * scale, cx + 42f * scale, cy + 24f * scale), paint)
-            paint.style = Paint.Style.STROKE
-            paint.color = 0xFF3A2F22.toInt()
-            paint.strokeWidth = 2.2f * scale
-            val m = Path().apply {
-                moveTo(cx - 8f * scale, cy + 18f * scale)
-                quadTo(cx, cy + 25f * scale, cx + 8f * scale, cy + 18f * scale)
-            }
-            canvas.drawPath(m, paint)
-        } else {
-            paint.color = 0xFFFFFFFF.toInt()
-            paint.textSize = 36f * scale
-            paint.textAlign = Paint.Align.CENTER
-            paint.isFakeBoldText = true
-            canvas.drawText("?", cx, cy + 16f * scale, paint)
-        }
+        drawSpeciesCore(canvas, sp, cx, cy, scale, silhouette, drawBase = true, paint = paint)
     }
 
     /**
@@ -481,7 +336,7 @@ object PetArtCanvas {
         species: SpeciesItem?,
         paint: Paint
     ) {
-        if (species == null || species.id == "b1") {
+        if (species == null || species.id == "b0") {
             drawMainPet(canvas, lv, cx, cy, scale, sleep, breath, paint)
             return
         }
@@ -589,127 +444,378 @@ object PetArtCanvas {
     }
 
     private fun drawSpeciesNoPedestal(canvas: Canvas, sp: SpeciesItem, cx: Float, cy: Float, scale: Float, paint: Paint) {
-        val bodyC = parseColorSafe(sp.color)
+        drawSpeciesCore(canvas, sp, cx, cy, scale, silhouette = false, drawBase = false, paint = paint)
+    }
+
+    private fun drawSpeciesCore(
+        canvas: Canvas,
+        sp: SpeciesItem,
+        cx: Float,
+        cy: Float,
+        scale: Float,
+        silhouette: Boolean,
+        drawBase: Boolean,
+        paint: Paint
+    ) {
+        val bodyC = if (silhouette) 0xFFBFB8AC.toInt() else parseColorSafe(sp.color)
+        if (!silhouette && drawBase) {
+            drawPedestal(canvas, sp.base, cx, cy + 66f * scale, scale, paint)
+        }
         paint.shader = null
         paint.style = Paint.Style.FILL
         paint.color = bodyC
+
+        // 尾巴 / 翅膀（与网页端 speciesSVG 保持一致）
         when (sp.tail) {
             "puff" -> {
-                canvas.drawCircle(cx + 52f * scale, cy + 36f * scale, 13f * scale, paint)
-                canvas.drawCircle(cx + 60f * scale, cy + 28f * scale, 8f * scale, paint)
+                canvas.drawCircle(cx + 52f * scale, cy + 32f * scale, 13f * scale, paint)
+                canvas.drawCircle(cx + 60f * scale, cy + 24f * scale, 8f * scale, paint)
             }
-            "fox", "dragon" -> {
+            "fox" -> {
                 val p = Path().apply {
-                    moveTo(cx + 42f * scale, cy + 38f * scale)
-                    quadTo(cx + 76f * scale, cy + 42f * scale, cx + 70f * scale, cy + 12f * scale)
-                    quadTo(cx + 56f * scale, cy + 14f * scale, cx + 44f * scale, cy + 26f * scale)
+                    moveTo(cx + 40f * scale, cy + 34f * scale)
+                    quadTo(cx + 78f * scale, cy + 40f * scale, cx + 74f * scale, cy + 6f * scale)
+                    quadTo(cx + 62f * scale, cy, cx + 50f * scale, cy + 14f * scale)
                     close()
                 }
                 canvas.drawPath(p, paint)
+                if (!silhouette) {
+                    paint.color = 0x99FFFFFF.toInt()
+                    val tip = Path().apply {
+                        moveTo(cx + 58f * scale, cy + 12f * scale)
+                        quadTo(cx + 70f * scale, cy + 4f * scale, cx + 74f * scale, cy + 6f * scale)
+                        quadTo(cx + 72f * scale, cy + 16f * scale, cx + 62f * scale, cy + 22f * scale)
+                        close()
+                    }
+                    canvas.drawPath(tip, paint)
+                    paint.color = bodyC
+                }
+            }
+            "dragon" -> {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 10f * scale
+                paint.strokeCap = Paint.Cap.ROUND
+                val tail = Path().apply {
+                    moveTo(cx + 42f * scale, cy + 32f * scale)
+                    quadTo(cx + 72f * scale, cy + 40f * scale, cx + 70f * scale, cy + 16f * scale)
+                    quadTo(cx + 68f * scale, cy + 5f * scale, cx + 58f * scale, cy + 7f * scale)
+                }
+                canvas.drawPath(tail, paint)
+                paint.style = Paint.Style.FILL
+                paint.color = if (silhouette) bodyC else 0xFFF0A944.toInt()
+                val tip = Path().apply {
+                    moveTo(cx + 60f * scale, cy + 8f * scale)
+                    lineTo(cx + 74f * scale, cy - 2f * scale)
+                    lineTo(cx + 70f * scale, cy + 13f * scale)
+                    close()
+                }
+                canvas.drawPath(tip, paint)
+                paint.color = bodyC
             }
             "wing" -> {
                 val lw = Path().apply {
-                    moveTo(cx - 50f * scale, cy + 8f * scale)
-                    quadTo(cx - 82f * scale, cy - 16f * scale, cx - 64f * scale, cy - 36f * scale)
-                    quadTo(cx - 46f * scale, cy - 28f * scale, cx - 42f * scale, cy - 4f * scale)
+                    moveTo(cx - 50f * scale, cy + 6f * scale)
+                    quadTo(cx - 82f * scale, cy - 18f * scale, cx - 64f * scale, cy - 38f * scale)
+                    quadTo(cx - 46f * scale, cy - 30f * scale, cx - 42f * scale, cy - 4f * scale)
                     close()
                 }
                 val rw = Path().apply {
-                    moveTo(cx + 50f * scale, cy + 8f * scale)
-                    quadTo(cx + 82f * scale, cy - 16f * scale, cx + 64f * scale, cy - 36f * scale)
-                    quadTo(cx + 46f * scale, cy - 28f * scale, cx + 42f * scale, cy - 4f * scale)
+                    moveTo(cx + 50f * scale, cy + 6f * scale)
+                    quadTo(cx + 82f * scale, cy - 18f * scale, cx + 64f * scale, cy - 38f * scale)
+                    quadTo(cx + 46f * scale, cy - 30f * scale, cx + 42f * scale, cy - 4f * scale)
                     close()
                 }
                 canvas.drawPath(lw, paint)
                 canvas.drawPath(rw, paint)
+                if (!silhouette) {
+                    paint.color = 0x52FFFFFF
+                    val li = Path().apply {
+                        moveTo(cx - 50f * scale, cy + 2f * scale)
+                        quadTo(cx - 72f * scale, cy - 14f * scale, cx - 60f * scale, cy - 28f * scale)
+                        quadTo(cx - 48f * scale, cy - 22f * scale, cx - 44f * scale, cy - 6f * scale)
+                        close()
+                    }
+                    val ri = Path().apply {
+                        moveTo(cx + 50f * scale, cy + 2f * scale)
+                        quadTo(cx + 72f * scale, cy - 14f * scale, cx + 60f * scale, cy - 28f * scale)
+                        quadTo(cx + 48f * scale, cy - 22f * scale, cx + 44f * scale, cy - 6f * scale)
+                        close()
+                    }
+                    canvas.drawPath(li, paint)
+                    canvas.drawPath(ri, paint)
+                    paint.color = bodyC
+                }
             }
         }
+
+        // 耳朵 / 角（与网页端 speciesSVG 保持一致）
         when (sp.ear) {
             "tall" -> {
-                canvas.drawOval(RectF(cx - 38f * scale, cy - 72f * scale, cx - 16f * scale, cy - 14f * scale), paint)
-                canvas.drawOval(RectF(cx + 16f * scale, cy - 72f * scale, cx + 38f * scale, cy - 14f * scale), paint)
+                canvas.save()
+                canvas.rotate(-7f, cx - 28f * scale, cy - 46f * scale)
+                canvas.drawOval(RectF(cx - 39f * scale, cy - 76f * scale, cx - 17f * scale, cy - 16f * scale), paint)
+                if (!silhouette) {
+                    paint.color = 0xBFF7C2CF.toInt()
+                    canvas.drawOval(RectF(cx - 33f * scale, cy - 64f * scale, cx - 23f * scale, cy - 24f * scale), paint)
+                    paint.color = bodyC
+                }
+                canvas.restore()
+
+                canvas.save()
+                canvas.rotate(7f, cx + 28f * scale, cy - 46f * scale)
+                canvas.drawOval(RectF(cx + 17f * scale, cy - 76f * scale, cx + 39f * scale, cy - 16f * scale), paint)
+                if (!silhouette) {
+                    paint.color = 0xBFF7C2CF.toInt()
+                    canvas.drawOval(RectF(cx + 23f * scale, cy - 64f * scale, cx + 33f * scale, cy - 24f * scale), paint)
+                    paint.color = bodyC
+                }
+                canvas.restore()
             }
             "pointy" -> {
                 val le = Path().apply {
-                    moveTo(cx - 46f * scale, cy - 14f * scale)
-                    lineTo(cx - 32f * scale, cy - 64f * scale)
-                    lineTo(cx - 12f * scale, cy - 24f * scale)
+                    moveTo(cx - 46f * scale, cy - 16f * scale)
+                    lineTo(cx - 32f * scale, cy - 66f * scale)
+                    lineTo(cx - 12f * scale, cy - 26f * scale)
                     close()
                 }
                 val re = Path().apply {
-                    moveTo(cx + 46f * scale, cy - 14f * scale)
-                    lineTo(cx + 32f * scale, cy - 64f * scale)
-                    lineTo(cx + 12f * scale, cy - 24f * scale)
+                    moveTo(cx + 46f * scale, cy - 16f * scale)
+                    lineTo(cx + 32f * scale, cy - 66f * scale)
+                    lineTo(cx + 12f * scale, cy - 26f * scale)
+                    close()
+                }
+                canvas.drawPath(le, paint)
+                canvas.drawPath(re, paint)
+                if (!silhouette) {
+                    paint.color = 0x47FFFFFF
+                    val li = Path().apply {
+                        moveTo(cx - 41f * scale, cy - 24f * scale)
+                        lineTo(cx - 32f * scale, cy - 56f * scale)
+                        lineTo(cx - 19f * scale, cy - 30f * scale)
+                        close()
+                    }
+                    val ri = Path().apply {
+                        moveTo(cx + 41f * scale, cy - 24f * scale)
+                        lineTo(cx + 32f * scale, cy - 56f * scale)
+                        lineTo(cx + 19f * scale, cy - 30f * scale)
+                        close()
+                    }
+                    canvas.drawPath(li, paint)
+                    canvas.drawPath(ri, paint)
+                    paint.color = bodyC
+                }
+            }
+            "horn" -> {
+                // 双角 + 双侧耳（果果、焰焰）
+                paint.color = if (silhouette) bodyC else 0xFFF0C24B.toInt()
+                val lh = Path().apply {
+                    moveTo(cx - 34f * scale, cy - 28f * scale)
+                    lineTo(cx - 44f * scale, cy - 66f * scale)
+                    lineTo(cx - 20f * scale, cy - 40f * scale)
+                    close()
+                }
+                val rh = Path().apply {
+                    moveTo(cx + 34f * scale, cy - 28f * scale)
+                    lineTo(cx + 44f * scale, cy - 66f * scale)
+                    lineTo(cx + 20f * scale, cy - 40f * scale)
+                    close()
+                }
+                canvas.drawPath(lh, paint)
+                canvas.drawPath(rh, paint)
+                paint.color = bodyC
+                val le = Path().apply {
+                    moveTo(cx - 50f * scale, cy - 10f * scale)
+                    lineTo(cx - 62f * scale, cy - 30f * scale)
+                    lineTo(cx - 38f * scale, cy - 22f * scale)
+                    close()
+                }
+                val re = Path().apply {
+                    moveTo(cx + 50f * scale, cy - 10f * scale)
+                    lineTo(cx + 62f * scale, cy - 30f * scale)
+                    lineTo(cx + 38f * scale, cy - 22f * scale)
                     close()
                 }
                 canvas.drawPath(le, paint)
                 canvas.drawPath(re, paint)
             }
-            "horn", "unicorn" -> {
-                paint.color = 0xFFF0C24B.toInt()
+            "unicorn" -> {
+                paint.color = if (silhouette) bodyC else 0xFFF4C74E.toInt()
                 val h = Path().apply {
-                    moveTo(cx - 12f * scale, cy - 36f * scale)
-                    lineTo(cx, cy - 72f * scale)
-                    lineTo(cx + 12f * scale, cy - 36f * scale)
+                    moveTo(cx - 6f * scale, cy - 36f * scale)
+                    lineTo(cx, cy - 74f * scale)
+                    lineTo(cx + 6f * scale, cy - 36f * scale)
                     close()
                 }
                 canvas.drawPath(h, paint)
+                if (!silhouette) {
+                    paint.style = Paint.Style.STROKE
+                    paint.color = 0xB3FFFFFF.toInt()
+                    paint.strokeWidth = 1.6f * scale
+                    paint.strokeCap = Paint.Cap.ROUND
+                    canvas.drawLine(cx - 3f * scale, cy - 50f * scale, cx + 4f * scale, cy - 56f * scale, paint)
+                    canvas.drawLine(cx - 4f * scale, cy - 60f * scale, cx + 3f * scale, cy - 66f * scale, paint)
+                    paint.style = Paint.Style.FILL
+                }
                 paint.color = bodyC
             }
             "none" -> {}
             else -> {
                 canvas.drawCircle(cx - 36f * scale, cy - 28f * scale, 16f * scale, paint)
                 canvas.drawCircle(cx + 36f * scale, cy - 28f * scale, 16f * scale, paint)
+                if (!silhouette) {
+                    paint.color = 0x59FFFFFF
+                    canvas.drawCircle(cx - 34f * scale, cy - 26f * scale, 7.5f * scale, paint)
+                    canvas.drawCircle(cx + 34f * scale, cy - 26f * scale, 7.5f * scale, paint)
+                    paint.color = bodyC
+                }
             }
         }
+
+        // 呆毛（如小团子 ahoge = 1）
+        if (sp.ahoge > 0 && !silhouette) {
+            paint.style = Paint.Style.STROKE
+            paint.color = bodyC
+            paint.strokeWidth = 5.2f * scale
+            paint.strokeCap = Paint.Cap.ROUND
+            val ahoge = Path().apply {
+                moveTo(cx, cy - 33f * scale)
+                quadTo(cx - 9f * scale, cy - 49f * scale, cx + 4f * scale, cy - 55f * scale)
+                quadTo(cx + 13f * scale, cy - 59f * scale, cx + 11f * scale, cy - 49f * scale)
+            }
+            canvas.drawPath(ahoge, paint)
+            paint.style = Paint.Style.FILL
+        }
+
+        // 身体
         paint.color = bodyC
         canvas.drawOval(RectF(cx - 52f * scale, cy - 36f * scale, cx + 52f * scale, cy + 56f * scale), paint)
-        paint.color = 0x55FFFFFF
-        canvas.drawOval(RectF(cx - 36f * scale, cy - 28f * scale, cx + 36f * scale, cy - 2f * scale), paint)
-        paint.color = 0xB8FFFDF8.toInt()
-        canvas.drawOval(RectF(cx - 30f * scale, cy + 10f * scale, cx + 30f * scale, cy + 48f * scale), paint)
-        when (sp.acc) {
-            "scarf" -> {
-                paint.color = 0xFFC95742.toInt()
-                canvas.drawRoundRect(RectF(cx - 38f * scale, cy + 28f * scale, cx + 38f * scale, cy + 40f * scale), 8f * scale, 8f * scale, paint)
+
+        // 小脚
+        canvas.drawOval(RectF(cx - 48f * scale, cy + 44f * scale, cx - 22f * scale, cy + 61f * scale), paint)
+        canvas.drawOval(RectF(cx + 22f * scale, cy + 44f * scale, cx + 48f * scale, cy + 61f * scale), paint)
+
+        if (!silhouette) {
+            // 高光 + 肚皮
+            paint.color = 0x55FFFFFF
+            canvas.drawOval(RectF(cx - 36f * scale, cy - 28f * scale, cx + 36f * scale, cy - 2f * scale), paint)
+            paint.color = 0x7AFFFFFF
+            canvas.drawOval(RectF(cx - 30f * scale, cy + 10f * scale, cx + 30f * scale, cy + 48f * scale), paint)
+
+            // 配饰
+            when (sp.acc) {
+                "scarf" -> {
+                    paint.color = 0xFFC95742.toInt()
+                    canvas.drawRoundRect(
+                        RectF(cx - 40f * scale, cy + 28f * scale, cx + 40f * scale, cy + 42f * scale),
+                        7.5f * scale, 7.5f * scale, paint
+                    )
+                    canvas.drawRoundRect(
+                        RectF(cx + 12f * scale, cy + 36f * scale, cx + 26f * scale, cy + 54f * scale),
+                        6f * scale, 6f * scale, paint
+                    )
+                }
+                "crown" -> {
+                    paint.color = 0xFFF2C44D.toInt()
+                    val cr = Path().apply {
+                        moveTo(cx - 18f * scale, cy - 36f * scale)
+                        lineTo(cx - 10f * scale, cy - 56f * scale)
+                        lineTo(cx, cy - 42f * scale)
+                        lineTo(cx + 10f * scale, cy - 56f * scale)
+                        lineTo(cx + 18f * scale, cy - 36f * scale)
+                        close()
+                    }
+                    canvas.drawPath(cr, paint)
+                }
+                "bow" -> {
+                    paint.color = 0xFFE2758E.toInt()
+                    val bcy = cy + 44f * scale
+                    val lb = Path().apply {
+                        moveTo(cx, bcy)
+                        lineTo(cx - 16f * scale, bcy - 8f * scale)
+                        lineTo(cx - 16f * scale, bcy + 8f * scale)
+                        close()
+                    }
+                    val rb = Path().apply {
+                        moveTo(cx, bcy)
+                        lineTo(cx + 16f * scale, bcy - 8f * scale)
+                        lineTo(cx + 16f * scale, bcy + 8f * scale)
+                        close()
+                    }
+                    canvas.drawPath(lb, paint)
+                    canvas.drawPath(rb, paint)
+                    canvas.drawCircle(cx, bcy, 4.2f * scale, paint)
+                }
+                "star" -> {
+                    paint.color = 0xFFF2C44D.toInt()
+                    drawStar(canvas, cx + 44f * scale, cy - 54f * scale, 12f * scale, 5.2f * scale, paint)
+                }
             }
-            "crown" -> {
-                paint.color = 0xFFF2C44D.toInt()
-                val cr = Path().apply {
-                    moveTo(cx - 18f * scale, cy - 36f * scale)
-                    lineTo(cx - 10f * scale, cy - 56f * scale)
-                    lineTo(cx, cy - 42f * scale)
-                    lineTo(cx + 10f * scale, cy - 56f * scale)
-                    lineTo(cx + 18f * scale, cy - 36f * scale)
+
+            drawEyes(canvas, cx - 19f * scale, cx + 19f * scale, cy + 4f * scale, scale, false, paint)
+            paint.shader = null
+            paint.style = Paint.Style.FILL
+            paint.color = 0x6BF28B82
+            canvas.drawOval(RectF(cx - 44f * scale, cy + 14f * scale, cx - 26f * scale, cy + 25f * scale), paint)
+            canvas.drawOval(RectF(cx + 26f * scale, cy + 14f * scale, cx + 44f * scale, cy + 25f * scale), paint)
+
+            // 嘴型（smile / cat / buck / fang 与网页端完全一致）
+            val my = cy + 16f * scale
+            if (sp.mouth == "cat" || sp.mouth == "buck") {
+                paint.color = if (sp.mouth == "buck") 0xFFF09BB0.toInt() else 0xFFE28395.toInt()
+                canvas.drawOval(RectF(cx - 3.4f * scale, cy + 9.5f * scale, cx + 3.4f * scale, cy + 14.2f * scale), paint)
+            }
+            paint.style = Paint.Style.STROKE
+            paint.color = 0xFF3A2F22.toInt()
+            paint.strokeWidth = 2.3f * scale
+            paint.strokeCap = Paint.Cap.ROUND
+            val m = Path().apply {
+                moveTo(cx - 9f * scale, my)
+                quadTo(cx - 4.5f * scale, my + 5f * scale, cx, my)
+                quadTo(cx + 4.5f * scale, my + 5f * scale, cx + 9f * scale, my)
+            }
+            canvas.drawPath(m, paint)
+            if (sp.mouth == "buck") {
+                paint.style = Paint.Style.FILL
+                paint.color = 0xFFFFFFFF.toInt()
+                val tooth = Path().apply {
+                    moveTo(cx - 3f * scale, my + 3f * scale)
+                    lineTo(cx, my + 7f * scale)
+                    lineTo(cx + 3f * scale, my + 3f * scale)
                     close()
                 }
-                canvas.drawPath(cr, paint)
+                canvas.drawPath(tooth, paint)
+            } else if (sp.mouth == "fang") {
+                paint.style = Paint.Style.FILL
+                paint.color = 0xFFFFFFFF.toInt()
+                val fang = Path().apply {
+                    moveTo(cx + 5f * scale, my + 1.5f * scale)
+                    lineTo(cx + 8.5f * scale, my + 6f * scale)
+                    lineTo(cx + 3.5f * scale, my + 6.5f * scale)
+                    close()
+                }
+                canvas.drawPath(fang, paint)
             }
-            "bow" -> {
-                paint.color = 0xFFE2758E.toInt()
-                canvas.drawCircle(cx - 12f * scale, cy - 34f * scale, 8f * scale, paint)
-                canvas.drawCircle(cx + 12f * scale, cy - 34f * scale, 8f * scale, paint)
-                canvas.drawCircle(cx, cy - 34f * scale, 5f * scale, paint)
-            }
-            "star" -> {
-                paint.color = 0xFFF2C44D.toInt()
-                canvas.drawCircle(cx, cy - 40f * scale, 7f * scale, paint)
-            }
+        } else {
+            paint.color = 0xFF8D8578.toInt()
+            paint.textSize = 36f * scale
+            paint.textAlign = Paint.Align.CENTER
+            paint.isFakeBoldText = true
+            canvas.drawText("?", cx, cy + 16f * scale, paint)
+            paint.isFakeBoldText = false
         }
-        drawEyes(canvas, cx - 19f * scale, cx + 19f * scale, cy + 4f * scale, scale, false, paint)
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = 0x7AF28B82
-        canvas.drawOval(RectF(cx - 42f * scale, cy + 14f * scale, cx - 26f * scale, cy + 24f * scale), paint)
-        canvas.drawOval(RectF(cx + 26f * scale, cy + 14f * scale, cx + 42f * scale, cy + 24f * scale), paint)
-        paint.style = Paint.Style.STROKE
-        paint.color = 0xFF3A2F22.toInt()
-        paint.strokeWidth = 2.2f * scale
-        val m = Path().apply {
-            moveTo(cx - 8f * scale, cy + 18f * scale)
-            quadTo(cx, cy + 25f * scale, cx + 8f * scale, cy + 18f * scale)
+    }
+
+    private fun drawStar(canvas: Canvas, cx: Float, cy: Float, outerR: Float, innerR: Float, paint: Paint) {
+        val p = Path()
+        for (i in 0 until 10) {
+            val r = if (i % 2 == 0) outerR else innerR
+            val a = -PI.toFloat() / 2f + i * PI.toFloat() / 5f
+            val x = cx + cos(a) * r
+            val y = cy + sin(a) * r
+            if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
         }
-        canvas.drawPath(m, paint)
+        p.close()
+        canvas.drawPath(p, paint)
     }
 
     private fun blendWithWhite(color: Int, whiteWeight: Float): Int {
@@ -1168,7 +1274,11 @@ class SpeciesThumbView @JvmOverloads constructor(
             return
         }
         sp?.let {
-            PetArtCanvas.drawSpecies(canvas, it, cx, cy, scale, silhouette = silhouette, paint = paint)
+            if (!silhouette && it.id == "b0") {
+                PetArtCanvas.drawMainPet(canvas, 3, cx, cy, scale, sleep = false, breath = 0f, paint = paint)
+            } else {
+                PetArtCanvas.drawSpecies(canvas, it, cx, cy, scale, silhouette = silhouette, paint = paint)
+            }
         }
     }
 }

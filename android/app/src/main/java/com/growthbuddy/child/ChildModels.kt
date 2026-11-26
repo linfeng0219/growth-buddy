@@ -71,7 +71,8 @@ data class SpeciesItem(
     val tail: String,
     val mouth: String,
     val base: String,
-    val hint: String
+    val hint: String,
+    val ahoge: Int = 0
 ) : java.io.Serializable
 
 data class CheckinLog(
@@ -254,7 +255,8 @@ object GrowthMeta {
                     tail = s.optString("tail", "puff"),
                     mouth = s.optString("mouth", "smile"),
                     base = s.optString("base", "grass"),
-                    hint = s.optString("hint", "")
+                    hint = s.optString("hint", ""),
+                    ahoge = s.optInt("ahoge", 0)
                 )
             )
         }
@@ -295,7 +297,7 @@ object GrowthMeta {
                 ChildPet(
                     id = pt.optString("id", ""),
                     childId = pt.optString("child_id", ""),
-                    speciesId = pt.optString("species_id", "b1"),
+                    speciesId = pt.optString("species_id", "b0"),
                     petName = pt.optString("pet_name", ""),
                     isCustomName = pt.optBoolean("is_custom_name", false),
                     isActive = pt.optBoolean("is_active", false),

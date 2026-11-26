@@ -60,6 +60,7 @@ type Species struct {
 }
 
 var BuiltinSpecies = []Species{
+	{ID: "b0", Name: "小元气", Color: "#ed8e32", Ear: "pointy", Acc: "crown", Tail: "wing", Mouth: "cat", Base: "grass", Ahoge: 1, Hint: "经典元气守护宠", AddedAt: 0},
 	{ID: "b1", Name: "小团子", Color: "#ec9844", Ear: "round", Acc: "none", Tail: "puff", Mouth: "smile", Base: "grass", Ahoge: 1, Hint: "最初的伙伴", AddedAt: 0},
 	{ID: "b2", Name: "雪球", Color: "#f2eee4", Ear: "tall", Acc: "scarf", Tail: "puff", Mouth: "buck", Base: "snow", Ahoge: 0, Hint: "冬天上线", AddedAt: 0},
 	{ID: "b3", Name: "桔子", Color: "#ec9139", Ear: "pointy", Acc: "none", Tail: "fox", Mouth: "cat", Base: "grass", Ahoge: 0, Hint: "机灵鬼", AddedAt: 0},
@@ -727,7 +728,7 @@ func (s *Store) migrateChildPetsLocked(tx *Tx) error {
 
 		hasStarter := false
 		for _, ow := range ownedRows {
-			if ow.speciesID == "b1" {
+			if ow.speciesID == "b0" || ow.speciesID == "b1" {
 				hasStarter = true
 				break
 			}
@@ -737,7 +738,7 @@ func (s *Store) migrateChildPetsLocked(tx *Tx) error {
 			if k.createdAt > 0 {
 				starterDate = time.UnixMilli(k.createdAt).Format("2006-01-02")
 			}
-			ownedRows = append([]ownedRow{{speciesID: "b1", adoptedDate: starterDate}}, ownedRows...)
+			ownedRows = append([]ownedRow{{speciesID: "b0", adoptedDate: starterDate}}, ownedRows...)
 		}
 		if activeSpecies == "" {
 			activeSpecies = ownedRows[0].speciesID
@@ -791,7 +792,7 @@ func (s *Store) listChildPetsLocked(tx *Tx, familyID, childID, childName string)
 		func(r SQLiteRow) error {
 			spID := strings.TrimSpace(r.String(2))
 			if spID == "" {
-				spID = "b1"
+				spID = "b0"
 			}
 			pName := strings.TrimSpace(r.String(3))
 			if pName == "" {

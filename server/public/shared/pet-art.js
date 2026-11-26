@@ -95,6 +95,9 @@
   function speciesSVG(sp, o) {
     o = o || {};
     var sil = !!o.silo, uid = nextUid();
+    if (!sil && sp && sp.id === "b0") {
+      return mainPetSVG(o.lv != null ? Number(o.lv) : 3, o);
+    }
     var ear = sp.ear || "round", acc = sp.acc || "none", tail = sp.tail || "none", mouth = sp.mouth || "smile", base = sp.base || "grass";
     var bodyC = sil ? "#bfb8ac" : sp.color;
     var accC = sil ? "#bfb8ac" : (acc === "scarf" ? "#c95742" : (acc === "bow" ? "#e2758e" : "#f2c44d"));
@@ -238,7 +241,7 @@
   function petStageSVG(sp, lv, o) {
     o = o || {};
     lv = Number(lv) || 0;
-    if (!sp || sp.id === "b1") return mainPetSVG(lv, o);
+    if (!sp || sp.id === "b0") return mainPetSVG(lv, o);
     var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
     var base = sp.base || "grass";
     var bodyC = sp.color || "#ec9844";
@@ -266,7 +269,9 @@
       if (ear === "round") s1 += '<circle cx="80" cy="82" r="12" fill="' + bodyC + '"/><circle cx="140" cy="82" r="12" fill="' + bodyC + '"/>';
       else if (ear === "tall") s1 += '<ellipse cx="86" cy="64" rx="8" ry="20" fill="' + bodyC + '"/><ellipse cx="134" cy="64" rx="8" ry="20" fill="' + bodyC + '"/>';
       else if (ear === "pointy") s1 += '<path d="M72 86 L84 48 L100 78 Z" fill="' + bodyC + '"/><path d="M148 86 L136 48 L120 78 Z" fill="' + bodyC + '"/>';
+      else if (ear === "horn") s1 += '<path d="M84 82 L76 52 L94 74 Z" fill="#f0c24b"/><path d="M136 82 L144 52 L126 74 Z" fill="#f0c24b"/><path d="M72 96 L62 80 L80 86 Z" fill="' + bodyC + '"/><path d="M148 96 L158 80 L140 86 Z" fill="' + bodyC + '"/>';
       else if (ear === "unicorn") s1 += '<path d="M105 68 L110 40 L115 68 Z" fill="#f4c74e"/>';
+      if (sp.ahoge) s1 += '<path d="M110 84 q-7 -13 3 -18 q8 -4 6 5" stroke="' + bodyC + '" stroke-width="4.5" fill="none" stroke-linecap="round"/>';
       s1 += '<ellipse cx="110" cy="118" rx="40" ry="36" fill="' + bodyC + '"/>'
         + '<ellipse cx="110" cy="102" rx="26" ry="15" fill="#fff" opacity=".32"/>'
         + eyesSVG(114, 94, 126, !!o.sleep, uid)
