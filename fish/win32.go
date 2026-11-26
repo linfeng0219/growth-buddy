@@ -75,7 +75,13 @@ var (
 	pReleaseDC              = user32.NewProc("ReleaseDC")
 	pMessageBoxW            = user32.NewProc("MessageBoxW")
 	pSetWindowLongPtrW      = user32.NewProc("SetWindowLongPtrW")
+	pGetWindowLongW         = user32.NewProc("GetWindowLongW")
+	pGetWindow              = user32.NewProc("GetWindow")
+	pIsIconic               = user32.NewProc("IsIconic")
 	pCallWindowProcW        = user32.NewProc("CallWindowProcW")
+	pSetWindowsHookExW      = user32.NewProc("SetWindowsHookExW")
+	pUnhookWindowsHookEx    = user32.NewProc("UnhookWindowsHookEx")
+	pCallNextHookEx         = user32.NewProc("CallNextHookEx")
 	pDrawTextW              = user32.NewProc("DrawTextW")
 	pGetSystemMetrics       = user32.NewProc("GetSystemMetrics")
 	pCreateFontW            = gdi32.NewProc("CreateFontW")
@@ -246,7 +252,10 @@ const (
 	NONANTIALIASED_QUALITY = 3
 	CLEARTYPE_QUALITY      = 5
 
-	GWLP_WNDPROC       = ^uintptr(3) // -4 as uintptr
+	GWLP_WNDPROC       = ^uintptr(3)  // -4 as uintptr
+	GWL_EXSTYLE        = ^uintptr(19) // -20 as uintptr
+	GW_HWNDPREV        = 3
+	WH_MOUSE_LL        = 14
 	SM_CXSCREEN        = 0
 	SM_CYSCREEN        = 1
 	SM_XVIRTUALSCREEN  = 76
@@ -318,6 +327,14 @@ type DRAWITEMSTRUCT struct {
 	HDC        uintptr
 	RcItem     RECT
 	ItemData   uintptr
+}
+
+type MSLLHOOKSTRUCT struct {
+	Pt          POINT
+	MouseData   uint32
+	Flags       uint32
+	Time        uint32
+	DwExtraInfo uintptr
 }
 
 type NOTIFYICONDATAW struct {

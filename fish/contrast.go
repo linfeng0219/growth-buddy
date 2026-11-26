@@ -297,5 +297,7 @@ func computeScrollY(curScroll, maxScroll, deltaY, bottomSnap int32) (int32, bool
 	if next > maxScroll {
 		next = maxScroll
 	}
-	return next, (maxScroll - next) <= bottomSnap
+	// Only snap to bottom when scrolling downward (or already at bottom) so upward ticks from bottom don't bounce back
+	atBot := next >= maxScroll || (deltaY >= 0 && (maxScroll-next) <= bottomSnap)
+	return next, atBot
 }

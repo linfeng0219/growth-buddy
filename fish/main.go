@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -95,8 +96,14 @@ type appState struct {
 	atBottom        bool
 	visLines        []visualLine
 	selecting       bool
+	draggingScroll  bool
 	selAnchor       textPos
 	selFocus        textPos
+	hookTransparent int32 // atomic: 1 when loggedIn && BgTransparent
+	hookOverflow    int32 // atomic: 1 when loggedIn && maxScrollY > 0
+	hookLoggedIn    int32 // atomic: 1 when loggedIn
+	hMouseHook      uintptr
+	mouseHookCbPtr  uintptr
 
 	uiFont   uintptr
 	boldFont uintptr
@@ -340,7 +347,7 @@ func (a *appState) createAllControls() {
 			gApp.handleSendMessage()
 			return 0
 		}
-		if msg == WM_KEYDOWN && (wParam == VK_PRIOR || wParam == VK_NEXT) {
+		if msg == WM_KEYDOWN && (wParam == VK_PRIOR || wParam == VK_NEXT || wParam == VK_UP || wParam == VK_DOWN) {
 			pPostMessageW.Call(gApp.hwnd, uintptr(msg), wParam, lParam)
 			return 0
 		}
@@ -384,6 +391,7 @@ func (a *appState) layoutControls() {
 
 	showLogin := !a.loggedIn
 	showChat := a.loggedIn
+	a.syncHookAtomicStateLocked()
 
 	for _, h := range []uintptr{a.hLblTitle, a.hBtnLoginQuit, a.hLblUser, a.hEditUser, a.hLblPass, a.hEditPass, a.hBtnLogin, a.hLblLoginStatus} {
 		showCtrl(h, showLogin)
@@ -498,6 +506,7 @@ func (a *appState) paintWindow() {
 	pFillRect.Call(memDC, uintptr(unsafe.Pointer(&rc)), a.bgBrush)
 
 	a.mu.Lock()
+	a.syncHookAtomicStateLocked()
 	loggedIn := a.loggedIn
 	msgs := make([]ChatMsg, len(a.messages))
 	copy(msgs, a.messages)
@@ -570,6 +579,12 @@ func (a *appState) paintWindow() {
 			a.mu.Lock()
 			a.visLines = lines
 			a.maxScrollY = maxScroll
+			if maxScroll > 0 {
+				atomic.StoreInt32(&a.hookOverflow, 1)
+			} else {
+				atomic.StoreInt32(&a.hookOverflow, 0)
+			}
+			a.syncHookAtomicStateLocked()
 			if a.atBottom {
 				a.scrollY = maxScroll
 			}
@@ -613,7 +628,7 @@ func (a *appState) paintWindow() {
 			if maxScroll > 0 && viewH > 12 {
 				totalRange := maxScroll + viewH
 				thumbH := (viewH * viewH) / totalRange
-				if minH := a.dpiScale(20); thumbH < minH {
+				if minH := a.dpiScale(24); thumbH < minH {
 					thumbH = minH
 				}
 				if thumbH > viewH {
@@ -624,9 +639,24 @@ func (a *appState) paintWindow() {
 				if avail > 0 {
 					thumbY += (curScroll * avail) / maxScroll
 				}
-				sbW := a.dpiScale(4)
-				if sbW < 3 {
-					sbW = 3
+				sbW := a.dpiScale(6)
+				if sbW < 4 {
+					sbW = 4
+				}
+				// Subtle non-colorkey scrollbar track so clicking/dragging the track also catches the mouse in transparent mode
+				trackW := sbW / 2
+				if trackW < 2 {
+					trackW = 2
+				}
+				trackX := cr.Right - sbW + (sbW-trackW)/2
+				trackRc := RECT{Left: trackX, Top: cr.Top, Right: trackX + trackW, Bottom: cr.Bottom}
+				trackCol := adaptiveInputBorderColor(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6))
+				if a.cfg.BgTransparent && a.inputBgColor != 0 {
+					trackCol = adaptiveInputBorderColor(a.inputBgColor)
+				}
+				if trBr, _, _ := pCreateSolidBrush.Call(uintptr(trackCol)); trBr != 0 {
+					pFillRect.Call(memDC, uintptr(unsafe.Pointer(&trackRc)), trBr)
+					pDeleteObject.Call(trBr)
 				}
 				sbRc := RECT{Left: cr.Right - sbW, Top: thumbY, Right: cr.Right, Bottom: thumbY + thumbH}
 				if sbBr, _, _ := pCreateSolidBrush.Call(uintptr(baseFg)); sbBr != 0 {
@@ -1731,10 +1761,18 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
 			cr := a.chatRect(rc)
 			if pt.X >= cr.Left && pt.X <= cr.Right && pt.Y >= cr.Top && pt.Y <= cr.Bottom {
-				ibeam, _, _ := pLoadCursorW.Call(0, IDC_IBEAM)
-				if ibeam != 0 {
-					pSetCursor.Call(ibeam)
-					return 1
+				if atomic.LoadInt32(&a.hookOverflow) == 1 && pt.X >= cr.Right-a.dpiScale(14) {
+					arrow, _, _ := pLoadCursorW.Call(0, IDC_ARROW)
+					if arrow != 0 {
+						pSetCursor.Call(arrow)
+						return 1
+					}
+				} else {
+					ibeam, _, _ := pLoadCursorW.Call(0, IDC_IBEAM)
+					if ibeam != 0 {
+						pSetCursor.Call(ibeam)
+						return 1
+					}
 				}
 			}
 		}
@@ -1757,7 +1795,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 				a.mu.Lock()
 				hasLines := len(a.visLines) > 0
 				maxScr := a.maxScrollY
-				if maxScr > 0 && cx >= cr.Right-a.dpiScale(12) && cr.Bottom > cr.Top {
+				if maxScr > 0 && cx >= cr.Right-a.dpiScale(14) && cr.Bottom > cr.Top {
 					ratio := float64(cy-cr.Top) / float64(cr.Bottom-cr.Top)
 					if ratio < 0 {
 						ratio = 0
@@ -1767,7 +1805,9 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 					targetY := int32(ratio * float64(maxScr))
 					a.scrollY = targetY
 					a.atBottom = (maxScr - targetY) <= a.dpiScale(24)
+					a.draggingScroll = true
 					a.mu.Unlock()
+					pSetCapture.Call(hwnd)
 					pSetFocus.Call(hwnd)
 					a.triggerRepaint()
 					return 0
@@ -1791,8 +1831,31 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 	case WM_MOUSEMOVE:
 		if a.loggedIn {
 			a.mu.Lock()
+			dragScr := a.draggingScroll
 			selecting := a.selecting
+			maxScr := a.maxScrollY
 			a.mu.Unlock()
+			if dragScr {
+				var rc RECT
+				pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+				cr := a.chatRect(rc)
+				cy := int32(int16((lParam >> 16) & 0xFFFF))
+				if cr.Bottom > cr.Top && maxScr > 0 {
+					ratio := float64(cy-cr.Top) / float64(cr.Bottom-cr.Top)
+					if ratio < 0 {
+						ratio = 0
+					} else if ratio > 1 {
+						ratio = 1
+					}
+					targetY := int32(ratio * float64(maxScr))
+					a.mu.Lock()
+					a.scrollY = targetY
+					a.atBottom = (a.maxScrollY - targetY) <= a.dpiScale(24)
+					a.mu.Unlock()
+					a.triggerRepaint()
+				}
+				return 0
+			}
 			if selecting {
 				var rc RECT
 				pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
@@ -1826,7 +1889,9 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_LBUTTONUP:
 		a.mu.Lock()
+		dragScr := a.draggingScroll
 		selecting := a.selecting
+		a.draggingScroll = false
 		if selecting {
 			a.selecting = false
 			var rc RECT
@@ -1839,7 +1904,7 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			}
 		}
 		a.mu.Unlock()
-		if selecting {
+		if dragScr || selecting {
 			pReleaseCapture.Call()
 			a.triggerRepaint()
 			return 0
@@ -2187,6 +2252,107 @@ func (a *appState) handleUpdateMessage(kind uintptr) {
 	}()
 }
 
+func (a *appState) syncHookAtomicStateLocked() {
+	if a.loggedIn {
+		atomic.StoreInt32(&a.hookLoggedIn, 1)
+	} else {
+		atomic.StoreInt32(&a.hookLoggedIn, 0)
+		atomic.StoreInt32(&a.hookOverflow, 0)
+	}
+	if a.loggedIn && a.cfg.BgTransparent {
+		atomic.StoreInt32(&a.hookTransparent, 1)
+	} else {
+		atomic.StoreInt32(&a.hookTransparent, 0)
+	}
+}
+
+func pointInRect(pt POINT, rc RECT) bool {
+	return pt.X >= rc.Left && pt.X <= rc.Right && pt.Y >= rc.Top && pt.Y <= rc.Bottom
+}
+
+func isFishObscuredAt(hwnd uintptr, pt POINT) bool {
+	prev := hwnd
+	for {
+		next, _, _ := pGetWindow.Call(prev, GW_HWNDPREV)
+		if next == 0 || next == prev {
+			return false
+		}
+		prev = next
+		vis, _, _ := pIsWindowVisible.Call(prev)
+		if vis == 0 {
+			continue
+		}
+		iconic, _, _ := pIsIconic.Call(prev)
+		if iconic != 0 {
+			continue
+		}
+		ex, _, _ := pGetWindowLongW.Call(prev, GWL_EXSTYLE)
+		if (ex & WS_EX_TRANSPARENT) != 0 {
+			continue
+		}
+		var r RECT
+		if pGetWindowRect.Call(prev, uintptr(unsafe.Pointer(&r))); r.Right > r.Left && r.Bottom > r.Top && pointInRect(pt, r) {
+			return true
+		}
+	}
+}
+
+func mouseLLHookProc(nCode, wParam, lParam uintptr) uintptr {
+	if int32(nCode) >= 0 && uint32(wParam) == WM_MOUSEWHEEL && lParam != 0 && gApp != nil {
+		hwnd := gApp.hwnd
+		if hwnd != 0 && atomic.LoadInt32(&gApp.hookTransparent) == 1 {
+			if vis, _, _ := pIsWindowVisible.Call(hwnd); vis != 0 {
+				ms := (*MSLLHOOKSTRUCT)(unsafe.Pointer(lParam))
+				var wr RECT
+				pGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&wr)))
+				if pointInRect(ms.Pt, wr) {
+					fg, _, _ := pGetForegroundWindow.Call()
+					capture := (fg == hwnd)
+					if !capture && atomic.LoadInt32(&gApp.hookOverflow) == 1 && !isFishObscuredAt(hwnd, ms.Pt) {
+						cPt := ms.Pt
+						pScreenToClient.Call(hwnd, uintptr(unsafe.Pointer(&cPt)))
+						var rc RECT
+						pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+						cr := gApp.chatRect(rc)
+						if pointInRect(cPt, cr) {
+							capture = true
+						}
+					}
+					if capture {
+						delta := int16((ms.MouseData >> 16) & 0xFFFF)
+						if delta != 0 {
+							wp := uintptr(uint32(uint16(delta)) << 16)
+							lp := uintptr((uint32(uint16(ms.Pt.Y)) << 16) | uint32(uint16(ms.Pt.X)))
+							pPostMessageW.Call(hwnd, WM_MOUSEWHEEL, wp, lp)
+							return 1
+						}
+					}
+				}
+			}
+		}
+	}
+	ret, _, _ := pCallNextHookEx.Call(0, nCode, wParam, lParam)
+	return ret
+}
+
+func (a *appState) installMouseWheelHook() {
+	if a.hMouseHook != 0 {
+		return
+	}
+	if a.mouseHookCbPtr == 0 {
+		a.mouseHookCbPtr = syscall.NewCallback(mouseLLHookProc)
+	}
+	hh, _, _ := pSetWindowsHookExW.Call(WH_MOUSE_LL, a.mouseHookCbPtr, a.hInst, 0)
+	a.hMouseHook = hh
+}
+
+func (a *appState) uninstallMouseWheelHook() {
+	if a.hMouseHook != 0 {
+		pUnhookWindowsHookEx.Call(a.hMouseHook)
+		a.hMouseHook = 0
+	}
+}
+
 func main() {
 	runtime.LockOSThread()
 	pSetProcessDPIAware.Call()
@@ -2246,6 +2412,11 @@ func main() {
 	}
 
 	pShowWindow.Call(hwnd, SW_SHOW)
+	gApp.mu.Lock()
+	gApp.syncHookAtomicStateLocked()
+	gApp.mu.Unlock()
+	gApp.installMouseWheelHook()
+	defer gApp.uninstallMouseWheelHook()
 	gApp.sampleUnderWindow(true)
 	pUpdateWindow.Call(hwnd)
 
@@ -2255,9 +2426,11 @@ func main() {
 		if int32(ret) <= 0 {
 			break
 		}
-		if !(m.Message == WM_KEYDOWN && (m.WParam == VK_RETURN || m.Hwnd == hwnd)) {
-			if handled, _, _ := pIsDialogMessageW.Call(hwnd, uintptr(unsafe.Pointer(&m))); handled != 0 {
-				continue
+		if atomic.LoadInt32(&gApp.hookLoggedIn) == 0 {
+			if !(m.Message == WM_KEYDOWN && (m.WParam == VK_RETURN || m.Hwnd == hwnd)) {
+				if handled, _, _ := pIsDialogMessageW.Call(hwnd, uintptr(unsafe.Pointer(&m))); handled != 0 {
+					continue
+				}
 			}
 		}
 		pTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))

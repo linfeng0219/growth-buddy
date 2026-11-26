@@ -466,4 +466,9 @@ func TestFishScrollHelpers(t *testing.T) {
 	if nextY != 0 || atBot {
 		t.Fatalf("expected (0, false) when clamped at top, got (%d, %v)", nextY, atBot)
 	}
+	// 微小溢出或微幅向上滚动时绝不应立即弹回底部
+	nextY, atBot = computeScrollY(20, 20, -12, 24)
+	if nextY != 8 || atBot {
+		t.Fatalf("expected (8, false) when scrolling up with small maxScroll, got (%d, %v)", nextY, atBot)
+	}
 }
