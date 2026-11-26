@@ -272,6 +272,7 @@
         <nav class="tabs" id="parentTopTabs">
           <button data-tab="overview" class="on">👶 总览</button>
           <button data-tab="tasks">📋 任务</button>
+          <button data-tab="logs">📊 记录</button>
           <button data-tab="family">🏡 家庭</button>
           <button data-tab="chat">💬 消息 <span id="msgUnreadBadge" style="display:none;background:#e11d48;color:#fff;font-size:11px;padding:1px 6px;border-radius:999px;margin-left:3px"></span></button>
         </nav>
@@ -284,41 +285,14 @@
       <div class="kid-overview-grid" id="kidOverviewGrid"></div>
     </section>
 
-    <!-- 2. 任务、记录与题库中心 -->
+    <!-- 2. 任务与题库中心 -->
     <section id="tab-tasks" style="display:none">
       <div class="child-filter-bar" id="taskSubTabs" style="margin-bottom:12px">
         <button type="button" class="sm on" data-subtab="today">📅 当日任务</button>
-        <button type="button" class="sm" data-subtab="logs">📊 打卡记录</button>
         <button type="button" class="sm" data-subtab="add">➕ 新增任务</button>
         <button type="button" class="sm" data-subtab="import">📋 群作业导入</button>
         <button type="button" class="sm" data-subtab="all">📋 所有任务</button>
         <button type="button" class="sm" data-subtab="quiz">🌐 冒险题库</button>
-      </div>
-
-      <div id="subtab-logs" class="panel" style="display:none">
-        <div class="panel-head">
-          <h2>📊 成长记录与照片查验</h2>
-          <span class="pill" id="logRangeLabel">今日</span>
-        </div>
-        <div class="row3" style="margin-bottom:10px">
-          <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="logChildFilter"><option value="">全部孩子</option></select></div>
-          <div class="field" style="margin-bottom:0"><label>查询周期</label><select id="logPeriodFilter"><option value="day">按天</option><option value="week">按周</option><option value="month">按月</option><option value="year">按年</option></select></div>
-          <div class="field" style="margin-bottom:0"><label>基准日期</label><input type="date" id="logDateFilter"></div>
-        </div>
-        <div class="child-filter-bar" id="logViewTabs" style="margin-bottom:10px">
-          <button type="button" class="sm on" data-logview="details">📋 打卡明细</button>
-          <button type="button" class="sm" data-logview="photos">🖼️ 实拍照片墙 <span id="photoWallCount" style="font-weight:700">0</span></button>
-          <button type="button" class="sm" data-logview="summary">📈 按任务汇总</button>
-        </div>
-        <div id="logSubDetails">
-          <div id="checkinLogsList"></div>
-        </div>
-        <div id="logSubPhotos" style="display:none">
-          <div id="checkinPhotoWall" class="photo-wall-grid"></div>
-        </div>
-        <div id="logSubSummary" style="display:none">
-          <div id="taskSummaryList"></div>
-        </div>
       </div>
 
       <div id="subtab-add" class="panel" style="display:none">
@@ -524,7 +498,44 @@
       </div>
     </section>
 
-    <!-- 3. 家庭与伙伴档案管理（孩子档案 / 家长档案 / 宠物档案） -->
+    <!-- 3. 打卡记录、照片墙与汇总（按周期与时间范围偏移筛选） -->
+    <section id="tab-logs" style="display:none">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>📊 成长记录与照片查验</h2>
+          <span class="pill" id="logRangeLabel">今天</span>
+        </div>
+        <div class="row2" style="margin-bottom:8px">
+          <div class="field" style="margin-bottom:0"><label>选择孩子</label><select id="logChildFilter"><option value="">全部孩子</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>查询周期</label><select id="logPeriodFilter"><option value="day">按天（今天 / 昨天…）</option><option value="week">按周（本周 / 上周…）</option><option value="month">按月（本月 / 上月…）</option><option value="year">按年（今年 / 去年…）</option></select></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#fbf8f2;border:1px solid var(--hair);border-radius:12px;padding:8px 10px;margin-bottom:10px">
+          <button type="button" class="sm" id="btnLogPrevPeriod" style="white-space:nowrap">‹ 上一周期</button>
+          <div style="display:flex;align-items:center;gap:6px;flex:1;justify-content:center;min-width:140px;flex-wrap:wrap">
+            <strong id="logPeriodName" style="font-size:13.5px;color:var(--accent)">今天</strong>
+            <span id="logPeriodSpan" style="font-size:12px;color:var(--muted)"></span>
+            <button type="button" class="qchip" id="btnLogCurPeriod" style="display:none">回到当前</button>
+          </div>
+          <button type="button" class="sm" id="btnLogNextPeriod" style="white-space:nowrap" disabled>下一周期 ›</button>
+        </div>
+        <div class="child-filter-bar" id="logViewTabs" style="margin-bottom:10px">
+          <button type="button" class="sm on" data-logview="details">📋 打卡明细</button>
+          <button type="button" class="sm" data-logview="photos">🖼️ 实拍照片墙 <span id="photoWallCount" style="font-weight:700">0</span></button>
+          <button type="button" class="sm" data-logview="summary">📈 按任务汇总</button>
+        </div>
+        <div id="logSubDetails">
+          <div id="checkinLogsList"></div>
+        </div>
+        <div id="logSubPhotos" style="display:none">
+          <div id="checkinPhotoWall" class="photo-wall-grid"></div>
+        </div>
+        <div id="logSubSummary" style="display:none">
+          <div id="taskSummaryList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 家庭与伙伴档案管理（孩子档案 / 家长档案 / 宠物档案） -->
     <section id="tab-family" style="display:none">
       <div class="panel">
         <div class="panel-head">
@@ -1493,13 +1504,12 @@
     $id("etRopeBox").style.display=isRope?"block":"none";
     $id("etTimerPhotoRow").style.display=isRope?"none":"block";
   });
-  var mainTabOrder=["overview","tasks","family","chat"];
+  var mainTabOrder=["overview","tasks","logs","family","chat"];
   var activeMainTab="overview";
   var activeTaskSubTab="today";
   var _tabLoadTimer=null;
   function switchMainTab(tg, dir){
     if(tg==="mailbox") tg="chat";
-    if(tg==="logs"){tg="tasks";activeTaskSubTab="logs";}
     if(tg==="studio") tg="family";
     if(mainTabOrder.indexOf(tg)<0) tg="overview";
     var prevTab=activeMainTab;
@@ -1531,11 +1541,10 @@
     clearTimeout(_tabLoadTimer);
     var runTabData=function(){
       if(activeMainTab!==tg) return;
-      if(tg==="overview"||tg==="family"){
+      if(tg==="overview"||tg==="tasks"||tg==="family"){
         loadOverview();
-      }else if(tg==="tasks"){
-        loadOverview();
-        if(activeTaskSubTab==="logs") loadCheckinLogs();
+      }else if(tg==="logs"){
+        loadCheckinLogs();
       }else if(tg==="chat"){
         if(pChatMode==="kids"){loadChildOversightOverview(true);}
         else{loadParentChatContacts(true);loadParentMailbox(true);}
@@ -1646,8 +1655,62 @@
     },{passive:true});
   })();
 
-  $id("logDateFilter").value=today();
+  var logPeriodOffset=0;
   var activeLogView="details";
+  function fmtYmd(d){
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function calcLogTargetDate(per, off){
+    var now=new Date();
+    if(per==="week"){
+      var d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-off*7);
+      return fmtYmd(d);
+    }
+    if(per==="month"){
+      var d=new Date(now.getFullYear(),now.getMonth()-off,1);
+      return fmtYmd(d);
+    }
+    if(per==="year"){
+      var d=new Date(now.getFullYear()-off,0,1);
+      return fmtYmd(d);
+    }
+    var d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-off);
+    return fmtYmd(d);
+  }
+  function logPeriodDisplayName(per, off){
+    if(per==="week"){
+      if(off===0) return "本周";
+      if(off===1) return "上周";
+      if(off===2) return "上上周";
+      return off+" 周前";
+    }
+    if(per==="month"){
+      if(off===0) return "本月";
+      if(off===1) return "上个月";
+      if(off===2) return "上上个月";
+      return off+" 个月前";
+    }
+    if(per==="year"){
+      if(off===0) return "今年";
+      if(off===1) return "去年";
+      if(off===2) return "前年";
+      return off+" 年前";
+    }
+    if(off===0) return "今天";
+    if(off===1) return "昨天";
+    if(off===2) return "前天";
+    return off+" 天前";
+  }
+  function syncLogPeriodControls(){
+    var per=$id("logPeriodFilter").value||"day";
+    var unitMap={day:"天",week:"周",month:"月",year:"年"};
+    var u=unitMap[per]||"期";
+    $id("btnLogPrevPeriod").textContent="‹ 上一"+u;
+    $id("btnLogNextPeriod").textContent="下一"+u+" ›";
+    $id("btnLogNextPeriod").disabled=(logPeriodOffset<=0);
+    $id("btnLogCurPeriod").style.display=(logPeriodOffset>0)?"inline-block":"none";
+    $id("logPeriodName").textContent=logPeriodDisplayName(per,logPeriodOffset);
+  }
   function populateLogFilters(){
     if(!data||!data.children) return;
     var opts='<option value="">全部孩子</option>'+data.children.map(function(c){return '<option value="'+c.id+'">'+GBArt.esc(c.name)+'</option>';}).join("");
@@ -1668,10 +1731,14 @@
     b.addEventListener("click",function(){switchLogView(b.getAttribute("data-logview"));});
   });
   async function loadCheckinLogs(){
+    syncLogPeriodControls();
     try{
-      var cid=$id("logChildFilter").value, per=$id("logPeriodFilter").value, dt=$id("logDateFilter").value||today();
+      var cid=$id("logChildFilter").value, per=$id("logPeriodFilter").value||"day";
+      var dt=calcLogTargetDate(per,logPeriodOffset);
       var r=await api("/api/parent/checkin-logs?childId="+encodeURIComponent(cid)+"&period="+encodeURIComponent(per)+"&date="+encodeURIComponent(dt));
-      $id("logRangeLabel").textContent=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
+      var spanStr=r.start_date===r.end_date?r.start_date:(r.start_date+" ~ "+r.end_date);
+      $id("logRangeLabel").textContent=logPeriodDisplayName(per,logPeriodOffset)+" · "+spanStr;
+      $id("logPeriodSpan").textContent="("+spanStr+")";
       var box=$id("checkinLogsList");
       var list=r.logs||[];
       if(!list.length){
@@ -1727,17 +1794,21 @@
       }
     }catch(e){}
   }
-  ["logChildFilter","logPeriodFilter","logDateFilter"].forEach(function(id){$id(id).addEventListener("change",loadCheckinLogs);});
+  $id("logChildFilter").addEventListener("change",loadCheckinLogs);
+  $id("logPeriodFilter").addEventListener("change",function(){logPeriodOffset=0;loadCheckinLogs();});
+  $id("btnLogPrevPeriod").addEventListener("click",function(){logPeriodOffset++;loadCheckinLogs();});
+  $id("btnLogNextPeriod").addEventListener("click",function(){if(logPeriodOffset>0){logPeriodOffset--;loadCheckinLogs();}});
+  $id("btnLogCurPeriod").addEventListener("click",function(){logPeriodOffset=0;loadCheckinLogs();});
   function switchTaskSubTab(st){
     activeTaskSubTab=st||"today";
+    if(["today","add","import","all","quiz"].indexOf(activeTaskSubTab)<0) activeTaskSubTab="today";
     document.querySelectorAll("#taskSubTabs button").forEach(function(x){
       x.classList.toggle("on",x.getAttribute("data-subtab")===activeTaskSubTab);
     });
-    ["today","logs","add","import","all","quiz"].forEach(function(k){
+    ["today","add","import","all","quiz"].forEach(function(k){
       var el=$id("subtab-"+k);
       if(el) el.style.display=(k===activeTaskSubTab)?"":"none";
     });
-    if(activeTaskSubTab==="logs"){loadCheckinLogs();}
     if(activeTaskSubTab==="import"&&!$id("hwDueDate").value){$id("hwDueDate").value=today();}
   }
   document.querySelectorAll("#taskSubTabs button").forEach(function(b){
@@ -3683,7 +3754,7 @@
   async function refreshCurrentParentView(){
     if(!token()) return;
     await loadOverview();
-    if(activeMainTab==="tasks"&&activeTaskSubTab==="logs") await loadCheckinLogs();
+    if(activeMainTab==="logs") await loadCheckinLogs();
     else if(activeMainTab==="chat"){
       if(pChatMode==="kids") await loadChildOversightOverview(true);
       else{await loadParentChatContacts(true);await loadParentMailbox(true);}
