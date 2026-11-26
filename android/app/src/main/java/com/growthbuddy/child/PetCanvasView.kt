@@ -481,7 +481,7 @@ object PetArtCanvas {
         species: SpeciesItem?,
         paint: Paint
     ) {
-        if (species == null) {
+        if (species == null || species.id == "b1") {
             drawMainPet(canvas, lv, cx, cy, scale, sleep, breath, paint)
             return
         }

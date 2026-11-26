@@ -238,7 +238,7 @@
   function petStageSVG(sp, lv, o) {
     o = o || {};
     lv = Number(lv) || 0;
-    if (!sp) return mainPetSVG(lv, o);
+    if (!sp || sp.id === "b1") return mainPetSVG(lv, o);
     var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
     var base = sp.base || "grass";
     var bodyC = sp.color || "#ec9844";
