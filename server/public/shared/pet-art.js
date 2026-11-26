@@ -237,22 +237,64 @@
 
   function petStageSVG(sp, lv, o) {
     o = o || {};
-    lv = lv || 0;
+    lv = Number(lv) || 0;
     if (!sp) return mainPetSVG(lv, o);
+    var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
+    var base = sp.base || "grass";
+    var bodyC = sp.color || "#ec9844";
+    var c0 = tintHex(bodyC, 0.72), c1 = tintHex(bodyC, 0.35), c2 = tintHex(bodyC, 0.12);
+
     if (lv <= 0) {
-      var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
-      var c0 = tintHex(sp.color, 0.72), c1 = tintHex(sp.color, 0.35), c2 = tintHex(sp.color, 0.12);
-      var s = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "宠物蛋") + '">';
-      s += '<defs><radialGradient id="peg_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="' + c0 + '"/><stop offset="65%" stop-color="' + c1 + '"/><stop offset="100%" stop-color="' + c2 + '"/></radialGradient></defs>';
-      if (!o.noBase) s += pedestalSVG(sp.base || "grass");
-      s += '<g class="egg-wobble"><ellipse cx="110" cy="120" rx="44" ry="54" fill="url(#peg_' + uid + ')" stroke="' + c2 + '" stroke-width="2"/><ellipse cx="100" cy="96" rx="18" ry="24" fill="#fff" opacity=".45" transform="rotate(-18 100 96)"/><circle cx="94" cy="106" r="4" fill="#fff" opacity=".4"/><circle cx="128" cy="134" r="3.2" fill="#fff" opacity=".35"/></g></svg>';
-      return s;
+      var s0 = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "宠物蛋") + '">';
+      s0 += '<defs><radialGradient id="peg_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="' + c0 + '"/><stop offset="65%" stop-color="' + c1 + '"/><stop offset="100%" stop-color="' + c2 + '"/></radialGradient></defs>';
+      if (!o.noBase) s0 += pedestalSVG(base);
+      s0 += '<g class="egg-wobble"><ellipse cx="110" cy="120" rx="44" ry="54" fill="url(#peg_' + uid + ')" stroke="' + c2 + '" stroke-width="2"/><ellipse cx="100" cy="96" rx="18" ry="24" fill="#fff" opacity=".45" transform="rotate(-18 100 96)"/><circle cx="94" cy="106" r="4" fill="#fff" opacity=".4"/><circle cx="128" cy="134" r="3.2" fill="#fff" opacity=".35"/></g></svg>';
+      return s0;
     }
+
+    if (lv === 1) {
+      // 破壳啦：从裂缝蛋壳中探出该物种小脑袋，不含完整期配饰与翅膀
+      var ear = sp.ear || "round";
+      var s1 = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "破壳中") + '">';
+      s1 += '<defs>'
+        + '<radialGradient id="peg1_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="#fff8eb"/><stop offset="65%" stop-color="#f3e5cb"/><stop offset="100%" stop-color="#dfd0b2"/></radialGradient>'
+        + '<radialGradient id="ge_' + uid + '" cx="38%" cy="30%" r="85%"><stop offset="0%" stop-color="#7a5530"/><stop offset="45%" stop-color="#4a3220"/><stop offset="100%" stop-color="#2b1e12"/></radialGradient>'
+        + '<clipPath id="clip1_' + uid + '"><rect x="40" y="20" width="140" height="128"/></clipPath>'
+        + '</defs>';
+      if (!o.noBase) s1 += pedestalSVG(base);
+      s1 += '<g class="breathe"><g clip-path="url(#clip1_' + uid + ')">';
+      if (ear === "round") s1 += '<circle cx="80" cy="82" r="12" fill="' + bodyC + '"/><circle cx="140" cy="82" r="12" fill="' + bodyC + '"/>';
+      else if (ear === "tall") s1 += '<ellipse cx="86" cy="64" rx="8" ry="20" fill="' + bodyC + '"/><ellipse cx="134" cy="64" rx="8" ry="20" fill="' + bodyC + '"/>';
+      else if (ear === "pointy") s1 += '<path d="M72 86 L84 48 L100 78 Z" fill="' + bodyC + '"/><path d="M148 86 L136 48 L120 78 Z" fill="' + bodyC + '"/>';
+      else if (ear === "unicorn") s1 += '<path d="M105 68 L110 40 L115 68 Z" fill="#f4c74e"/>';
+      s1 += '<ellipse cx="110" cy="118" rx="40" ry="36" fill="' + bodyC + '"/>'
+        + '<ellipse cx="110" cy="102" rx="26" ry="15" fill="#fff" opacity=".32"/>'
+        + eyesSVG(114, 94, 126, !!o.sleep, uid)
+        + '<ellipse cx="78" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><ellipse cx="142" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/>'
+        + '<path d="M103 128 q7 5 14 0" stroke="#3a2f22" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
+        + '</g>'
+        + '<path d="M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z" fill="url(#peg1_' + uid + ')" stroke="#d7c29e" stroke-width="2"/>'
+        + '</g></svg>';
+      return s1;
+    }
+
     var spDraw = sp;
-    if (lv >= 5 && (!sp.acc || sp.acc === "none")) {
+    if (lv === 2) {
+      // 幼年体：展现物种轮廓但暂不佩戴配饰/翅膀
+      spDraw = Object.assign({}, sp, { acc: "none", tail: sp.tail === "wing" ? "puff" : sp.tail });
+    } else if (lv >= 5 && (!sp.acc || sp.acc === "none")) {
       spDraw = Object.assign({}, sp, { acc: "crown" });
     }
-    return speciesSVG(spDraw, o);
+    var svg = speciesSVG(spDraw, o);
+    if (lv === 2) {
+      // 幼年体略小一点，区分少年/成年形态
+      svg = svg.replace('<g class="breathe">', '<g class="breathe" transform="translate(110 170) scale(0.86) translate(-110 -170)">');
+    } else if (lv === 3 || lv === 4) {
+      svg = svg.replace('<g class="breathe">', '<circle cx="110" cy="110" r="' + (lv === 4 ? 78 : 70) + '" fill="#f3c653" opacity="' + (lv === 4 ? "0.18" : "0.12") + '"/><g class="breathe">');
+    } else if (lv >= 5) {
+      svg = svg.replace('<g class="breathe">', '<circle cx="110" cy="108" r="82" fill="#f4c74e" opacity="0.24"/><g class="breathe">');
+    }
+    return svg;
   }
 
   global.GBArt = {

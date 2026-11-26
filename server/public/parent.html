@@ -41,6 +41,23 @@
   }
   .task-item:last-child{border-bottom:none}
   .task-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1}
+  .person-card{
+    background:#fdfbf7;border:1px solid var(--hair);border-radius:14px;
+    padding:12px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px;
+  }
+  .person-card:last-child{margin-bottom:0}
+  .person-card-top{display:flex;align-items:flex-start;gap:12px}
+  .person-card-info{flex:1;min-width:0}
+  .person-card-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:15px}
+  .person-card-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .person-tag{
+    display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--ink-soft);
+    background:#f3efe7;padding:2px 9px;border-radius:999px;white-space:nowrap;
+  }
+  .person-card-actions{
+    display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;
+    padding-top:8px;border-top:1px dashed var(--hair);
+  }
   .tag-all{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600}
   .tag-sel{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--amber-soft);color:#9c5812;font-weight:600}
   .tag-off{font-size:11px;padding:2px 8px;border-radius:999px;background:#eee;color:#777}
@@ -1212,7 +1229,7 @@
     var idx=parseInt(av.getAttribute("data-gb-av-idx")||"0",10)||0;
     var url=av.getAttribute("data-gb-av-url")||"";
     var title="";
-    var row=av.closest(".social-row, .kid-box, .task-item");
+    var row=av.closest(".social-row, .kid-box, .task-item, .person-card");
     if(row){
       var nm=row.querySelector(".sr-name, h3, strong");
       if(nm) title=(nm.textContent||"").trim();
@@ -1432,10 +1449,10 @@
           var ptSp=cat.find(function(x){return x.id===pt.species_id;});
           var isAct=!!pt.is_active;
           var hIcon=pt.pet_health==="sick"?"🤒":(pt.pet_health==="weak"?"💧":"");
-          petsHtml+='<button type="button" class="sm ov-pet-chip" data-cid="'+GBArt.esc(c.id)+'" data-pid="'+GBArt.esc(pt.id)+'" data-pname="'+GBArt.esc(pt.pet_name)+'" title="点击为这只宠物改名" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:11.5px;border:1px solid '+(isAct?"#2f6b4f":"#dfd6c7")+';background:'+(isAct?"#e8f5ee":"#fffcf7")+';color:'+(isAct?"#2f6b4f":"#5c5347")+'">'
-            +(ptSp?GBArt.speciesSVG(ptSp,{w:18,noBase:true}):"🐾")
-            +'<span>'+GBArt.esc(pt.pet_name)+(isAct?" ★":"")+(hIcon?" "+hIcon:"")+'</span>'
-            +'<span style="opacity:.6">✎</span></button>';
+          petsHtml+='<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11.5px;border:1px solid '+(isAct?"#b7d6c3":"#e6ded0")+';background:'+(isAct?"#edf7f1":"#faf6ee")+';color:'+(isAct?"#2f6b4f":"#6b6052")+';white-space:nowrap">'
+            +(ptSp?GBArt.petStageSVG(ptSp,c.level,{w:18,noBase:true}):"🐾")
+            +'<span>'+GBArt.esc(pt.pet_name)+(isAct?" · 陪伴中":"")+(hIcon?" "+hIcon:"")+'</span>'
+            +'</span>';
         });
         petsHtml+='</div>';
       }
@@ -1450,18 +1467,6 @@
         +'<span>今日 '+c.today_done_ids.length+'/'+c.tasks.length+'</span>'
         +'<span>宠物 '+petCount+' 只</span>'
         +'</div>'+petsHtml+'</div></div>';
-      box.querySelectorAll(".ov-pet-chip").forEach(function(btn){
-        btn.addEventListener("click",async function(){
-          var cid=this.getAttribute("data-cid"),pid=this.getAttribute("data-pid"),cur=this.getAttribute("data-pname")||"";
-          var next=window.prompt("修改宠物名字（留空则恢复「孩子名+宠物名」默认名称）：",cur);
-          if(next===null)return;
-          try{
-            await api("/api/parent/children/"+encodeURIComponent(cid),{method:"PATCH",body:JSON.stringify({pet_id:pid,pet_name:next.trim()})});
-            showToast("宠物名字已更新");
-            await loadOverview();
-          }catch(e){showToast(e.message,true);}
-        });
-      });
       g.appendChild(box);
     });
     populateLogFilters();
@@ -2297,18 +2302,38 @@
     return "适中";
   }
 
+  function createPersonCard(opts){
+    var card=document.createElement("div");
+    card.className="person-card";
+    var tagsHtml=(opts.tags||[]).map(function(t){
+      return '<span class="person-tag">'+t+'</span>';
+    }).join("");
+    card.innerHTML='<div class="person-card-top">'
+      +opts.avatarHtml
+      +'<div class="person-card-info">'
+      +'<div class="person-card-title"><strong>'+GBArt.esc(opts.name)+'</strong>'+(opts.badge||"")+'</div>'
+      +(tagsHtml?'<div class="person-card-tags">'+tagsHtml+'</div>':"")
+      +'</div></div>'
+      +(opts.actionsHtml?'<div class="person-card-actions">'+opts.actionsHtml+'</div>':"");
+    return card;
+  }
+
   function renderFamilyTab(){
     buildNewKidAvatars();
     buildNewParentAvatars();
     var cm=$id("childManageList");cm.innerHTML="";
     data.children.forEach(function(c){
-      var row=document.createElement("div");row.className="task-item";
-      var accTxt=c.username?("账号 @"+GBArt.esc(c.username)+(c.has_password?"":"(未设密码)")):"未设独立账号";
+      var accTxt=c.username?("账号 @"+GBArt.esc(c.username)+(c.has_password?"":" (未设密码)")):"未设独立账号";
       var ageDiffTxt=(c.age||7)+"岁 · "+quizDiffLabel(c.quiz_difficulty)+"难度";
       var petNum=(Array.isArray(c.pets)?c.pets.length:0);
-      var petInfo=c.needs_starter_pet?"待选初始蛋":("宠物 "+petNum+" 只"+(c.pet_name?(" · 当前 "+GBArt.esc(c.pet_name)):""));
-      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,28)+'<strong>'+GBArt.esc(c.name)+'</strong><span style="font-size:12px;color:var(--muted)">'+accTxt+' · '+ageDiffTxt+' · '+petInfo+' · '+c.xp+' XP</span></div>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-avatar">设头像</button><button class="sm set-auth">账号/年龄难度</button><button class="sm danger del-kid">删除</button></div>';
+      var petTag=c.needs_starter_pet?"🥚 待选初始蛋":("🐾 宠物 "+petNum+" 只"+(c.pet_name?(" · "+GBArt.esc(c.pet_name)):""));
+      var row=createPersonCard({
+        avatarHtml:GBArt.avatarHtml(c.avatar_idx,c.avatar_url,40),
+        name:c.name,
+        badge:'<span class="tag-all">'+ageDiffTxt+'</span>',
+        tags:[accTxt,petTag,'⭐ '+c.xp+' XP'],
+        actionsHtml:'<button type="button" class="sm set-avatar">设头像</button><button type="button" class="sm set-auth">账号/年龄难度</button><button type="button" class="sm danger del-kid">删除</button>'
+      });
       row.querySelector(".set-avatar").addEventListener("click",function(){openAvatarModal({kind:"child",child:c});});
       row.querySelector(".set-auth").addEventListener("click",function(){openKidAuthModal(c);});
       row.querySelector(".del-kid").addEventListener("click",async function(){
@@ -2324,15 +2349,19 @@
     var pm=$id("parentManageList");pm.innerHTML="";
     parentsList.forEach(function(p){
       var isSelf=(data.parent&&p.id===data.parent.id);
-      var row=document.createElement("div");row.className="task-item";
       var selfTag=isSelf?'<span class="tag-all">当前登录</span>':"";
-      var dtTxt="";
+      var tags=['账号 @'+GBArt.esc(p.username)];
       if(p.created_at){
         var dt=new Date(p.created_at);
-        dtTxt=" · 加入于 "+dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+        tags.push("加入于 "+dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0"));
       }
-      row.innerHTML='<div class="task-meta">'+GBArt.avatarHtml(p.avatar_idx,p.avatar_url,28)+'<strong>'+GBArt.esc(p.display_name||p.username)+'</strong>'+selfTag+'<span style="font-size:12px;color:var(--muted)">账号 @'+GBArt.esc(p.username)+dtTxt+'</span></div>'
-        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm set-p-avatar">设头像</button><button class="sm set-p-auth">称呼/改密</button>'+(isSelf?"":'<button class="sm danger del-par">移除</button>')+'</div>';
+      var row=createPersonCard({
+        avatarHtml:GBArt.avatarHtml(p.avatar_idx,p.avatar_url,40),
+        name:p.display_name||p.username,
+        badge:selfTag,
+        tags:tags,
+        actionsHtml:'<button type="button" class="sm set-p-avatar">设头像</button><button type="button" class="sm set-p-auth">称呼/改密</button>'+(isSelf?"":'<button type="button" class="sm danger del-par">移除</button>')
+      });
       row.querySelector(".set-p-avatar").addEventListener("click",function(){openAvatarModal({kind:"parent",parent:p});});
       row.querySelector(".set-p-auth").addEventListener("click",function(){openParentAuthModal(p);});
       var dp=row.querySelector(".del-par");
