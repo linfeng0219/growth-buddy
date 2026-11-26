@@ -301,7 +301,7 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 		t.Fatalf("parent overview missing photo info in recent_logs: %+v", pLogs)
 	}
 
-	// Native Android convenience routes: mute, pet-name, grant egg, adopt (including 1:N same-species pets), companion, polaroid
+	// Native Android convenience routes: mute, pet-name, grant egg, adopt (1 per species, independent pet_name per pet), companion, polaroid
 	st, _ = doJSON(t, ts, "PATCH", "/api/child/mute", childTok, map[string]any{"muted": true})
 	if st != 200 {
 		t.Fatalf("mute failed: %d", st)
@@ -314,25 +314,22 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 	if st != 200 {
 		t.Fatalf("grant-egg failed: %d", st)
 	}
-	st, adoptRes1 := doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
+	st, adoptRes := doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
 	if st != 200 {
 		t.Fatalf("adopt failed: %d", st)
 	}
-	st, adoptRes2 := doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
-	if st != 200 {
-		t.Fatalf("second same-species adopt failed: %d", st)
+	// Duplicate adoption of the same species must be rejected (1 pet per species per child)
+	st, _ = doJSON(t, ts, "POST", "/api/child/adopt", childTok, map[string]any{"speciesId": "b2", "date": "2026-11-18"})
+	if st != 400 {
+		t.Fatalf("expected 400 on duplicate species adopt, got %d", st)
 	}
-	pet1 := adoptRes1["adopted_pet"].(map[string]any)
-	pet2 := adoptRes2["adopted_pet"].(map[string]any)
-	if pet1["id"] == pet2["id"] || pet1["pet_name"] == pet2["pet_name"] {
-		t.Fatalf("expected distinct pets for same species: %+v vs %+v", pet1, pet2)
-	}
-	pet2ID := pet2["id"].(string)
-	st, compRes := doJSON(t, ts, "POST", "/api/child/companion", childTok, map[string]any{"petId": pet2ID, "speciesId": "b2"})
+	adoptedPet := adoptRes["adopted_pet"].(map[string]any)
+	adoptedPetID := adoptedPet["id"].(string)
+	st, compRes := doJSON(t, ts, "POST", "/api/child/companion", childTok, map[string]any{"petId": adoptedPetID, "speciesId": "b2"})
 	if st != 200 || compRes["state"] == nil {
 		t.Fatalf("companion failed: %d %+v", st, compRes)
 	}
-	st, _ = doJSON(t, ts, "PATCH", "/api/child/pet-name", childTok, map[string]any{"petId": pet2ID, "petName": "冰冰团"})
+	st, _ = doJSON(t, ts, "PATCH", "/api/child/pet-name", childTok, map[string]any{"petId": adoptedPetID, "petName": "冰冰团"})
 	if st != 200 {
 		t.Fatalf("pet-name by petId failed: %d", st)
 	}
@@ -347,12 +344,12 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 		t.Fatalf("child state failed: %d", st)
 	}
 	childObj := cState["child"].(map[string]any)
-	if childObj["pet_name"] != "冰冰团" || childObj["muted"] != true || childObj["active_companion"] != "b2" || childObj["active_pet_id"] != pet2ID {
+	if childObj["pet_name"] != "冰冰团" || childObj["muted"] != true || childObj["active_companion"] != "b2" || childObj["active_pet_id"] != adoptedPetID {
 		t.Fatalf("unexpected child state: %+v", childObj)
 	}
 	petsList := cState["pets"].([]any)
-	if len(petsList) != 3 {
-		t.Fatalf("expected 3 pets in 1:N child_pets list, got %d", len(petsList))
+	if len(petsList) != 2 {
+		t.Fatalf("expected 2 pets in 1:N child_pets list, got %d", len(petsList))
 	}
 	firstPet := petsList[0].(map[string]any)
 	if firstPet["pet_name"] != "糯米团" {

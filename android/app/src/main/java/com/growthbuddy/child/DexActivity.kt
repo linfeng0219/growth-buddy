@@ -239,7 +239,7 @@ class DexActivity : AppCompatActivity() {
                 binding.dexContainer.addView(row)
             }
             binding.dexContainer.addView(TextView(this).apply {
-                text = "✨ 宠物图鉴（可重复领养更多可爱伙伴）"
+                text = "✨ 宠物图鉴（每个物种可领养 1 只 · 各自独立命名）"
                 textSize = 15.5f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFF2B2620.toInt())
@@ -247,7 +247,7 @@ class DexActivity : AppCompatActivity() {
             })
         }
 
-        // 2) 图鉴物种区（支持领养同物种多只宠物）
+        // 2) 图鉴物种区（每个物种限领养 1 只）
         for (rowItems in st.catalog.chunked(cols)) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -266,10 +266,9 @@ class DexActivity : AppCompatActivity() {
                     })
                     continue
                 }
-                val ownedPetsOfSp = st.pets.filter { it.speciesId == sp.id }
-                val isOwned = ownedPetsOfSp.isNotEmpty() || st.owned.containsKey(sp.id)
-                val isActive = ownedPetsOfSp.any { it.isActive } || c.activeCompanion == sp.id
-                val adoptCount = ownedPetsOfSp.size
+                val ownedPet = st.pets.find { it.speciesId == sp.id }
+                val isOwned = ownedPet != null || st.owned.containsKey(sp.id)
+                val isActive = ownedPet?.isActive == true || c.activeCompanion == sp.id
 
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -297,7 +296,11 @@ class DexActivity : AppCompatActivity() {
                     setPadding(0, dp(4), 0, 0)
                 }
                 val hintTv = TextView(this).apply {
-                    text = if (adoptCount > 0) "已领养 $adoptCount 只" else if (isOwned) "已拥有 · ${st.owned[sp.id]}" else sp.hint.ifEmpty { "等待孵化" }
+                    text = when {
+                        ownedPet != null -> "${ownedPet.petName} · ${ownedPet.adoptedDate.ifEmpty { "已拥有" }}"
+                        isOwned -> "已拥有 · ${st.owned[sp.id]}"
+                        else -> sp.hint.ifEmpty { "等待孵化" }
+                    }
                     textSize = 11.5f
                     setTextColor(if (isOwned) 0xFF2F6B4F.toInt() else 0xFF8A7E6E.toInt())
                 }
@@ -308,29 +311,29 @@ class DexActivity : AppCompatActivity() {
                         dp(38)
                     ).apply { topMargin = dp(8) }
                     when {
-                        c.coupons > 0 -> {
-                            text = if (isOwned) "🥚 再领养 1 只" else "🥚 用 1 枚蛋领养"
-                            setBackgroundColor(0xFFE8913A.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performAdopt(sp.id, mystery = false) }
-                        }
-                        surplus >= 25 -> {
-                            text = if (isOwned) "✨ 25 富余值再领养" else "✨ 25 富余成长值兑换"
-                            setBackgroundColor(0xFFE8913A.toInt())
-                            setTextColor(Color.WHITE)
-                            setOnClickListener { performAdopt(sp.id, mystery = false) }
-                        }
-                        isActive && st.pets.isEmpty() -> {
+                        isActive -> {
                             text = "✨ 陪伴中"
                             isEnabled = false
                             setBackgroundColor(0xFFE3F2E8.toInt())
                             setTextColor(0xFF2F6B4F.toInt())
                         }
-                        isOwned && st.pets.isEmpty() -> {
+                        isOwned -> {
                             text = "设为陪伴伙伴"
                             setBackgroundColor(0xFF2F6B4F.toInt())
                             setTextColor(Color.WHITE)
-                            setOnClickListener { performSetCompanion(speciesId = sp.id, petId = null) }
+                            setOnClickListener { performSetCompanion(speciesId = sp.id, petId = ownedPet?.id) }
+                        }
+                        c.coupons > 0 -> {
+                            text = "🥚 用 1 枚蛋领养"
+                            setBackgroundColor(0xFFE8913A.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performAdopt(sp.id, mystery = false) }
+                        }
+                        surplus >= 25 -> {
+                            text = "✨ 25 富余成长值兑换"
+                            setBackgroundColor(0xFFE8913A.toInt())
+                            setTextColor(Color.WHITE)
+                            setOnClickListener { performAdopt(sp.id, mystery = false) }
                         }
                         c.xp < matureXp -> {
                             text = "主宠成熟后可兑换"

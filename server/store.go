@@ -554,6 +554,11 @@ func (s *Store) initSchema() error {
 			_ = s.db.ExecRaw("ALTER TABLE children DROP COLUMN " + dropCol)
 		}
 	}
+	// 每个孩子同一物种仅限领养 1 只，清理可能存在的重复行后建立唯一索引
+	_ = s.db.ExecRaw("DELETE FROM child_pets WHERE rowid NOT IN (SELECT MIN(rowid) FROM child_pets GROUP BY child_id, species_id)")
+	if err := s.db.ExecRaw("CREATE UNIQUE INDEX IF NOT EXISTS idx_child_pets_unique_species ON child_pets(child_id, species_id)"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -2126,15 +2131,11 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 					unowned = append(unowned, sp)
 				}
 			}
-			if len(unowned) > 0 {
-				pick := unowned[rand.Intn(len(unowned))]
-				target = &pick
-			} else if len(catalog) > 0 {
-				pick := catalog[rand.Intn(len(catalog))]
-				target = &pick
-			} else {
-				return errors.New("暂无可领养的图鉴宠物")
+			if len(unowned) == 0 {
+				return errors.New("图鉴已经全部集齐啦！")
 			}
+			pick := unowned[rand.Intn(len(unowned))]
+			target = &pick
 		} else {
 			for i := range catalog {
 				if catalog[i].ID == speciesID {
@@ -2144,6 +2145,9 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 			}
 			if target == nil {
 				return errors.New("图鉴伙伴不存在")
+			}
+			if owned[target.ID] > 0 {
+				return errors.New("已经领养过这位伙伴啦")
 			}
 		}
 
@@ -2158,7 +2162,7 @@ func (s *Store) AdoptSpecies(familyID, childID, speciesID string, mystery bool, 
 		}
 		finalName := truncateRunes(strings.TrimSpace(petName), 16)
 		if finalName == "" {
-			finalName = formatDefaultPetName(childName, target.Name, owned[target.ID]+1)
+			finalName = formatDefaultPetName(childName, target.Name, 1)
 		}
 		newPet := ChildPetDTO{
 			ID:          GenID("pet_"),

@@ -57,7 +57,7 @@ class PetNameTest {
         val pets = listOf(
             ChildPet("pet_1", "c1", "b1", "柚子的小团子", isActive = false, adoptedDate = "2026-11-26"),
             ChildPet("pet_2", "c1", "b2", "白雪", isActive = true, adoptedDate = "2026-11-26"),
-            ChildPet("pet_3", "c1", "b2", "柚子的雪球2", isActive = false, adoptedDate = "2026-11-26")
+            ChildPet("pet_3", "c1", "b3", "柚子的桔子", isActive = false, adoptedDate = "2026-11-26")
         )
         val activePet = GrowthMeta.findActivePet(pets, child.activePetId)
         assertEquals("pet_2", activePet?.id)
