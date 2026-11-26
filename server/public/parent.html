@@ -1416,10 +1416,13 @@
       var healthBadge='<span style="background:#e8f5ee;color:#2f6b4f">💚 健康</span>';
       if(c.pet_health==="weak") healthBadge='<span style="background:#fff4e5;color:#b8621b">💧 虚弱 ('+(c.heal_progress||0)+'/'+(c.heal_target||10)+')</span>';
       else if(c.pet_health==="sick") healthBadge='<span style="background:#fdeaea;color:#c0392b">🤒 生病 ('+(c.heal_progress||0)+'/'+(c.heal_target||20)+')</span>';
+      var compSp=(data.catalog||[]).find(function(x){return x.id===c.active_companion;});
+      var spName=(compSp&&compSp.name)||((data.catalog&&data.catalog[0]&&data.catalog[0].name)||"小团子");
+      var petDisplay=(c.pet_name||"").trim()||(c.name?c.name+"的"+spName:spName);
       box.innerHTML='<div class="kid-box-top">'
         +'<div class="pet-thumb">'+GBArt.mainPetSVG(c.level,{w:84})+'</div>'
         +'<div class="info">'
-        +'<h3>'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)+GBArt.esc(c.name)+(c.pet_name?'<small style="color:var(--muted);font-size:12px"> · '+GBArt.esc(c.pet_name)+'</small>':"")+'</h3>'
+        +'<h3>'+GBArt.avatarHtml(c.avatar_idx,c.avatar_url,26)+GBArt.esc(c.name)+'<small style="color:var(--muted);font-size:12px"> · '+GBArt.esc(petDisplay)+'</small></h3>'
         +'<div class="kid-stats">'
         +'<span>'+lvName+' ('+c.xp+' XP)</span>'
         +healthBadge

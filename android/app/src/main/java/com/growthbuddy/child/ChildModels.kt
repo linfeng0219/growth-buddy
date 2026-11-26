@@ -134,6 +134,30 @@ object GrowthMeta {
         return lv
     }
 
+    /** 默认宠物名称：优先使用当前激活图鉴物种名，形如「柚子的小团子」。 */
+    fun defaultPetDisplayName(
+        childName: String,
+        activeComp: SpeciesItem?,
+        fallbackSpeciesName: String = "小团子"
+    ): String {
+        val petSpeciesName = activeComp?.name?.trim()?.ifEmpty { null }
+            ?: fallbackSpeciesName.trim().ifEmpty { "小团子" }
+        val cleanChildName = childName.trim()
+        return if (cleanChildName.isEmpty()) petSpeciesName else "${cleanChildName}的${petSpeciesName}"
+    }
+
+    /** 解析宠物展示名称：有自定义名字时优先展示，否则使用默认「孩子名+宠物名」。 */
+    fun resolvePetDisplayName(
+        child: ChildInfo,
+        catalog: List<SpeciesItem> = emptyList()
+    ): String {
+        val custom = child.petName.trim()
+        if (custom.isNotEmpty()) return custom
+        val activeComp = catalog.find { it.id == child.activeCompanion }
+        val defaultSpecies = catalog.firstOrNull()?.name?.ifBlank { null } ?: "小团子"
+        return defaultPetDisplayName(child.name, activeComp, defaultSpecies)
+    }
+
     fun parseChildState(obj: JSONObject): ChildState {
         val famObj = obj.getJSONObject("family")
         val childObj = obj.getJSONObject("child")

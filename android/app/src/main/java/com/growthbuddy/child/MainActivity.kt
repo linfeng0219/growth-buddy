@@ -851,7 +851,7 @@ class MainActivity : AppCompatActivity() {
             st.logs.isEmpty() -> GrowthMeta.LEVELS[0].talk
             else -> lvSpec.talk
         }
-        binding.tvPetName.text = c.petName.ifEmpty { "${c.name}的小伙伴" }
+        binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(c, st.catalog)
 
         val msgBadge = c.unreadChat + c.pendingFriendRequests + c.unreadLetters
         if (msgBadge > 0) {
@@ -1479,9 +1479,13 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(6), 0, dp(10))
         }
+        val curState = state
+        val defaultPetName = curState?.let {
+            GrowthMeta.resolvePetDisplayName(it.child.copy(petName = ""), it.catalog)
+        } ?: "小团子"
         val input = EditText(this).apply {
-            hint = "最多 10 个字"
-            setText(state?.child?.petName ?: "")
+            hint = "留空默认：$defaultPetName（最多 10 字）"
+            setText(curState?.child?.petName ?: "")
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
         populateQuickChips(row1, listOf("团子", "糯米", "豆包", "可乐")) { name ->
@@ -1506,7 +1510,15 @@ class MainActivity : AppCompatActivity() {
                 val name = input.text.toString().trim().take(10)
                 api.request("PATCH", "/api/child/pet-name", JSONObject().put("petName", name)) { res ->
                     if (res.ok) {
-                        binding.tvPetName.text = name.ifEmpty { "${state?.child?.name ?: ""}的小伙伴" }
+                        val updatedState = state?.let { s ->
+                            s.copy(child = s.child.copy(petName = name))
+                        }
+                        if (updatedState != null) {
+                            state = updatedState
+                            binding.tvPetName.text = GrowthMeta.resolvePetDisplayName(updatedState.child, updatedState.catalog)
+                        } else {
+                            binding.tvPetName.text = name.ifEmpty { defaultPetName }
+                        }
                         sound.playPat()
                     }
                 }
