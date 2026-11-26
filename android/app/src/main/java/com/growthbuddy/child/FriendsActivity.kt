@@ -128,7 +128,6 @@ class FriendsActivity : AppCompatActivity() {
             if (hasChangedState) setResult(RESULT_OK)
             finish()
         }
-        binding.btnMyCard.setOnClickListener { showMyQrCardDialog() }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
 
         applyResponsiveLayout()
@@ -857,17 +856,15 @@ class FriendsActivity : AppCompatActivity() {
         val options = arrayOf(
             "📷 扫一扫好友二维码",
             "🔎 输入好友分享码或账号",
-            "👥 发起群聊（选好友/家人）",
             "🪪 亮出我的好友二维码名片"
         )
         AlertDialog.Builder(this)
-            .setTitle("添加好友与群聊")
+            .setTitle("添加好友")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> launchQrScanner()
                     1 -> showSearchAccountOrCodeDialog()
-                    2 -> showCreateGroupDialog()
-                    3 -> showMyQrCardDialog()
+                    2 -> showMyQrCardDialog()
                 }
             }
             .setNegativeButton("取消", null)

@@ -688,7 +688,6 @@
             <button type="button" id="btnChatModeKids">👀 孩子好友/记录</button>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:nowrap;margin-left:auto" id="pSocialTopActions">
-            <button type="button" class="sm" id="btnParentCard" style="white-space:nowrap">🪪 名片</button>
             <button type="button" class="sm amber" id="btnAddParentFriend" style="white-space:nowrap">➕ 加好友</button>
           </div>
         </div>
@@ -1059,16 +1058,29 @@
   </div>
 </div>
 
-<!-- 添加家长好友弹窗 -->
+<!-- 添加家长好友方式选择弹窗（参考儿童端二次选择） -->
+<div class="modal-backdrop" id="pAddFriendChoiceModal">
+  <div class="modal-card" style="text-align:left;max-width:360px">
+    <h3 style="font-family:var(--serif);margin-bottom:4px">➕ 添加家长好友</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">请选择加好友方式（仅限家长之间互加，需同意后对话）：</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+      <button type="button" id="btnChoiceScanQr" style="display:none;text-align:left;width:100%">📷 扫一扫好友二维码</button>
+      <button type="button" id="btnChoiceSearchCode" style="text-align:left;width:100%">🔎 输入家长分享码或账号</button>
+      <button type="button" id="btnChoiceMyCard" style="text-align:left;width:100%">🪪 亮出我的家长二维码名片</button>
+    </div>
+    <button type="button" class="ghost" id="btnCloseAddChoiceModal" style="width:100%">取消</button>
+  </div>
+</div>
+
+<!-- 添加家长好友查找弹窗 -->
 <div class="modal-backdrop" id="pAddFriendModal">
   <div class="modal-card" style="text-align:left;max-width:420px">
-    <h3 style="font-family:var(--serif);margin-bottom:4px">➕ 添加家长好友</h3>
+    <h3 style="font-family:var(--serif);margin-bottom:4px">🔎 通过分享码 / 账号加好友</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:10px">安全边界：家长端仅支持添加其他家长账号或家长分享码，不可跨家庭添加孩子。</p>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <input type="text" id="pAddSearchInput" class="gb-input" placeholder="输入对方家长账号或 8 位分享码..." style="flex:1;min-width:0">
       <button type="button" class="primary sm" id="btnPLookupParent" style="flex:none;white-space:nowrap">查找</button>
     </div>
-    <button type="button" class="sm" id="btnPScanQr" style="display:none;width:100%;margin-bottom:8px">📷 扫一扫对方家长二维码名片</button>
     <div id="pAddLookupResult" style="display:none;background:#fbf8f2;border:1px solid var(--hair);border-radius:12px;padding:10px;margin-bottom:10px"></div>
     <div class="msg" id="pAddFriendMsg"></div>
     <button type="button" class="ghost" id="btnCloseAddParentModal" style="width:100%;margin-top:6px">关闭</button>
@@ -3011,7 +3023,6 @@
     $id("pCardSub").textContent="家庭："+(s.family_name||"")+" · 账号："+(s.username||"")+"（仅限家长之间互加，需同意后聊天）";
     $id("pMyCardModal").classList.add("show");
   }
-  $id("btnParentCard").addEventListener("click",openParentCardModal);
   $id("btnCardClose").addEventListener("click",function(){$id("pMyCardModal").classList.remove("show");});
   $id("btnCardCopy").addEventListener("click",function(){
     var code=pSocialOv&&pSocialOv.self?pSocialOv.self.friend_code:"";
@@ -3032,20 +3043,38 @@
     }catch(e){showToast(e.message,true);}
   });
 
-  /* ---- 添加家长好友弹窗（含二维码扫码桥接） ---- */
+  /* ---- 添加家长好友二次选择 & 查找弹窗（含二维码扫码桥接） ---- */
+  function openAddFriendChoiceModal(){
+    var hasScan=(window.AndroidBridge&&typeof window.AndroidBridge.scanQrCode==="function");
+    $id("btnChoiceScanQr").style.display=hasScan?"block":"none";
+    $id("pAddFriendChoiceModal").classList.add("show");
+  }
   function openAddParentModal(prefill){
     $id("pAddSearchInput").value=prefill||"";
     $id("pAddLookupResult").style.display="none";
     $id("pAddFriendMsg").textContent="";
-    $id("btnPScanQr").style.display=(window.AndroidBridge&&typeof window.AndroidBridge.scanQrCode==="function")?"block":"none";
     $id("pAddFriendModal").classList.add("show");
-    if(prefill) lookupParentCandidate();
+    if(prefill){
+      lookupParentCandidate();
+    }else{
+      setTimeout(function(){try{$id("pAddSearchInput").focus();}catch(e){}},60);
+    }
   }
-  $id("btnAddParentFriend").addEventListener("click",function(){openAddParentModal("");});
-  $id("btnCloseAddParentModal").addEventListener("click",function(){$id("pAddFriendModal").classList.remove("show");});
-  $id("btnPScanQr").addEventListener("click",function(){
+  $id("btnAddParentFriend").addEventListener("click",openAddFriendChoiceModal);
+  $id("btnCloseAddChoiceModal").addEventListener("click",function(){$id("pAddFriendChoiceModal").classList.remove("show");});
+  $id("btnChoiceScanQr").addEventListener("click",function(){
+    $id("pAddFriendChoiceModal").classList.remove("show");
     if(window.AndroidBridge&&window.AndroidBridge.scanQrCode) window.AndroidBridge.scanQrCode();
   });
+  $id("btnChoiceSearchCode").addEventListener("click",function(){
+    $id("pAddFriendChoiceModal").classList.remove("show");
+    openAddParentModal("");
+  });
+  $id("btnChoiceMyCard").addEventListener("click",function(){
+    $id("pAddFriendChoiceModal").classList.remove("show");
+    openParentCardModal();
+  });
+  $id("btnCloseAddParentModal").addEventListener("click",function(){$id("pAddFriendModal").classList.remove("show");});
   window.onParentQrScanned=function(raw){
     if(raw){
       if(!$id("tab-chat")||$id("tab-chat").style.display==="none") switchMainTab("chat");
@@ -3472,7 +3501,7 @@
 
   $id("btnPMineBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
   $id("btnPKidsBack").addEventListener("click",function(){$id("pOversightShell").classList.remove("chat-open");});
-  ["pMyCardModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
+  ["pMyCardModal","pAddFriendChoiceModal","pAddFriendModal","pCreateGroupModal","pGroupDetailModal"].forEach(function(mid){
     $id(mid).addEventListener("click",function(e){if(e.target===$id(mid)) $id(mid).classList.remove("show");});
   });
 

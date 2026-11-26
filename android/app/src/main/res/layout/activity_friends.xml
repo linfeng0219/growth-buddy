@@ -45,28 +45,10 @@
             android:textStyle="bold" />
 
         <Button
-            android:id="@+id/btnMyCard"
-            style="@style/Widget.Material3.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:layout_marginStart="6dp"
-            android:layout_marginEnd="6dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:minHeight="0dp"
-            android:paddingHorizontal="9dp"
-            android:paddingVertical="0dp"
-            android:singleLine="true"
-            android:text="🪪 名片"
-            android:textColor="#2F6B4F"
-            android:textSize="12sp"
-            app:strokeColor="#BED6C7" />
-
-        <Button
             android:id="@+id/btnAddFriend"
             android:layout_width="wrap_content"
             android:layout_height="34dp"
+            android:layout_marginStart="6dp"
             android:backgroundTint="#E8913A"
             android:insetTop="0dp"
             android:insetBottom="0dp"
