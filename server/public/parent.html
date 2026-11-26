@@ -265,7 +265,6 @@
               <span id="parentGreeting">家长</span>
             </button>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <button type="button" class="pill ghost" id="btnParentRefreshPage" title="刷新数据">🔄 刷新</button>
               <button class="pill ghost" id="btnLogout">退出登录</button>
             </div>
           </div>
@@ -1121,6 +1120,7 @@
 <div class="gb-toast" id="gbToast"></div>
 
 <script src="/shared/pet-art.js"></script>
+<script src="/shared/pull-refresh.js"></script>
 <script>
 (function(){
   GBArt.enableEyeTracking();
@@ -1323,8 +1323,6 @@
     }catch(e){note("pLoginMsg",e.message,true);}
   });
 
-  $id("btnParentRefreshPage").addEventListener("click",function(){loadOverview();});
-
   $id("btnLogout").addEventListener("click",async function(){
     if(token()){
       try{await api("/api/auth/logout",{method:"POST",body:"{}"});}catch(e){}
@@ -1515,8 +1513,11 @@
     clearTimeout(_tabLoadTimer);
     var runTabData=function(){
       if(activeMainTab!==tg) return;
-      if(tg==="logs"){loadCheckinLogs();}
-      if(tg==="chat"){
+      if(tg==="overview"||tg==="tasks"||tg==="studio"||tg==="family"){
+        loadOverview();
+      }else if(tg==="logs"){
+        loadCheckinLogs();
+      }else if(tg==="chat"){
         if(pChatMode==="kids"){loadChildOversightOverview(true);}
         else{loadParentChatContacts(true);loadParentMailbox(true);}
       }
@@ -3637,6 +3638,21 @@
       if(history&&history.replaceState) history.replaceState(null,"",location.pathname+location.search);
     }
   }catch(e){}
+  async function refreshCurrentParentView(){
+    if(!token()) return;
+    await loadOverview();
+    if(activeMainTab==="logs") await loadCheckinLogs();
+    else if(activeMainTab==="chat"){
+      if(pChatMode==="kids") await loadChildOversightOverview(true);
+      else{await loadParentChatContacts(true);await loadParentMailbox(true);}
+    }
+  }
+  if(window.GBPullRefresh){
+    GBPullRefresh.enable({
+      shouldAllow:function(){var mv=$id("mainView");return !!(token()&&mv&&mv.style.display!=="none");},
+      onRefresh:refreshCurrentParentView
+    });
+  }
   if(token()){ loadOverview(); loadQuestions(); loadFamilyIcons(); loadParentChatContacts(false); loadParentMailbox(true); } else showAuth();
 })();
 </script>

@@ -81,6 +81,11 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/friendsSwipeRefresh"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
         <ScrollView
             android:id="@+id/friendsListScroll"
             android:layout_width="match_parent"
@@ -131,6 +136,7 @@
                     android:orientation="vertical" />
             </LinearLayout>
         </ScrollView>
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <!-- 右侧/子页内容窗格（平板横屏右侧显示；手机竖屏点信箱文件夹时展开显示） -->
         <FrameLayout

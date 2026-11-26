@@ -164,6 +164,12 @@ class FriendsActivity : AppCompatActivity() {
         }
 
         binding.btnFriendsBack.setOnClickListener { closeOrReturn() }
+        binding.friendsSwipeRefresh.setColorSchemeColors(0xFF2F6B4F.toInt(), 0xFFE8913A.toInt())
+        binding.friendsSwipeRefresh.setOnRefreshListener {
+            sound.playPat()
+            loadOverview(silent = false)
+            mailController.loadLetters(silent = true)
+        }
         binding.btnMailFolderBack.setOnClickListener {
             sound.playPat()
             phoneMailOpen = false
@@ -238,14 +244,14 @@ class FriendsActivity : AppCompatActivity() {
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsTopBar, maxW, horizontalReserveDp = 28)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsBodySplit, maxW, horizontalReserveDp = 28)
 
-        val listLp = binding.friendsListScroll.layoutParams as LinearLayout.LayoutParams
+        val listLp = binding.friendsSwipeRefresh.layoutParams as LinearLayout.LayoutParams
         val chatLp = binding.friendsChatPaneWrap.layoutParams as LinearLayout.LayoutParams
         val hasReqs = !overview?.incomingRequests.isNullOrEmpty()
         binding.requestsSection.visibility = if (hasReqs) View.VISIBLE else View.GONE
 
         if (m.isDesktopSplit) {
             binding.friendsBodySplit.orientation = LinearLayout.HORIZONTAL
-            binding.friendsListScroll.visibility = View.VISIBLE
+            binding.friendsSwipeRefresh.visibility = View.VISIBLE
             listLp.width = 0
             listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
             listLp.weight = 0.88f
@@ -260,7 +266,7 @@ class FriendsActivity : AppCompatActivity() {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
             chatController.setActive(false)
             if (phoneMailOpen) {
-                binding.friendsListScroll.visibility = View.GONE
+                binding.friendsSwipeRefresh.visibility = View.GONE
                 binding.friendsChatPaneWrap.visibility = View.VISIBLE
                 chatLp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 chatLp.height = ViewGroup.LayoutParams.MATCH_PARENT
@@ -271,7 +277,7 @@ class FriendsActivity : AppCompatActivity() {
                 binding.friendsChatPane.root.visibility = View.GONE
                 binding.tvSplitChatPlaceholder.visibility = View.GONE
             } else {
-                binding.friendsListScroll.visibility = View.VISIBLE
+                binding.friendsSwipeRefresh.visibility = View.VISIBLE
                 listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
                 listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
                 listLp.weight = 0f
@@ -281,7 +287,7 @@ class FriendsActivity : AppCompatActivity() {
                 binding.friendsChatPaneWrap.visibility = View.GONE
             }
         }
-        binding.friendsListScroll.layoutParams = listLp
+        binding.friendsSwipeRefresh.layoutParams = listLp
         binding.friendsChatPaneWrap.layoutParams = chatLp
     }
 
@@ -296,9 +302,12 @@ class FriendsActivity : AppCompatActivity() {
     }
 
     private fun loadOverview(silent: Boolean = false) {
-        if (!silent) binding.friendsLoading.visibility = View.VISIBLE
+        if (!silent && !binding.friendsSwipeRefresh.isRefreshing) {
+            binding.friendsLoading.visibility = View.VISIBLE
+        }
         api.request("GET", "/api/child/friends") { res ->
             binding.friendsLoading.visibility = View.GONE
+            binding.friendsSwipeRefresh.isRefreshing = false
             if (!res.ok || res.json == null) {
                 if (!silent) Toast.makeText(this, res.error ?: "读取好友列表失败", Toast.LENGTH_SHORT).show()
                 return@request

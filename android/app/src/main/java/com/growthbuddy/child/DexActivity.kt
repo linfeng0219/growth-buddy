@@ -44,7 +44,11 @@ class DexActivity : AppCompatActivity() {
             if (hasChangedState) setResult(RESULT_OK)
             finish()
         }
-        binding.btnDexRefresh.setOnClickListener { loadState() }
+        binding.dexSwipeRefresh.setColorSchemeColors(0xFF2F6B4F.toInt(), 0xFFE8913A.toInt())
+        binding.dexSwipeRefresh.setOnRefreshListener {
+            sound.playPat()
+            loadState()
+        }
         binding.btnMysteryEgg.setOnClickListener { performAdopt(speciesId = null, mystery = true) }
         binding.btnSnap.setOnClickListener { performTakePolaroid() }
 
@@ -72,9 +76,12 @@ class DexActivity : AppCompatActivity() {
     private fun todayStr(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     private fun loadState() {
-        binding.dexLoading.visibility = View.VISIBLE
+        if (!binding.dexSwipeRefresh.isRefreshing) {
+            binding.dexLoading.visibility = View.VISIBLE
+        }
         api.request("GET", "/api/child/state?date=${todayStr()}") { res ->
             binding.dexLoading.visibility = View.GONE
+            binding.dexSwipeRefresh.isRefreshing = false
             if (res.ok && res.json != null) {
                 val parsed = GrowthMeta.parseChildState(res.json)
                 state = parsed

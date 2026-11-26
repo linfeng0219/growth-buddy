@@ -92,7 +92,6 @@
       <div class="toolbar">
         <input type="text" id="searchInput" placeholder="搜索家庭名称、家长账号/称呼、儿童昵称/登录账号...">
         <button class="primary" id="btnNewFamily">+ 新建家庭</button>
-        <button class="ghost" id="btnRefresh">🔄 刷新数据</button>
       </div>
       <div id="familiesContainer"></div>
     </div>
@@ -310,6 +309,7 @@
 
 <script src="/shared/pet-art.js"></script>
 <script src="/shared/changelog-modal.js"></script>
+<script src="/shared/pull-refresh.js"></script>
 <script>
 (function(){
   var $id=function(id){return document.getElementById(id);};
@@ -513,7 +513,6 @@
   }
 
   $id("searchInput").addEventListener("input",renderFamilies);
-  $id("btnRefresh").addEventListener("click",loadOverview);
 
   function bindRolePicker(selId, inpId){
     var sel=$id(selId), inp=$id(inpId);
@@ -901,6 +900,16 @@
     }
   });
 
+  if(window.GBPullRefresh){
+    GBPullRefresh.enable({
+      shouldAllow:function(){var mv=$id("mainView");return !!(token()&&mv&&mv.style.display!=="none");},
+      onRefresh:function(){
+        var secR=$id("secReleases");
+        if(secR&&secR.style.display!=="none") return loadReleases();
+        return loadOverview();
+      }
+    });
+  }
   if(token()) loadOverview(); else showAuth();
 })();
 </script>

@@ -321,7 +321,11 @@ class MainActivity : AppCompatActivity() {
     private fun setupAppUi() {
         binding.ivHeaderAvatar.setOnClickListener { showAvatarPickerDialog() }
         binding.btnMute.setOnClickListener { toggleMute() }
-        binding.btnRefresh.setOnClickListener { loadChildState() }
+        binding.mainSwipeRefresh.setColorSchemeColors(0xFF2F6B4F.toInt(), 0xFFE8913A.toInt())
+        binding.mainSwipeRefresh.setOnRefreshListener {
+            sound.playPat()
+            loadChildState()
+        }
         binding.btnLogout.setOnClickListener { confirmLogout() }
 
         binding.tabHome.setOnClickListener {
@@ -743,9 +747,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadChildState() {
-        binding.topLoading.visibility = View.VISIBLE
+        if (!binding.mainSwipeRefresh.isRefreshing) {
+            binding.topLoading.visibility = View.VISIBLE
+        }
         api.request("GET", "/api/child/state?date=${todayStr()}") { res ->
             binding.topLoading.visibility = View.GONE
+            binding.mainSwipeRefresh.isRefreshing = false
             if (res.status == 401) {
                 ServerPrefs.clearChildToken(this)
                 state = null

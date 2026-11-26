@@ -51,6 +51,14 @@ class ChildMailboxPaneController(
     private var currentFolder: MailFolder = MailFolder.ALL
     private var unreadInboxCount: Int = 0
 
+    init {
+        binding.mailSwipeRefresh.setColorSchemeColors(0xFF2F6B4F.toInt(), 0xFFE8913A.toInt())
+        binding.mailSwipeRefresh.setOnRefreshListener {
+            sound.playPat()
+            loadLetters(silent = false)
+        }
+    }
+
     fun setFolder(folder: MailFolder) {
         currentFolder = folder
         renderCurrentFolder()
@@ -59,9 +67,12 @@ class ChildMailboxPaneController(
     fun getFolder(): MailFolder = currentFolder
 
     fun loadLetters(silent: Boolean = false) {
-        if (!silent) binding.mailLoading.visibility = View.VISIBLE
+        if (!silent && !binding.mailSwipeRefresh.isRefreshing) {
+            binding.mailLoading.visibility = View.VISIBLE
+        }
         api.request("GET", "/api/child/letters") { res ->
             binding.mailLoading.visibility = View.GONE
+            binding.mailSwipeRefresh.isRefreshing = false
             if (!res.ok || res.json == null) {
                 if (!silent) {
                     Toast.makeText(activity, res.error ?: "读取信箱失败", Toast.LENGTH_SHORT).show()
