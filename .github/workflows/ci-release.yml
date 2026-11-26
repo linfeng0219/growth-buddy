@@ -19,10 +19,10 @@ jobs:
       server: ${{ steps.filter.outputs.server }}
       fish: ${{ steps.filter.outputs.fish }}
     steps:
-      - name: Checkout shallow history
+      - name: Checkout repository history
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Determine changed modules
         id: filter
@@ -36,16 +36,22 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="origin/${{ github.base_ref }}"
             git fetch origin "${{ github.base_ref }}" --depth=1 || true
-          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            BASE="${{ github.event.before }}"
-          elif git rev-parse HEAD~1 >/dev/null 2>&1; then
-            BASE="HEAD~1"
+          else
+            git fetch origin refs/tags/latest:refs/tags/latest --force >/dev/null 2>&1 || true
+            if git rev-parse --verify refs/tags/latest >/dev/null 2>&1 && git merge-base --is-ancestor refs/tags/latest HEAD 2>/dev/null; then
+              BASE="$(git rev-parse refs/tags/latest)"
+            elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+              BASE="${{ github.event.before }}"
+            elif git rev-parse HEAD~1 >/dev/null 2>&1; then
+              BASE="HEAD~1"
+            fi
           fi
           if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "fish=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "Diffing against base: $BASE"
           CHANGED="$(git diff --name-only "$BASE" HEAD)"
           echo "Changed files:"
           echo "$CHANGED"
