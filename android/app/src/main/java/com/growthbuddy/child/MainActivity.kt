@@ -396,7 +396,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshServerFooter() {
-        binding.tvServerFooter.text = "当前服务器：${ServerPrefs.getServerUrl(this)} · 版本 ${BuildConfig.VERSION_NAME} · 更新记录 ⓘ"
+        binding.tvServerFooter.text = "版本 ${BuildConfig.VERSION_NAME} · 更新记录 ⓘ"
     }
 
     private fun formatChangelogJson(arr: JSONArray): String {

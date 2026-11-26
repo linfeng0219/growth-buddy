@@ -237,7 +237,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="14dp"
-                        android:text="当前服务器：https://linuu.xyz"
+                        android:text="更新记录 ⓘ"
                         android:textColor="#9A8E7D"
                         android:textSize="12sp" />
                 </LinearLayout>

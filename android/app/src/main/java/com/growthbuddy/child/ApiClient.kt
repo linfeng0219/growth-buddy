@@ -81,7 +81,7 @@ class ApiClient(private val context: Context) {
             } catch (e: Exception) {
                 val msg = when {
                     e.message?.contains("Unable to resolve host", ignoreCase = true) == true ->
-                        "无法解析服务器域名，请检查网络或服务器地址"
+                        "无法连接网络，请检查设备网络设置后重试"
                     e.message?.contains("failed to connect", ignoreCase = true) == true ->
                         "连接服务器失败，请检查网络连接后重试"
                     else -> "网络请求出错：${e.localizedMessage ?: "请稍后重试"}"
