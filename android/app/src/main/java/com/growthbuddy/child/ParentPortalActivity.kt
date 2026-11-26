@@ -4,8 +4,12 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Base64
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.JsResult
@@ -23,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.growthbuddy.child.databinding.ActivityParentPortalBinding
 import org.json.JSONObject
+import java.io.File
 
 /**
  * 原生内嵌家长管理台：
@@ -41,17 +46,32 @@ class ParentPortalActivity : AppCompatActivity() {
     private var tokenInjected = false
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var pendingWebAudioRequest: PermissionRequest? = null
+    private var pendingNativeVoiceStart = false
+
+    private var nativeRecorder: MediaRecorder? = null
+    private var nativeRecordFile: File? = null
+    private var nativeRecordStartMs: Long = 0L
+    private var isNativeRecording = false
 
     private val audioPermLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         val req = pendingWebAudioRequest
         pendingWebAudioRequest = null
-        if (req == null) return@registerForActivityResult
-        if (granted) {
-            req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-        } else {
-            req.deny()
+        if (req != null) {
+            if (granted) {
+                req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            } else {
+                req.deny()
+            }
+        }
+        if (pendingNativeVoiceStart) {
+            pendingNativeVoiceStart = false
+            if (granted) {
+                startNativeVoiceRecordingInternal()
+            } else {
+                notifyWebVoiceError("需要麦克风权限才能发送语音消息")
+            }
         }
     }
 
@@ -114,6 +134,7 @@ class ParentPortalActivity : AppCompatActivity() {
         ws.allowFileAccess = true
         ws.useWideViewPort = true
         ws.loadWithOverviewMode = true
+        ws.mediaPlaybackRequiresUserGesture = false
         // 令牌未确认就绪前先隐藏 WebView，杜绝闪现网页登录页
         binding.webParentPortal.alpha = 0f
 
@@ -128,6 +149,27 @@ class ParentPortalActivity : AppCompatActivity() {
                 runOnUiThread {
                     qrScanLauncher.launch(Intent(this@ParentPortalActivity, QrScanActivity::class.java))
                 }
+            }
+
+            @JavascriptInterface
+            fun startNativeVoiceRecord() {
+                runOnUiThread {
+                    if (isNativeRecording) {
+                        stopNativeVoiceRecordingInternal(cancel = false)
+                        return@runOnUiThread
+                    }
+                    if (ContextCompat.checkSelfPermission(this@ParentPortalActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        startNativeVoiceRecordingInternal()
+                    } else {
+                        pendingNativeVoiceStart = true
+                        audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+            }
+
+            @JavascriptInterface
+            fun stopNativeVoiceRecord(cancel: Boolean) {
+                runOnUiThread { stopNativeVoiceRecordingInternal(cancel = cancel) }
             }
         }, "AndroidBridge")
 
@@ -273,7 +315,83 @@ class ParentPortalActivity : AppCompatActivity() {
         finish()
     }
 
+    private fun notifyWebVoiceError(msg: String) {
+        val q = JSONObject.quote(msg)
+        binding.webParentPortal.evaluateJavascript("window.onNativeVoiceError && window.onNativeVoiceError($q);", null)
+    }
+
+    private fun startNativeVoiceRecordingInternal() {
+        stopNativeVoiceRecordingInternal(cancel = true)
+        val f = File(cacheDir, "parent_rec_${System.currentTimeMillis()}.m4a")
+        try {
+            @Suppress("DEPRECATION")
+            val r = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else MediaRecorder()
+            r.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(22050)
+                setAudioEncodingBitRate(32000)
+                setMaxDuration(60_000)
+                setOutputFile(f.absolutePath)
+                prepare()
+                start()
+            }
+            nativeRecorder = r
+            nativeRecordFile = f
+            nativeRecordStartMs = SystemClock.elapsedRealtime()
+            isNativeRecording = true
+            binding.webParentPortal.evaluateJavascript("window.onNativeVoiceStarted && window.onNativeVoiceStarted();", null)
+        } catch (e: Exception) {
+            runCatching { f.delete() }
+            notifyWebVoiceError("无法开启麦克风: ${e.message ?: "未知错误"}")
+        }
+    }
+
+    private fun stopNativeVoiceRecordingInternal(cancel: Boolean) {
+        val wasRecording = isNativeRecording
+        isNativeRecording = false
+        val stoppedOk = runCatching { nativeRecorder?.stop() }.isSuccess
+        runCatching { nativeRecorder?.release() }
+        nativeRecorder = null
+        val f = nativeRecordFile
+        nativeRecordFile = null
+        if (cancel || !wasRecording) {
+            f?.let { runCatching { it.delete() } }
+            return
+        }
+        val dur = ((SystemClock.elapsedRealtime() - nativeRecordStartMs) / 1000L).toInt().coerceIn(1, 60)
+        if (!stoppedOk || f == null || !f.exists() || f.length() < 128L) {
+            f?.let { runCatching { it.delete() } }
+            notifyWebVoiceError("录音时间太短，请再录一次")
+            return
+        }
+        val dataUrl = try {
+            val bytes = f.readBytes()
+            "data:audio/mp4;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { f.delete() }
+        }
+        if (dataUrl == null) {
+            notifyWebVoiceError("读取录音数据失败")
+            return
+        }
+        val quoted = JSONObject.quote(dataUrl)
+        binding.webParentPortal.evaluateJavascript(
+            "window.onNativeVoiceResult && window.onNativeVoiceResult($quoted, $dur);",
+            null
+        )
+    }
+
+    override fun onPause() {
+        if (isNativeRecording) stopNativeVoiceRecordingInternal(cancel = true)
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        stopNativeVoiceRecordingInternal(cancel = true)
         pendingWebAudioRequest?.deny()
         pendingWebAudioRequest = null
         binding.webParentPortal.destroy()

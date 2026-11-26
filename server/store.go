@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -119,8 +120,10 @@ func normalizeChildUsername(raw string) (string, error) {
 }
 
 type Store struct {
-	db          *SQLiteDB
-	releasesDir string
+	db            *SQLiteDB
+	releasesDir   string
+	presenceMu    sync.Mutex
+	presenceTouch map[string]int64
 }
 
 func NewStore(dbPath, releasesDir string) (*Store, error) {
@@ -429,6 +432,7 @@ func (s *Store) initSchema() error {
 		{"parents", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"parents", "avatar_updated_at", "avatar_updated_at INTEGER NOT NULL DEFAULT 0"},
 		{"parents", "friend_code", "friend_code TEXT NOT NULL DEFAULT ''"},
+		{"parents", "last_seen_at", "last_seen_at INTEGER NOT NULL DEFAULT 0"},
 		{"children", "username", "username TEXT NOT NULL DEFAULT ''"},
 		{"children", "password_hash", "password_hash TEXT NOT NULL DEFAULT ''"},
 		{"children", "password_plain", "password_plain TEXT NOT NULL DEFAULT ''"},
@@ -442,6 +446,7 @@ func (s *Store) initSchema() error {
 		{"children", "adventure_win_date", "adventure_win_date TEXT NOT NULL DEFAULT ''"},
 		{"children", "adventure_win_xp", "adventure_win_xp INTEGER NOT NULL DEFAULT 0"},
 		{"children", "friend_code", "friend_code TEXT NOT NULL DEFAULT ''"},
+		{"children", "last_seen_at", "last_seen_at INTEGER NOT NULL DEFAULT 0"},
 		{"polaroids", "avatar_data", "avatar_data TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "icon_url", "icon_url TEXT NOT NULL DEFAULT ''"},
 		{"tasks", "task_type", "task_type TEXT NOT NULL DEFAULT 'normal'"},

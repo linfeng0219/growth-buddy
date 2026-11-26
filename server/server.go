@@ -689,6 +689,7 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if parent, fam, err := a.store.VerifyParentLogin(u, pw); err == nil {
+			a.store.TouchActorPresence("parent", parent.ID)
 			tok := SignToken(TokenClaims{Role: "parent", ParentID: parent.ID, FamilyID: fam.ID}, 0)
 			writeJSON(w, 200, map[string]any{
 				"role":   "parent",
@@ -699,6 +700,7 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cid, fid, fcode, err := a.store.LoginChildByAccount(u, pw); err == nil {
+			a.store.TouchActorPresence("child", cid)
 			tok := SignToken(TokenClaims{Role: "child", ChildID: cid, FamilyID: fid}, 0)
 			cname, avIdx, avURL := a.store.GetChildBasicProfile(cid)
 			writeJSON(w, 200, map[string]any{
@@ -714,6 +716,34 @@ func (a *AppServer) handleAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 401, map[string]string{"error": "账号或密码不正确"})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/auth/ping" {
+		auth := getAuth(r)
+		if auth != nil {
+			switch auth.Role {
+			case "child":
+				a.store.TouchActorPresence("child", auth.ChildID)
+			case "parent":
+				a.store.TouchActorPresence("parent", auth.ParentID)
+			}
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+	}
+
+	if m == http.MethodPost && p == "/api/auth/logout" {
+		auth := getAuth(r)
+		if auth != nil {
+			switch auth.Role {
+			case "child":
+				a.store.ClearActorPresence("child", auth.ChildID)
+			case "parent":
+				a.store.ClearActorPresence("parent", auth.ParentID)
+			}
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
 		return
 	}
 
@@ -789,6 +819,7 @@ func (a *AppServer) handleChildAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	targetChildID := auth.ChildID
+	a.store.TouchActorPresence("child", targetChildID)
 
 	p := r.URL.Path
 	m := r.Method
@@ -1259,6 +1290,7 @@ func (a *AppServer) handleParentAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 403, map[string]string{"error": "需要家长账号登录才能操作"})
 		return
 	}
+	a.store.TouchActorPresence("parent", auth.ParentID)
 	fid := auth.FamilyID
 	p := r.URL.Path
 	m := r.Method

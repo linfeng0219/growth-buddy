@@ -126,7 +126,6 @@ type appState struct {
 	inputBgColor   uint32
 	inputTextFg    uint32
 	hasInputSample bool
-	lineContrast   map[int32]contrastSample
 
 	origMsgEditProc  uintptr
 	origPassEditProc uintptr
@@ -236,17 +235,18 @@ func (a *appState) sampleUnderWindow(force bool) {
 		return
 	}
 	sig := computeBackdropSignature(buf, cw, ch)
-	hdrEnd := a.dpiScale(36)
-	if hdrEnd > ch {
-		hdrEnd = ch
+	cr := a.chatRect(rc)
+	sampleEnd := cr.Bottom
+	if sampleEnd <= a.dpiScale(36) {
+		sampleEnd = ch
 	}
-	var rawHdrBg uint32
-	if hdrBg, ok := averageBGRAStripColor(buf, cw, ch, 4, hdrEnd); ok {
-		rawHdrBg = hdrBg
+	var rawWinBg uint32
+	if winBg, ok := averageBGRAStripColor(buf, cw, ch, 4, sampleEnd); ok {
+		rawWinBg = winBg
 	} else {
-		rawHdrBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
+		rawWinBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
 	}
-	newHdrFg, newHdrBg := invertTextColorStable(rawHdrBg, a.autoHeaderBg, a.autoHeaderFg, a.hasHdrSample)
+	newUnifiedFg, newUnifiedBg := invertTextColorStable(rawWinBg, a.autoHeaderBg, a.autoHeaderFg, a.hasHdrSample)
 
 	bx := a.inputBoxRect(rc)
 	bxTop, bxBot := bx.Top+a.dpiScale(3), bx.Bottom-a.dpiScale(3)
@@ -263,53 +263,26 @@ func (a *appState) sampleUnderWindow(force bool) {
 		}
 		rawBoxBg = sampledBoxBg
 	}
-	prevBoxFg := a.inputTextFg
 	prevBoxBg := a.inputBgColor
 	wasInputSampled := a.hasInputSample
-	newBoxFg, newBoxBg := invertTextColorStable(rawBoxBg, prevBoxBg, prevBoxFg, wasInputSampled)
 
-	hdrChanged := !a.hasHdrSample || newHdrFg != a.autoHeaderFg
-	boxTextChanged := !wasInputSampled || newBoxFg != prevBoxFg
-	boxBorderChanged := !wasInputSampled || colorChannelMaxDiff(newBoxBg, prevBoxBg) >= 18
-
-	cr := a.chatRect(rc)
-	chatColorsChanged := force || a.backdropW != cw || a.backdropH != ch
-	if !chatColorsChanged && a.cfg.AutoInvertText {
-		bandH := a.dpiScale(16)
-		if bandH < 12 {
-			bandH = 12
-		}
-		for y := cr.Top; y < cr.Bottom; y += bandH {
-			yEnd := y + bandH
-			if yEnd > cr.Bottom {
-				yEnd = cr.Bottom
-			}
-			if stripBg, ok := averageBGRAStripColor(buf, cw, ch, y, yEnd); ok {
-				bucket := ((y + yEnd) / 2) / 16
-				prev, hasPrev := a.lineContrast[bucket]
-				fg, _ := invertTextColorStable(stripBg, prev.bg, prev.fg, hasPrev)
-				if !hasPrev || fg != prev.fg {
-					chatColorsChanged = true
-					break
-				}
-			}
-		}
-	}
+	hdrChanged := !a.hasHdrSample || newUnifiedFg != a.autoHeaderFg
+	boxBorderChanged := !wasInputSampled || colorChannelMaxDiff(rawBoxBg, prevBoxBg) >= 18
 
 	a.backdropBuf = buf
 	a.backdropW = cw
 	a.backdropH = ch
 	a.backdropSig = sig
-	a.autoHeaderFg = newHdrFg
-	a.autoHeaderBg = newHdrBg
+	a.autoHeaderFg = newUnifiedFg
+	a.autoHeaderBg = newUnifiedBg
 	a.hasHdrSample = true
-	if boxBorderChanged || boxTextChanged {
-		a.inputBgColor = newBoxBg
-		a.inputTextFg = newBoxFg
-		a.hasInputSample = true
+	a.inputTextFg = newUnifiedFg
+	a.hasInputSample = true
+	if boxBorderChanged {
+		a.inputBgColor = rawBoxBg
 	}
 
-	if boxTextChanged && a.cfg.AutoInvertText {
+	if hdrChanged && a.cfg.AutoInvertText {
 		if a.hEditMsg != 0 {
 			pInvalidateRect.Call(a.hEditMsg, 0, 1)
 		}
@@ -320,9 +293,6 @@ func (a *appState) sampleUnderWindow(force bool) {
 				}
 			}
 		}
-	}
-
-	if hdrChanged && a.cfg.AutoInvertText {
 		if a.hLblGroup != 0 {
 			pInvalidateRect.Call(a.hLblGroup, 0, 1)
 		}
@@ -330,7 +300,7 @@ func (a *appState) sampleUnderWindow(force bool) {
 			pInvalidateRect.Call(a.hwnd, 0, 1)
 		}
 	}
-	if force || boxBorderChanged || boxTextChanged || ((hdrChanged || chatColorsChanged) && a.cfg.AutoInvertText) {
+	if force || boxBorderChanged || (hdrChanged && a.cfg.AutoInvertText) {
 		a.triggerRepaint()
 	}
 }
@@ -360,10 +330,18 @@ func (a *appState) createAllControls() {
 	stMsgEdit := uint32(WS_CHILD | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL)
 	a.hEditMsg = createCtrl("EDIT", "", stMsgEdit, 0, 0, 0, 200, 28, h, idEditMsg, inst)
 
-	// Subclass Enter key & Ctrl+L clear shortcut on message & password inputs
+	// Subclass Enter key, Ctrl+L clear shortcut, and scroll forwarding on message input
 	msgCb := syscall.NewCallback(func(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+		if msg == WM_MOUSEWHEEL {
+			pPostMessageW.Call(gApp.hwnd, uintptr(msg), wParam, lParam)
+			return 0
+		}
 		if msg == WM_KEYDOWN && wParam == VK_RETURN {
 			gApp.handleSendMessage()
+			return 0
+		}
+		if msg == WM_KEYDOWN && (wParam == VK_PRIOR || wParam == VK_NEXT) {
+			pPostMessageW.Call(gApp.hwnd, uintptr(msg), wParam, lParam)
 			return 0
 		}
 		if msg == WM_KEYDOWN && (wParam == 'L' || wParam == 'l') {
@@ -628,22 +606,34 @@ func (a *appState) paintWindow() {
 				} else {
 					pSelectObject.Call(memDC, a.chatFont)
 				}
-				lineFg := baseFg
-				if a.cfg.AutoInvertText && a.cfg.BgTransparent && a.backdropW == cw && len(a.backdropBuf) == int(a.backdropW*a.backdropH) {
-					if stripBg, ok := averageBGRAStripColor(a.backdropBuf, a.backdropW, a.backdropH, clipTop, clipBottom); ok {
-						if a.lineContrast == nil {
-							a.lineContrast = make(map[int32]contrastSample)
-						}
-						bucket := ((clipTop + clipBottom) / 2) / 16
-						prev, hasPrev := a.lineContrast[bucket]
-						stableFg, stableBg := invertTextColorStable(stripBg, prev.bg, prev.fg, hasPrev)
-						a.lineContrast[bucket] = contrastSample{bg: stableBg, fg: stableFg}
-						lineFg = stableFg
-					}
-				}
-				drawVisualLine(memDC, ln, cr.Left, screenY, cr.Top, cr.Bottom, lineFg, hasSel, selLo, selHi, li)
+				drawVisualLine(memDC, ln, cr.Left, screenY, cr.Top, cr.Bottom, baseFg, hasSel, selLo, selHi, li)
 			}
 			pSelectObject.Call(memDC, oldFont)
+
+			if maxScroll > 0 && viewH > 12 {
+				totalRange := maxScroll + viewH
+				thumbH := (viewH * viewH) / totalRange
+				if minH := a.dpiScale(20); thumbH < minH {
+					thumbH = minH
+				}
+				if thumbH > viewH {
+					thumbH = viewH
+				}
+				avail := viewH - thumbH
+				thumbY := cr.Top
+				if avail > 0 {
+					thumbY += (curScroll * avail) / maxScroll
+				}
+				sbW := a.dpiScale(4)
+				if sbW < 3 {
+					sbW = 3
+				}
+				sbRc := RECT{Left: cr.Right - sbW, Top: thumbY, Right: cr.Right, Bottom: thumbY + thumbH}
+				if sbBr, _, _ := pCreateSolidBrush.Call(uintptr(baseFg)); sbBr != 0 {
+					pFillRect.Call(memDC, uintptr(unsafe.Pointer(&sbRc)), sbBr)
+					pDeleteObject.Call(sbBr)
+				}
+			}
 		}
 	}
 
@@ -1486,6 +1476,53 @@ func (a *appState) switchToSavedAccount(idx int) {
 	a.triggerRepaint()
 }
 
+func (a *appState) chatPageStep() int32 {
+	if a.hwnd == 0 {
+		return 160
+	}
+	var rc RECT
+	pGetClientRect.Call(a.hwnd, uintptr(unsafe.Pointer(&rc)))
+	cr := a.chatRect(rc)
+	step := ((cr.Bottom - cr.Top) * 4) / 5
+	if minStep := a.dpiScale(64); step < minStep {
+		step = minStep
+	}
+	return step
+}
+
+func (a *appState) scrollByDelta(dy int32) {
+	if !a.loggedIn || dy == 0 {
+		return
+	}
+	a.mu.Lock()
+	nextY, atBot := computeScrollY(a.scrollY, a.maxScrollY, dy, a.dpiScale(24))
+	changed := nextY != a.scrollY || atBot != a.atBottom
+	a.scrollY = nextY
+	a.atBottom = atBot
+	a.mu.Unlock()
+	if changed {
+		a.triggerRepaint()
+	}
+}
+
+func (a *appState) scrollToExtreme(bottom bool) {
+	if !a.loggedIn {
+		return
+	}
+	a.mu.Lock()
+	target := int32(0)
+	if bottom {
+		target = a.maxScrollY
+	}
+	changed := target != a.scrollY || a.atBottom != bottom
+	a.scrollY = target
+	a.atBottom = bottom
+	a.mu.Unlock()
+	if changed {
+		a.triggerRepaint()
+	}
+}
+
 func (a *appState) clearSelection() bool {
 	a.mu.Lock()
 	_, _, hadSel := normalizedSelection(a.selAnchor, a.selFocus)
@@ -1719,6 +1756,22 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			if cx >= cr.Left && cx <= cr.Right && cy >= cr.Top && cy <= cr.Bottom {
 				a.mu.Lock()
 				hasLines := len(a.visLines) > 0
+				maxScr := a.maxScrollY
+				if maxScr > 0 && cx >= cr.Right-a.dpiScale(12) && cr.Bottom > cr.Top {
+					ratio := float64(cy-cr.Top) / float64(cr.Bottom-cr.Top)
+					if ratio < 0 {
+						ratio = 0
+					} else if ratio > 1 {
+						ratio = 1
+					}
+					targetY := int32(ratio * float64(maxScr))
+					a.scrollY = targetY
+					a.atBottom = (maxScr - targetY) <= a.dpiScale(24)
+					a.mu.Unlock()
+					pSetFocus.Call(hwnd)
+					a.triggerRepaint()
+					return 0
+				}
 				if hasLines {
 					pos := hitTestChatLines(a.visLines, a.scrollY, cr.Left, cr.Top, cx, cy)
 					a.selAnchor = pos
@@ -1854,6 +1907,26 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 			if wParam == VK_ESCAPE && a.clearSelection() {
 				return 0
 			}
+			switch wParam {
+			case VK_PRIOR:
+				a.scrollByDelta(-a.chatPageStep())
+				return 0
+			case VK_NEXT:
+				a.scrollByDelta(a.chatPageStep())
+				return 0
+			case VK_UP:
+				a.scrollByDelta(-a.dpiScale(36))
+				return 0
+			case VK_DOWN:
+				a.scrollByDelta(a.dpiScale(36))
+				return 0
+			case VK_HOME:
+				a.scrollToExtreme(false)
+				return 0
+			case VK_END:
+				a.scrollToExtreme(true)
+				return 0
+			}
 		}
 
 	case WM_PAINT:
@@ -1868,23 +1941,8 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_MOUSEWHEEL:
 		if a.loggedIn {
-			delta := int16(wParam >> 16)
-			step := a.dpiScale(44)
-			a.mu.Lock()
-			if delta > 0 {
-				a.scrollY -= step
-			} else if delta < 0 {
-				a.scrollY += step
-			}
-			if a.scrollY < 0 {
-				a.scrollY = 0
-			}
-			if a.scrollY > a.maxScrollY {
-				a.scrollY = a.maxScrollY
-			}
-			a.atBottom = (a.maxScrollY - a.scrollY) <= a.dpiScale(24)
-			a.mu.Unlock()
-			a.triggerRepaint()
+			delta := int16((wParam >> 16) & 0xFFFF)
+			a.scrollByDelta(wheelScrollDeltaY(delta, a.dpiScale(48)))
 		}
 		return 0
 
@@ -1956,24 +2014,11 @@ func mainWndProc(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
 
 	case WM_CTLCOLOREDIT:
 		hdc := wParam
+		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
 		if a.cfg.BgTransparent {
-			txtCol := hexToCOLORREF(a.cfg.FontColor, 0x00283123)
-			if a.cfg.AutoInvertText {
-				if a.inputTextFg != 0 {
-					txtCol = a.inputTextFg
-				} else {
-					baseBg := a.inputBgColor
-					if baseBg == 0 {
-						baseBg = hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)
-					}
-					txtCol = invertTextColorForBg(baseBg)
-				}
-			}
-			pSetTextColor.Call(hdc, uintptr(txtCol))
 			pSetBkColor.Call(hdc, uintptr(chromaKeyRef))
 			return a.bgBrush
 		}
-		pSetTextColor.Call(hdc, uintptr(a.effectiveTextColor()))
 		pSetBkColor.Call(hdc, uintptr(hexToCOLORREF(a.cfg.BgColor, 0x00EEFAF6)))
 		return a.bgBrush
 

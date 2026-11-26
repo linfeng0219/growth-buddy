@@ -437,3 +437,33 @@ func TestClearHotkeyFilteringAndAdaptiveInputBorder(t *testing.T) {
 		t.Fatalf("unexpected formatted fish changelog: %q", clTxt)
 	}
 }
+
+func TestFishScrollHelpers(t *testing.T) {
+	// 向上滚轮（wheelDelta > 0）应减少 scrollY（向历史记录顶部滚动）
+	if dy := wheelScrollDeltaY(120, 48); dy != -48 {
+		t.Fatalf("expected -48 for notch up, got %d", dy)
+	}
+	if dy := wheelScrollDeltaY(-120, 48); dy != 48 {
+		t.Fatalf("expected +48 for notch down, got %d", dy)
+	}
+	// 触控板微幅滚动不应被截断为 0
+	if dy := wheelScrollDeltaY(15, 48); dy >= 0 {
+		t.Fatalf("expected negative micro step for small upward delta, got %d", dy)
+	}
+	if dy := wheelScrollDeltaY(-15, 48); dy <= 0 {
+		t.Fatalf("expected positive micro step for small downward delta, got %d", dy)
+	}
+
+	nextY, atBot := computeScrollY(100, 300, -48, 24)
+	if nextY != 52 || atBot {
+		t.Fatalf("expected (52, false), got (%d, %v)", nextY, atBot)
+	}
+	nextY, atBot = computeScrollY(280, 300, 40, 24)
+	if nextY != 300 || !atBot {
+		t.Fatalf("expected (300, true) when clamped at bottom, got (%d, %v)", nextY, atBot)
+	}
+	nextY, atBot = computeScrollY(10, 300, -40, 24)
+	if nextY != 0 || atBot {
+		t.Fatalf("expected (0, false) when clamped at top, got (%d, %v)", nextY, atBot)
+	}
+}

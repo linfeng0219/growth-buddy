@@ -264,3 +264,38 @@ func averageBGRAStripColor(bgra []uint32, w, h, yStart, yEnd int32) (uint32, boo
 	b := uint32(sumB / count)
 	return (b << 16) | (g << 8) | r, true
 }
+
+func wheelScrollDeltaY(wheelDelta int16, stepPerNotch int32) int32 {
+	if wheelDelta == 0 || stepPerNotch <= 0 {
+		return 0
+	}
+	dy := -int32(wheelDelta) * stepPerNotch / 120
+	if dy == 0 {
+		if wheelDelta > 0 {
+			dy = -stepPerNotch / 3
+			if dy == 0 {
+				dy = -1
+			}
+		} else {
+			dy = stepPerNotch / 3
+			if dy == 0 {
+				dy = 1
+			}
+		}
+	}
+	return dy
+}
+
+func computeScrollY(curScroll, maxScroll, deltaY, bottomSnap int32) (int32, bool) {
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	next := curScroll + deltaY
+	if next < 0 {
+		next = 0
+	}
+	if next > maxScroll {
+		next = maxScroll
+	}
+	return next, (maxScroll - next) <= bottomSnap
+}

@@ -578,3 +578,75 @@ func TestParentSocialSafetyAndChildOversightFlow(t *testing.T) {
 		t.Fatalf("expected dabao unread_chat >= 1 after parent read-only oversight, got %+v", daState)
 	}
 }
+
+func TestFriendOnlinePresenceFlow(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+
+	// 1. 注册家庭（爸爸 + 大宝），创建第二个孩子（二宝）
+	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
+		"familyName": "在线测试家", "displayName": "爸爸", "username": "dad_onl", "password": "pass1234",
+		"childName": "大宝", "childUsername": "da_onl", "childPassword": "pass1234",
+	})
+	if st != 201 {
+		t.Fatalf("register failed: %d", st)
+	}
+	dadTok := reg["token"].(string)
+
+	st, erRes := doJSON(t, ts, "POST", "/api/parent/children", dadTok, map[string]any{
+		"name": "二宝", "username": "er_onl", "password": "pass1234", "age": 7,
+	})
+	if st != 201 {
+		t.Fatalf("create child 2 failed: %d", st)
+	}
+	idEr := erRes["id"].(string)
+
+	st, lDa := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{"username": "da_onl", "password": "pass1234"})
+	if st != 200 {
+		t.Fatalf("login da failed: %d", st)
+	}
+	tokDa := lDa["token"].(string)
+
+	// 2. 爸爸已登录并请求过 API -> 在大宝列表中应为在线；二宝从未登录 -> 在大宝列表中应为离线
+	st, ovDa := doJSON(t, ts, "GET", "/api/child/friends", tokDa, nil)
+	if st != 200 {
+		t.Fatalf("child friends failed: %d", st)
+	}
+	findOnline := func(ov map[string]any, peerType, peerID string) bool {
+		for _, raw := range ov["friends"].([]any) {
+			item := raw.(map[string]any)
+			if item["peer_type"] == peerType && item["peer_id"] == peerID {
+				v, _ := item["is_online"].(bool)
+				return v
+			}
+		}
+		t.Fatalf("peer %s/%s not found in overview", peerType, peerID)
+		return false
+	}
+	dadID := reg["parent"].(map[string]any)["id"].(string)
+	if !findOnline(ovDa, "parent", dadID) {
+		t.Fatalf("expected dad to be online")
+	}
+	if findOnline(ovDa, "child", idEr) {
+		t.Fatalf("expected er to be offline before login")
+	}
+
+	// 3. 二宝登录后应变为在线；退出登录后应变为离线
+	st, lEr := doJSON(t, ts, "POST", "/api/auth/login", "", map[string]any{"username": "er_onl", "password": "pass1234"})
+	if st != 200 {
+		t.Fatalf("login er failed: %d", st)
+	}
+	tokEr := lEr["token"].(string)
+	st, ovDa2 := doJSON(t, ts, "GET", "/api/child/friends", tokDa, nil)
+	if st != 200 || !findOnline(ovDa2, "child", idEr) {
+		t.Fatalf("expected er to be online after login")
+	}
+
+	st, _ = doJSON(t, ts, "POST", "/api/auth/logout", tokEr, map[string]any{})
+	if st != 200 {
+		t.Fatalf("logout failed: %d", st)
+	}
+	st, ovDad := doJSON(t, ts, "GET", "/api/parent/friends", dadTok, nil)
+	if st != 200 || findOnline(ovDad, "child", idEr) {
+		t.Fatalf("expected er to be offline after logout")
+	}
+}

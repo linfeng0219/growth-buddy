@@ -223,6 +223,12 @@ const (
 	VK_RETURN  = 0x0D
 	VK_CONTROL = 0x11
 	VK_ESCAPE  = 0x1B
+	VK_PRIOR   = 0x21
+	VK_NEXT    = 0x22
+	VK_END     = 0x23
+	VK_HOME    = 0x24
+	VK_UP      = 0x26
+	VK_DOWN    = 0x28
 
 	CS_DBLCLKS = 0x0008
 

@@ -92,6 +92,7 @@
   .gb-toast.err{background:#c0392b}
   body{padding:14px 12px 28px;overflow-x:hidden}
   .wrap,.wrap.wide{width:100%;max-width:860px}
+  #mainView{min-height:calc(100dvh - 28px)}
   #parentTopDock{
     position:fixed;top:0;left:0;right:0;z-index:45;
     background:#faf7f2;
@@ -113,11 +114,15 @@
   }
   @media(min-width:760px){
     body{padding:20px 16px 36px}
+    #mainView{min-height:calc(100dvh - 40px)}
     #parentTopDock{padding:10px 16px 8px}
     #parentTopDock nav.tabs{justify-content:center}
     #parentTopDock nav.tabs button{flex:1 1 auto;padding:8px 10px;font-size:13.5px}
   }
-  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;touch-action:pan-y;padding-top:96px;overflow-x:hidden}
+  @media(min-width:900px){
+    .wrap,.wrap.wide,#parentTopDock .top-dock-inner{max-width:1020px}
+  }
+  #tabSwipeViewport{width:100%;max-width:100%;min-width:0;min-height:calc(100dvh - 104px);touch-action:pan-y;padding-top:96px;overflow-x:hidden}
   #tabSwipeViewport>section{contain:layout style}
   .gb-av{cursor:pointer}
   @keyframes tabSlideFromRight{0%{opacity:.55;transform:translate3d(28px,0,0)}100%{opacity:1;transform:translate3d(0,0,0)}}
@@ -129,7 +134,7 @@
     background:transparent;border:none;box-shadow:none;border-radius:0;
     padding:4px 0 0;margin-top:4px;width:100%;max-width:100%;
   }
-  .social-shell{display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start;width:100%;max-width:100%;min-width:0}
+  .social-shell{display:grid;grid-template-columns:290px minmax(0,1fr);gap:14px;align-items:start;width:100%;max-width:100%;min-width:0}
   .social-pane-list,.social-pane-chat{width:100%;max-width:100%;min-width:0;overflow:hidden}
   .social-back-btn{display:none;flex:none;padding:4px 9px;font-size:12px}
   @media(max-width:780px){
@@ -138,8 +143,14 @@
     .social-shell.chat-open .social-pane-list{display:none}
     .social-shell.chat-open .social-back-btn{display:inline-flex}
   }
-  .social-list{display:flex;flex-direction:column;gap:6px;max-height:calc(100dvh - 250px);min-height:200px;overflow-y:auto;padding-right:0;width:100%;max-width:100%}
+  .social-list{display:flex;flex-direction:column;gap:6px;max-height:calc(100dvh - 220px);min-height:160px;overflow-y:auto;padding-right:0;width:100%;max-width:100%}
   .social-sec-title{font-size:12px;font-weight:700;color:var(--muted);margin:8px 2px 2px;display:flex;align-items:center;justify-content:space-between}
+  .social-sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 3px;padding:4px;border-radius:8px;cursor:pointer;user-select:none}
+  .social-sec-head:hover{background:#f2ece1}
+  .social-sec-toggle{font-size:12.5px;font-weight:700;color:var(--ink-soft);display:flex;align-items:center;gap:5px;min-width:0;flex:1}
+  .sr-online{font-size:10px;padding:1px 6px;border-radius:999px;font-weight:600;flex:none;white-space:nowrap}
+  .sr-online.on{background:#e6f6ec;color:#1c7c46}
+  .sr-online.off{background:#f1eee8;color:#8a8378}
   .social-row{
     display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--hair);
     border-radius:12px;background:#fff;cursor:pointer;text-align:left;width:100%;transition:border-color .15s,background .15s;
@@ -158,8 +169,12 @@
   .grp-icon-badge{width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;background:#e3f2e8}
   .grp-icon-badge.custom{background:#f3e8ff}
   .chat-head-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 2px;background:transparent;border:none;border-bottom:1px solid var(--hair);border-radius:0;width:100%;max-width:100%;min-width:0}
-  .chat-scroll-box{background:transparent;border:none;border-radius:0;padding:10px 2px;height:calc(100dvh - 285px);min-height:220px;max-height:480px;overflow-y:auto;overflow-x:hidden;margin-bottom:8px;width:100%;max-width:100%;min-width:0}
-  #pOversightChatBox{height:calc(100dvh - 260px);min-height:220px;max-height:480px;margin-bottom:0}
+  .chat-scroll-box{background:transparent;border:none;border-radius:0;padding:10px 2px;height:calc(100dvh - 265px);min-height:160px;max-height:680px;overflow-y:auto;overflow-x:hidden;margin-bottom:8px;width:100%;max-width:100%;min-width:0}
+  #pOversightChatBox{height:calc(100dvh - 255px);min-height:160px;max-height:680px;margin-bottom:0}
+  @media(max-width:780px){
+    .social-list{max-height:none}
+    .chat-scroll-box,#pOversightChatBox{height:calc(100dvh - 275px);max-height:none}
+  }
   .chat-scroll-box audio{max-width:100%;width:210px}
   .chat-scroll-box img.chat-img-thumb{max-width:100%!important;height:auto}
   .chat-compose-row{display:flex;gap:5px;align-items:center;flex-wrap:nowrap;width:100%;max-width:100%;min-width:0}
@@ -667,15 +682,14 @@
     <!-- 5.5 家长好友聊天、家庭群聊 & 查看孩子好友聊天记录 -->
     <section id="tab-chat" style="display:none">
       <div class="panel chat-panel-flush">
-        <div class="panel-head" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <div class="panel-head" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;justify-content:space-between">
           <div class="seg-switch">
             <button type="button" class="on" id="btnChatModeMine">💬 我的好友</button>
             <button type="button" id="btnChatModeKids">👀 孩子好友/记录</button>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:nowrap" id="pSocialTopActions">
+          <div style="display:flex;gap:6px;flex-wrap:nowrap;margin-left:auto" id="pSocialTopActions">
             <button type="button" class="sm" id="btnParentCard" style="white-space:nowrap">🪪 名片</button>
             <button type="button" class="sm amber" id="btnAddParentFriend" style="white-space:nowrap">➕ 加好友</button>
-            <button type="button" class="sm primary" id="btnCreateParentGroup" style="white-space:nowrap">👥 建群</button>
           </div>
         </div>
 
@@ -687,12 +701,6 @@
               <div id="pIncomingReqList" style="display:flex;flex-direction:column;gap:6px"></div>
             </div>
 
-            <div class="child-filter-bar" id="pFriendFilterBar" style="margin-bottom:8px">
-              <button type="button" class="sm on" data-pf="all">全部</button>
-              <button type="button" class="sm" data-pf="群聊">👥 群聊</button>
-              <button type="button" class="sm" data-pf="家庭">👨‍👩‍👧 家庭</button>
-              <button type="button" class="sm" data-pf="朋友">🤝 朋友</button>
-            </div>
             <div id="pFriendsList" class="social-list"></div>
           </div>
 
@@ -1308,7 +1316,10 @@
 
   $id("btnParentRefreshPage").addEventListener("click",function(){loadOverview();});
 
-  $id("btnLogout").addEventListener("click",function(){
+  $id("btnLogout").addEventListener("click",async function(){
+    if(token()){
+      try{await api("/api/auth/logout",{method:"POST",body:"{}"});}catch(e){}
+    }
     localStorage.removeItem("gb_parent_token");
     if(window.AndroidBridge&&window.AndroidBridge.onWebLogout){
       window.AndroidBridge.onWebLogout();
@@ -1330,6 +1341,7 @@
     }
   }
   window.addEventListener("resize",function(){_lastDockPad=-1;syncTopDockOffset();});
+  window.addEventListener("orientationchange",function(){setTimeout(function(){_lastDockPad=-1;syncTopDockOffset();},90);});
 
   async function loadOverview(){
     try{
@@ -1547,13 +1559,19 @@
     if(!vp) return;
     var sx=0, sy=0, st=0, mode="", lastDx=0, activeSec=null;
     function shouldIgnoreSwipe(target){
+      var mv=$id("mainView");
+      if(!mv||mv.style.display==="none") return true;
       if(document.querySelector(".modal-backdrop.show")) return true;
+      var dock=$id("parentTopDock");
+      if(dock&&target&&dock.contains(target)) return true;
       var el=target;
-      while(el&&el!==vp){
+      while(el&&el!==document.body&&el!==document.documentElement){
         var tag=(el.tagName||"").toUpperCase();
         if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT"||tag==="AUDIO"||el.isContentEditable) return true;
-        if(el.classList&&(el.classList.contains("tabs")||el.classList.contains("child-filter-bar")||el.classList.contains("seg-switch"))) return true;
-        if(el.scrollWidth>el.clientWidth+8) return true;
+        try{
+          var ovX=getComputedStyle(el).overflowX;
+          if((ovX==="auto"||ovX==="scroll")&&el.scrollWidth>el.clientWidth+8) return true;
+        }catch(e){}
         el=el.parentElement;
       }
       return false;
@@ -1571,7 +1589,7 @@
         sec.style.transform="";
       }
     }
-    vp.addEventListener("touchstart",function(e){
+    document.addEventListener("touchstart",function(e){
       if(!e.touches||e.touches.length!==1||shouldIgnoreSwipe(e.target)){mode="off";return;}
       mode="";
       lastDx=0;
@@ -1584,7 +1602,7 @@
         activeSec.classList.remove("tab-slide-left","tab-slide-right");
       }
     },{passive:true});
-    vp.addEventListener("touchmove",function(e){
+    document.addEventListener("touchmove",function(e){
       if(mode==="off"||mode==="v"||!e.touches||e.touches.length!==1||!activeSec) return;
       var dx=e.touches[0].clientX-sx;
       var dy=e.touches[0].clientY-sy;
@@ -1608,7 +1626,7 @@
       lastDx=dx;
       activeSec.style.transform="translate3d("+dx.toFixed(1)+"px,0,0)";
     },{passive:true});
-    vp.addEventListener("touchend",function(e){
+    document.addEventListener("touchend",function(e){
       if(mode!=="h"||!e.changedTouches||!e.changedTouches.length){
         resetDrag(false);
         mode="";
@@ -1629,7 +1647,7 @@
       }
       mode="";
     },{passive:true});
-    vp.addEventListener("touchcancel",function(){
+    document.addEventListener("touchcancel",function(){
       resetDrag(true);
       mode="";
     },{passive:true});
@@ -2689,7 +2707,7 @@
   /* ==================== 家长好友列表、群聊 & 孩子好友监护查看 ==================== */
   var pSocialOv=null;
   var pChatMode="mine"; // mine | kids
-  var pFriendFilter="all"; // all | 群聊 | 家庭 | 朋友
+  var pCollapsedGroups={}; // key -> boolean (collapsed)
   var activeChatPeerType="";
   var activeChatPeerId="";
   var pOvChildId="";
@@ -2699,7 +2717,37 @@
   var chatRecMedia=null;
   var chatRecChunks=[];
   var chatRecStartMs=0;
+  var chatNativeRecording=false;
+  var chatRecTicker=null;
   var chatPollTimer=null;
+  var chatPollTick=0;
+
+  function onlineBadgeHtml(isOnline){
+    return '<span class="sr-online '+(isOnline?'on':'off')+'">'+(isOnline?'🟢 在线':'⚪ 离线')+'</span>';
+  }
+  function createCollapsibleHead(key, labelText, onToggle, extraBtn){
+    var collapsed=!!pCollapsedGroups[key];
+    var hd=document.createElement("div");
+    hd.className="social-sec-head";
+    var tog=document.createElement("div");
+    tog.className="social-sec-toggle";
+    tog.textContent=(collapsed?"▸ ":"▾ ")+labelText;
+    hd.appendChild(tog);
+    if(extraBtn){
+      var b=document.createElement("button");
+      b.type="button";
+      b.className=extraBtn.cls||"sm primary";
+      b.textContent=extraBtn.text;
+      b.style.cssText="white-space:nowrap;flex:none;padding:3px 9px;font-size:11.5px";
+      b.addEventListener("click",function(ev){ev.stopPropagation();extraBtn.onClick();});
+      hd.appendChild(b);
+    }
+    hd.addEventListener("click",function(){
+      pCollapsedGroups[key]=!pCollapsedGroups[key];
+      onToggle();
+    });
+    return hd;
+  }
 
   function fmtShortTime(ms){
     if(!ms) return "";
@@ -2803,13 +2851,16 @@
     var box=$id("pFriendsList");
     box.innerHTML="";
 
-    if(pFriendFilter==="all"||pFriendFilter==="群聊"){
-      var t1=document.createElement("div");t1.className="social-sec-title";
-      t1.innerHTML='<span>👥 群聊（'+groups.length+'） · 默认家庭群</span>';
-      box.appendChild(t1);
+    box.appendChild(createCollapsibleHead(
+      "mine:群聊",
+      "👥 群聊（"+groups.length+"） · 默认家庭群",
+      renderParentSidebarList,
+      {text:"➕ 建群",cls:"sm primary",onClick:openCreateGroupModal}
+    ));
+    if(!pCollapsedGroups["mine:群聊"]){
       if(!groups.length){
         var e1=document.createElement("div");e1.style.cssText="font-size:12px;color:var(--muted);padding:8px 10px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
-        e1.textContent="暂无群聊";box.appendChild(e1);
+        e1.textContent="暂无群聊，点击「➕ 建群」拉上家人或好友一起聊";box.appendChild(e1);
       }else{
         groups.forEach(function(g){
           var isOn=(activeChatPeerType==="group"&&activeChatPeerId===g.id);
@@ -2831,15 +2882,14 @@
       }
     }
 
-    var secGroups=pFriendFilter==="群聊"?[]:(pFriendFilter==="all"?["家庭","朋友"]:[pFriendFilter]);
-    secGroups.forEach(function(grp){
+    ["家庭","朋友"].forEach(function(grp){
       var list=friends.filter(function(f){return f.group_name===grp;});
-      var sec=document.createElement("div");sec.className="social-sec-title";
-      sec.textContent=(grp==="家庭")?("👨‍👩‍👧 家庭成员（"+list.length+"） · 家人与孩子"):("🤝 家长好友（"+list.length+"） · 仅家长互加");
-      box.appendChild(sec);
+      var label=(grp==="家庭")?("👨‍👩‍👧 家庭（"+list.length+"） · 家人与孩子"):("🤝 朋友（"+list.length+"） · 家长好友");
+      box.appendChild(createCollapsibleHead("mine:"+grp, label, renderParentSidebarList));
+      if(pCollapsedGroups["mine:"+grp]) return;
       if(!list.length){
         var emp=document.createElement("div");emp.style.cssText="font-size:12px;color:var(--muted);padding:8px 10px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
-        emp.textContent=(grp==="家庭")?"暂无其他家庭成员":"点击上方「➕ 加好友」，与同学家长互加好友沟通";
+        emp.textContent=(grp==="家庭")?"暂无其他家庭成员":"点击右上角「➕ 加好友」，与同学家长互加好友沟通";
         box.appendChild(emp);
         return;
       }
@@ -2849,7 +2899,8 @@
         btn.className="social-row"+(isOn?" on":"");
         btn.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,34)
           +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(f.name)+'</span>'
-          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span></div>'
+          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span>'
+          +onlineBadgeHtml(f.is_online)+'</div>'
           +'<div class="sr-sub">'+GBArt.esc(f.last_message||"点击开始聊天~")+'</div></div>'
           +'<div class="sr-right">'+(f.last_message_at?'<span class="sr-time">'+fmtShortTime(f.last_message_at)+'</span>':"")
           +(f.unread_count>0?'<span class="sr-badge">'+f.unread_count+'</span>':"")+'</div>';
@@ -2884,7 +2935,7 @@
     if(f){
       avEl.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,34);
       titleEl.textContent=f.name;
-      subEl.textContent=f.group_name+"分组 · "+(f.role_label||"")+" · 支持文字/图片/语音";
+      subEl.textContent=(f.is_online?"🟢 在线":"⚪ 离线")+" · "+f.group_name+"分组 · "+(f.role_label||"")+" · 文字/图片/语音";
       if(!f.is_family&&f.peer_type==="parent"){btnDel.style.display="inline-block";}
     }
   }
@@ -2917,16 +2968,6 @@
       if(loadMessages&&activeChatPeerId) await loadParentChatMessages();
     }catch(e){}
   }
-
-  $id("pFriendFilterBar").querySelectorAll("button").forEach(function(b){
-    b.addEventListener("click",function(){
-      pFriendFilter=b.getAttribute("data-pf")||"all";
-      $id("pFriendFilterBar").querySelectorAll("button").forEach(function(x){
-        x.classList.toggle("on",x.getAttribute("data-pf")===pFriendFilter);
-      });
-      renderParentSidebarList();
-    });
-  });
 
   async function loadParentChatMessages(quiet){
     if(!activeChatPeerId){
@@ -3050,7 +3091,7 @@
   $id("pAddSearchInput").addEventListener("keydown",function(e){if(e.key==="Enter") lookupParentCandidate();});
 
   /* ---- 发起群聊 & 群成员管理弹窗 ---- */
-  $id("btnCreateParentGroup").addEventListener("click",function(){
+  function openCreateGroupModal(){
     if(!pSocialOv||!(pSocialOv.friends||[]).length){
       showToast("先添加至少一位家庭成员或家长好友后才能发起群聊",true);return;
     }
@@ -3066,7 +3107,7 @@
       list.appendChild(lb);
     });
     $id("pCreateGroupModal").classList.add("show");
-  });
+  }
   $id("btnCloseCreateGroup").addEventListener("click",function(){$id("pCreateGroupModal").classList.remove("show");});
   $id("btnConfirmCreateGroup").addEventListener("click",async function(){
     var nm=$id("pNewGroupName").value.trim();
@@ -3102,7 +3143,8 @@
         return '<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px dashed #f0eae0">'
           +GBArt.avatarHtml(m.avatar_idx,m.avatar_url,28)
           +'<span style="font-size:13px;font-weight:600">'+GBArt.esc(m.name)+'</span>'
-          +'<span style="font-size:11px;color:var(--muted)">('+GBArt.esc((m.role_label||"")+ow)+')</span></div>';
+          +'<span style="font-size:11px;color:var(--muted)">('+GBArt.esc((m.role_label||"")+ow)+')</span>'
+          +onlineBadgeHtml(m.is_online)+'</div>';
       }).join("");
 
       var invBox=$id("pGdInviteBox"), leaveBtn=$id("btnPGdLeave");
@@ -3217,32 +3259,32 @@
     }
 
     var gList=pOvChildSocial.chat_groups||[];
-    var tG=document.createElement("div");tG.className="social-sec-title";
-    tG.textContent="👥 "+kidName+" 所在的群聊（"+gList.length+"）";
-    box.appendChild(tG);
-    gList.forEach(function(g){
-      var isOn=(pOvPeerType==="group"&&pOvPeerId===g.id);
-      var btn=document.createElement("button");btn.type="button";
-      btn.className="social-row"+(isOn?" on":"");
-      btn.innerHTML='<div class="grp-icon-badge '+(g.is_family_default?"":"custom")+'">'+(g.is_family_default?"👨‍👩‍👧‍👦":"👥")+'</div>'
-        +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(g.name)+'</span>'
-        +'<span class="sr-tag '+(g.is_family_default?"":"friend")+'">'+(g.is_family_default?"家庭群":"群聊")+" · "+g.member_count+'人</span></div>'
-        +'<div class="sr-sub">'+GBArt.esc(g.last_message||("成员："+(g.members_preview||"")))+'</div></div>'
-        +'<div class="sr-right">'+(g.last_message_at?'<span class="sr-time">'+fmtShortTime(g.last_message_at)+'</span>':"")
-        +(g.unread_count>0?'<span class="sr-badge">'+g.unread_count+'</span>':"")+'</div>';
-      btn.addEventListener("click",function(){
-        pOvPeerType="group";pOvPeerId=g.id;
-        $id("pOversightShell").classList.add("chat-open");
-        renderChildOversightList();loadChildOversightMessages(false);
+    box.appendChild(createCollapsibleHead("ov:群聊","👥 "+kidName+" 所在的群聊（"+gList.length+"）",renderChildOversightList));
+    if(!pCollapsedGroups["ov:群聊"]){
+      gList.forEach(function(g){
+        var isOn=(pOvPeerType==="group"&&pOvPeerId===g.id);
+        var btn=document.createElement("button");btn.type="button";
+        btn.className="social-row"+(isOn?" on":"");
+        btn.innerHTML='<div class="grp-icon-badge '+(g.is_family_default?"":"custom")+'">'+(g.is_family_default?"👨‍👩‍👧‍👦":"👥")+'</div>'
+          +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(g.name)+'</span>'
+          +'<span class="sr-tag '+(g.is_family_default?"":"friend")+'">'+(g.is_family_default?"家庭群":"群聊")+" · "+g.member_count+'人</span></div>'
+          +'<div class="sr-sub">'+GBArt.esc(g.last_message||("成员："+(g.members_preview||"")))+'</div></div>'
+          +'<div class="sr-right">'+(g.last_message_at?'<span class="sr-time">'+fmtShortTime(g.last_message_at)+'</span>':"")
+          +(g.unread_count>0?'<span class="sr-badge">'+g.unread_count+'</span>':"")+'</div>';
+        btn.addEventListener("click",function(){
+          pOvPeerType="group";pOvPeerId=g.id;
+          $id("pOversightShell").classList.add("chat-open");
+          renderChildOversightList();loadChildOversightMessages(false);
+        });
+        box.appendChild(btn);
       });
-      box.appendChild(btn);
-    });
+    }
 
     ["朋友","家庭"].forEach(function(grp){
       var list=(pOvChildSocial.friends||[]).filter(function(f){return f.group_name===grp;});
-      var sec=document.createElement("div");sec.className="social-sec-title";
-      sec.textContent=(grp==="朋友")?("🧒 "+kidName+" 的外部小伙伴（"+list.length+"）"):("👨‍👩‍👧 "+kidName+" 的家庭分组（"+list.length+"）");
-      box.appendChild(sec);
+      var lbl=(grp==="朋友")?("🧒 "+kidName+" 的外部小伙伴（"+list.length+"）"):("👨‍👩‍👧 "+kidName+" 的家庭分组（"+list.length+"）");
+      box.appendChild(createCollapsibleHead("ov:"+grp,lbl,renderChildOversightList));
+      if(pCollapsedGroups["ov:"+grp]) return;
       if(!list.length){
         var emp=document.createElement("div");emp.style.cssText="font-size:12px;color:var(--muted);padding:7px 9px;background:#fff;border:1px dashed var(--hair);border-radius:10px";
         emp.textContent="暂无";box.appendChild(emp);return;
@@ -3253,7 +3295,8 @@
         btn.className="social-row"+(isOn?" on":"");
         btn.innerHTML=GBArt.avatarHtml(f.avatar_idx,f.avatar_url,32)
           +'<div class="sr-mid"><div class="sr-top"><span class="sr-name">'+GBArt.esc(f.name)+'</span>'
-          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span></div>'
+          +'<span class="sr-tag '+(f.is_family?"":"friend")+'">'+GBArt.esc(f.role_label||grp)+'</span>'
+          +onlineBadgeHtml(f.is_online)+'</div>'
           +'<div class="sr-sub">'+GBArt.esc(f.last_message||"暂无消息")+'</div></div>'
           +'<div class="sr-right">'+(f.last_message_at?'<span class="sr-time">'+fmtShortTime(f.last_message_at)+'</span>':"")
           +(f.unread_count>0?'<span class="sr-badge">'+f.unread_count+'</span>':"")+'</div>';
@@ -3285,7 +3328,7 @@
     }else{
       var f=(pOvChildSocial.friends||[]).find(function(x){return x.peer_type===pOvPeerType&&x.peer_id===pOvPeerId;});
       $id("pOvChatTitle").textContent=kidName+" 与 "+(f?f.name:"好友")+" 的对话";
-      $id("pOvChatSub").textContent=(f?f.group_name+"分组 · "+(f.role_label||""):"")+" · 仅家长监护查看";
+      $id("pOvChatSub").textContent=(f?((f.is_online?"🟢 在线":"⚪ 离线")+" · "+f.group_name+"分组 · "+(f.role_label||"")):"")+" · 仅家长监护查看";
     }
     try{
       var r=await api("/api/parent/children/"+encodeURIComponent(pOvChildId)+"/chat/messages?peerType="+encodeURIComponent(pOvPeerType)+"&peerId="+encodeURIComponent(pOvPeerId));
@@ -3325,39 +3368,106 @@
     };
     reader.readAsDataURL(f);
   });
+  function resetVoiceBtn(){
+    clearInterval(chatRecTicker);chatRecTicker=null;
+    chatNativeRecording=false;
+    $id("btnPChatVoice").textContent="🎤";
+    $id("btnPChatVoice").classList.remove("danger");
+  }
+  function startVoiceTimer(){
+    clearInterval(chatRecTicker);
+    chatRecStartMs=Date.now();
+    $id("btnPChatVoice").textContent="⏹️ 0s";
+    $id("btnPChatVoice").classList.add("danger");
+    chatRecTicker=setInterval(function(){
+      var sec=Math.max(1,Math.round((Date.now()-chatRecStartMs)/1000));
+      $id("btnPChatVoice").textContent="⏹️ "+sec+"s";
+    },500);
+  }
+  window.onNativeVoiceStarted=function(){
+    chatNativeRecording=true;
+    note("pChatMsg","🎙️ 正在录音，再次点击停止发送");
+    startVoiceTimer();
+  };
+  window.onNativeVoiceResult=async function(dataUrl,durSec){
+    resetVoiceBtn();
+    note("pChatMsg","");
+    if(!dataUrl||!activeChatPeerId) return;
+    try{
+      await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"voice",mediaData:dataUrl,mimeType:"audio/mp4",durationSec:Math.max(1,durSec||1)})});
+      await loadParentChatMessages(false);
+    }catch(err){note("pChatMsg",err.message,true);}
+  };
+  window.onNativeVoiceError=function(errMsg){
+    resetVoiceBtn();
+    note("pChatMsg",errMsg||"录音失败",true);
+  };
+
   $id("btnPChatVoice").addEventListener("click",async function(){
     if(!activeChatPeerId) return;
+    note("pChatMsg","");
+    if(window.AndroidBridge&&typeof window.AndroidBridge.startNativeVoiceRecord==="function"){
+      if(chatNativeRecording){
+        window.AndroidBridge.stopNativeVoiceRecord(false);
+      }else{
+        window.AndroidBridge.startNativeVoiceRecord();
+      }
+      return;
+    }
     if(chatRecMedia&&chatRecMedia.state==="recording"){
       chatRecMedia.stop();
       return;
     }
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||typeof MediaRecorder==="undefined"){
-      note("pChatMsg","当前浏览器不支持直接录音（孩子端 App 可随时发送语音）",true);
+      if(window.isSecureContext===false){
+        note("pChatMsg","当前网页不是 HTTPS 安全连接，浏览器限制访问麦克风（请通过 App 或 HTTPS 访问）",true);
+      }else{
+        note("pChatMsg","当前浏览器不支持直接录音（可在手机 App 内随时发送语音）",true);
+      }
       return;
     }
     try{
       var stream=await navigator.mediaDevices.getUserMedia({audio:true});
       chatRecChunks=[];
-      chatRecStartMs=Date.now();
-      chatRecMedia=new MediaRecorder(stream);
+      var mimeOpt=undefined;
+      if(typeof MediaRecorder.isTypeSupported==="function"){
+        var cands=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg;codecs=opus"];
+        for(var ci=0;ci<cands.length;ci++){
+          if(MediaRecorder.isTypeSupported(cands[ci])){mimeOpt={mimeType:cands[ci]};break;}
+        }
+      }
+      chatRecMedia=mimeOpt?new MediaRecorder(stream,mimeOpt):new MediaRecorder(stream);
       chatRecMedia.ondataavailable=function(ev){if(ev.data&&ev.data.size>0) chatRecChunks.push(ev.data);};
       chatRecMedia.onstop=function(){
         stream.getTracks().forEach(function(t){t.stop();});
-        $id("btnPChatVoice").textContent="🎤";
         var dur=Math.max(1,Math.round((Date.now()-chatRecStartMs)/1000));
-        var blob=new Blob(chatRecChunks,{type:chatRecMedia.mimeType||"audio/webm"});
+        var mime=(chatRecMedia&&chatRecMedia.mimeType)||"audio/webm";
+        resetVoiceBtn();
+        if(!chatRecChunks.length){
+          note("pChatMsg","录音时间太短，请再录一次",true);
+          return;
+        }
+        var blob=new Blob(chatRecChunks,{type:mime});
+        if(blob.size<128){
+          note("pChatMsg","录音时间太短，请再录一次",true);
+          return;
+        }
         var rdr=new FileReader();
         rdr.onload=async function(){
           try{
-            await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"voice",mediaData:rdr.result,mimeType:blob.type||"audio/webm",durationSec:dur})});
+            await api("/api/parent/chat/messages",{method:"POST",body:JSON.stringify({peerType:activeChatPeerType,peerId:activeChatPeerId,msgType:"voice",mediaData:rdr.result,mimeType:blob.type||mime,durationSec:dur})});
             await loadParentChatMessages(false);
           }catch(err){note("pChatMsg",err.message,true);}
         };
         rdr.readAsDataURL(blob);
       };
-      chatRecMedia.start();
-      $id("btnPChatVoice").textContent="⏹️";
-    }catch(e){note("pChatMsg","无法打开麦克风："+e.message,true);}
+      chatRecMedia.start(250);
+      note("pChatMsg","🎙️ 正在录音，再次点击按钮发送");
+      startVoiceTimer();
+    }catch(e){
+      resetVoiceBtn();
+      note("pChatMsg","无法打开麦克风："+(e&&e.message?e.message:String(e)),true);
+    }
   });
 
   $id("btnPMineBack").addEventListener("click",function(){$id("pSocialMineView").classList.remove("chat-open");});
@@ -3369,12 +3479,20 @@
   chatPollTimer=setInterval(function(){
     var sec=$id("tab-chat");
     if(!token()||!sec||sec.style.display==="none") return;
+    chatPollTick++;
     if(pChatMode==="kids"){
       loadChildOversightMessages(true);
+      if(chatPollTick%3===0) loadChildOversightOverview(false);
     }else if(activeChatPeerId){
       loadParentChatMessages(true);
+      if(chatPollTick%3===0) loadParentChatContacts(false);
     }
   },4000);
+  setInterval(function(){
+    if(token()&&document.visibilityState!=="hidden"){
+      api("/api/auth/ping",{method:"POST",body:"{}"}).catch(function(){});
+    }
+  },30000);
 
   try{
     var hm=location.hash.match(/gb_app_token=([^&]+)/);

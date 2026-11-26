@@ -737,6 +737,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle("退出当前账号？")
             .setMessage("退出后可在登录页下拉快速切换其他孩子或家长账号")
             .setPositiveButton("退出登录") { _, _ ->
+                if (ServerPrefs.getChildToken(this).isNotEmpty()) {
+                    api.request("POST", "/api/auth/logout", JSONObject()) {}
+                }
                 ServerPrefs.clearChildToken(this)
                 ServerPrefs.clearParentToken(this)
                 state = null

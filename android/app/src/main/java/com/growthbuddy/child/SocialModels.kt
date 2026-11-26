@@ -35,7 +35,9 @@ data class FriendItem(
     val petLevel: Int,
     val unreadCount: Int,
     val lastMessage: String,
-    val lastMessageAt: Long
+    val lastMessageAt: Long,
+    val isOnline: Boolean = false,
+    val lastActiveAt: Long = 0L
 )
 
 data class FriendRequestItem(
@@ -71,7 +73,9 @@ data class ChatGroupMemberItem(
     val roleLabel: String,
     val avatarIdx: Int,
     val avatarUrl: String,
-    val role: String
+    val role: String,
+    val isOnline: Boolean = false,
+    val lastActiveAt: Long = 0L
 )
 
 data class ChatGroupItem(
@@ -153,7 +157,9 @@ object SocialParser {
                     petLevel = f.optInt("pet_level", 0),
                     unreadCount = f.optInt("unread_count", 0),
                     lastMessage = f.optString("last_message", ""),
-                    lastMessageAt = f.optLong("last_message_at", 0L)
+                    lastMessageAt = f.optLong("last_message_at", 0L),
+                    isOnline = f.optBoolean("is_online", false),
+                    lastActiveAt = f.optLong("last_active_at", 0L)
                 )
             )
         }
@@ -183,7 +189,9 @@ object SocialParser {
                         roleLabel = m.optString("role_label", ""),
                         avatarIdx = m.optInt("avatar_idx", 0),
                         avatarUrl = m.optString("avatar_url", ""),
-                        role = m.optString("role", "member")
+                        role = m.optString("role", "member"),
+                        isOnline = m.optBoolean("is_online", false),
+                        lastActiveAt = m.optLong("last_active_at", 0L)
                     )
                 )
             }

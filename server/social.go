@@ -32,9 +32,85 @@ type FriendItemDTO struct {
 	AvatarURL     string `json:"avatar_url"`
 	PetName       string `json:"pet_name,omitempty"`
 	PetLevel      int    `json:"pet_level"`
+	IsOnline      bool   `json:"is_online"`
+	LastActiveAt  int64  `json:"last_active_at,omitempty"`
 	UnreadCount   int    `json:"unread_count"`
 	LastMessage   string `json:"last_message"`
 	LastMessageAt int64  `json:"last_message_at"`
+}
+
+const actorOnlineWindowMs int64 = 90 * 1000
+
+func isActorOnline(lastSeenAt, now int64) bool {
+	return lastSeenAt > 0 && now-lastSeenAt <= actorOnlineWindowMs
+}
+
+func (s *Store) TouchActorPresence(actorType, actorID string) {
+	actorID = strings.TrimSpace(actorID)
+	if actorID == "" || (actorType != "child" && actorType != "parent") {
+		return
+	}
+	now := nowMs()
+	key := actorType + ":" + actorID
+	s.presenceMu.Lock()
+	if s.presenceTouch == nil {
+		s.presenceTouch = make(map[string]int64)
+	}
+	last := s.presenceTouch[key]
+	if now-last < 25000 {
+		s.presenceMu.Unlock()
+		return
+	}
+	s.presenceTouch[key] = now
+	s.presenceMu.Unlock()
+
+	table := "children"
+	if actorType == "parent" {
+		table = "parents"
+	}
+	_ = s.db.WithLock(func(tx *Tx) error {
+		_, err := tx.Exec("UPDATE "+table+" SET last_seen_at = ? WHERE id = ?", now, actorID)
+		return err
+	})
+}
+
+func (s *Store) ClearActorPresence(actorType, actorID string) {
+	actorID = strings.TrimSpace(actorID)
+	if actorID == "" || (actorType != "child" && actorType != "parent") {
+		return
+	}
+	key := actorType + ":" + actorID
+	s.presenceMu.Lock()
+	if s.presenceTouch != nil {
+		delete(s.presenceTouch, key)
+	}
+	s.presenceMu.Unlock()
+
+	table := "children"
+	if actorType == "parent" {
+		table = "parents"
+	}
+	_ = s.db.WithLock(func(tx *Tx) error {
+		_, err := tx.Exec("UPDATE "+table+" SET last_seen_at = 0 WHERE id = ?", actorID)
+		return err
+	})
+}
+
+func (s *Store) lookupActorPresenceLocked(tx *Tx, actorType, actorID string) int64 {
+	var seen int64
+	switch actorType {
+	case "child":
+		_ = tx.QueryRow("SELECT last_seen_at FROM children WHERE id = ?", func(r SQLiteRow) error {
+			seen = r.Int64(0)
+			return nil
+		}, actorID)
+	case "parent":
+		_ = tx.QueryRow("SELECT last_seen_at FROM parents WHERE id = ?", func(r SQLiteRow) error {
+			seen = r.Int64(0)
+			return nil
+		}, actorID)
+	}
+	return seen
 }
 
 type FriendRequestDTO struct {
@@ -119,13 +195,15 @@ type ParentSocialOverviewDTO struct {
 }
 
 type ChatGroupMemberDTO struct {
-	MemberType string `json:"member_type"`
-	MemberID   string `json:"member_id"`
-	Name       string `json:"name"`
-	RoleLabel  string `json:"role_label"`
-	AvatarIdx  int    `json:"avatar_idx"`
-	AvatarURL  string `json:"avatar_url"`
-	Role       string `json:"role"`
+	MemberType   string `json:"member_type"`
+	MemberID     string `json:"member_id"`
+	Name         string `json:"name"`
+	RoleLabel    string `json:"role_label"`
+	AvatarIdx    int    `json:"avatar_idx"`
+	AvatarURL    string `json:"avatar_url"`
+	Role         string `json:"role"`
+	IsOnline     bool   `json:"is_online"`
+	LastActiveAt int64  `json:"last_active_at,omitempty"`
 }
 
 type ChatGroupDTO struct {
@@ -515,21 +593,25 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		self.QRPayload = "growthbuddy://add-friend?code=" + self.FriendCode
 		out.Self = self
 
+		now := nowMs()
 		// 1. 同家庭成员自动放入「家庭」分组（同家庭父母 + 同家庭兄弟姐妹）
 		if err := tx.Query(
-			"SELECT id, display_name, avatar_idx, (avatar_data != ''), avatar_updated_at FROM parents WHERE family_id = ? ORDER BY created_at ASC",
+			"SELECT id, display_name, avatar_idx, (avatar_data != ''), avatar_updated_at, last_seen_at FROM parents WHERE family_id = ? ORDER BY created_at ASC",
 			func(r SQLiteRow) error {
 				pid := r.String(0)
 				dname := r.String(1)
+				lastSeen := r.Int64(5)
 				out.Friends = append(out.Friends, FriendItemDTO{
-					PeerType:  "parent",
-					PeerID:    pid,
-					Name:      dname,
-					RoleLabel: "家长",
-					GroupName: "家庭",
-					IsFamily:  true,
-					AvatarIdx: r.Int(2),
-					AvatarURL: avatarURL("parent", pid, r.Int(3) != 0, r.Int64(4)),
+					PeerType:     "parent",
+					PeerID:       pid,
+					Name:         dname,
+					RoleLabel:    "家长",
+					GroupName:    "家庭",
+					IsFamily:     true,
+					AvatarIdx:    r.Int(2),
+					AvatarURL:    avatarURL("parent", pid, r.Int(3) != 0, r.Int64(4)),
+					IsOnline:     isActorOnline(lastSeen, now),
+					LastActiveAt: lastSeen,
 				})
 				return nil
 			}, familyID,
@@ -538,20 +620,23 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 		}
 
 		if err := tx.Query(
-			"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp FROM children WHERE family_id = ? AND id != ? ORDER BY created_at ASC",
+			"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp, last_seen_at FROM children WHERE family_id = ? AND id != ? ORDER BY created_at ASC",
 			func(r SQLiteRow) error {
 				cid := r.String(0)
+				lastSeen := r.Int64(7)
 				out.Friends = append(out.Friends, FriendItemDTO{
-					PeerType:  "child",
-					PeerID:    cid,
-					Name:      r.String(1),
-					RoleLabel: "家人",
-					GroupName: "家庭",
-					IsFamily:  true,
-					AvatarIdx: r.Int(2),
-					AvatarURL: avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-					PetName:   r.String(5),
-					PetLevel:  LevelForXP(r.Int(6)),
+					PeerType:     "child",
+					PeerID:       cid,
+					Name:         r.String(1),
+					RoleLabel:    "家人",
+					GroupName:    "家庭",
+					IsFamily:     true,
+					AvatarIdx:    r.Int(2),
+					AvatarURL:    avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
+					PetName:      r.String(5),
+					PetLevel:     LevelForXP(r.Int(6)),
+					IsOnline:     isActorOnline(lastSeen, now),
+					LastActiveAt: lastSeen,
 				})
 				return nil
 			}, familyID, childID,
@@ -561,7 +646,7 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 
 		// 2. 已同意的外部好友放入「朋友」默认分组
 		if err := tx.Query(
-			`SELECT c.id, c.name, f.group_name, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at, c.pet_name, c.xp
+			`SELECT c.id, c.name, f.group_name, c.avatar_idx, (c.avatar_data != ''), c.avatar_updated_at, c.pet_name, c.xp, c.last_seen_at
 			 FROM friendships f
 			 JOIN children c ON c.id = f.friend_child_id
 			 WHERE f.child_id = ?
@@ -572,17 +657,20 @@ func (s *Store) GetChildSocialOverview(familyID, childID string) (*ChildSocialOv
 				if grp == "" {
 					grp = "朋友"
 				}
+				lastSeen := r.Int64(8)
 				out.Friends = append(out.Friends, FriendItemDTO{
-					PeerType:  "child",
-					PeerID:    cid,
-					Name:      r.String(1),
-					RoleLabel: "小伙伴",
-					GroupName: grp,
-					IsFamily:  false,
-					AvatarIdx: r.Int(3),
-					AvatarURL: avatarURL("child", cid, r.Int(4) != 0, r.Int64(5)),
-					PetName:   r.String(6),
-					PetLevel:  LevelForXP(r.Int(7)),
+					PeerType:     "child",
+					PeerID:       cid,
+					Name:         r.String(1),
+					RoleLabel:    "小伙伴",
+					GroupName:    grp,
+					IsFamily:     false,
+					AvatarIdx:    r.Int(3),
+					AvatarURL:    avatarURL("child", cid, r.Int(4) != 0, r.Int64(5)),
+					PetName:      r.String(6),
+					PetLevel:     LevelForXP(r.Int(7)),
+					IsOnline:     isActorOnline(lastSeen, now),
+					LastActiveAt: lastSeen,
 				})
 				return nil
 			}, childID,
@@ -1365,20 +1453,24 @@ func (s *Store) GetChatMedia(viewerType, viewerID, mediaID string) (string, []by
 
 func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) ([]FriendItemDTO, error) {
 	items := make([]FriendItemDTO, 0)
+	now := nowMs()
 	// 1. 同家庭其他家长（爸爸/妈妈等）放入「家庭」分组
 	if err := tx.Query(
-		"SELECT id, display_name, avatar_idx, (avatar_data != ''), avatar_updated_at FROM parents WHERE family_id = ? AND id != ? ORDER BY created_at ASC",
+		"SELECT id, display_name, avatar_idx, (avatar_data != ''), avatar_updated_at, last_seen_at FROM parents WHERE family_id = ? AND id != ? ORDER BY created_at ASC",
 		func(r SQLiteRow) error {
 			pid := r.String(0)
+			lastSeen := r.Int64(5)
 			items = append(items, FriendItemDTO{
-				PeerType:  "parent",
-				PeerID:    pid,
-				Name:      r.String(1),
-				RoleLabel: "家人(家长)",
-				GroupName: "家庭",
-				IsFamily:  true,
-				AvatarIdx: r.Int(2),
-				AvatarURL: avatarURL("parent", pid, r.Int(3) != 0, r.Int64(4)),
+				PeerType:     "parent",
+				PeerID:       pid,
+				Name:         r.String(1),
+				RoleLabel:    "家人(家长)",
+				GroupName:    "家庭",
+				IsFamily:     true,
+				AvatarIdx:    r.Int(2),
+				AvatarURL:    avatarURL("parent", pid, r.Int(3) != 0, r.Int64(4)),
+				IsOnline:     isActorOnline(lastSeen, now),
+				LastActiveAt: lastSeen,
 			})
 			return nil
 		}, familyID, parentID,
@@ -1387,20 +1479,23 @@ func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) 
 	}
 	// 2. 同家庭孩子放入「家庭」分组
 	if err := tx.Query(
-		"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp FROM children WHERE family_id = ? ORDER BY created_at ASC",
+		"SELECT id, name, avatar_idx, (avatar_data != ''), avatar_updated_at, pet_name, xp, last_seen_at FROM children WHERE family_id = ? ORDER BY created_at ASC",
 		func(r SQLiteRow) error {
 			cid := r.String(0)
+			lastSeen := r.Int64(7)
 			items = append(items, FriendItemDTO{
-				PeerType:  "child",
-				PeerID:    cid,
-				Name:      r.String(1),
-				RoleLabel: "孩子",
-				GroupName: "家庭",
-				IsFamily:  true,
-				AvatarIdx: r.Int(2),
-				AvatarURL: avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
-				PetName:   r.String(5),
-				PetLevel:  LevelForXP(r.Int(6)),
+				PeerType:     "child",
+				PeerID:       cid,
+				Name:         r.String(1),
+				RoleLabel:    "孩子",
+				GroupName:    "家庭",
+				IsFamily:     true,
+				AvatarIdx:    r.Int(2),
+				AvatarURL:    avatarURL("child", cid, r.Int(3) != 0, r.Int64(4)),
+				PetName:      r.String(5),
+				PetLevel:     LevelForXP(r.Int(6)),
+				IsOnline:     isActorOnline(lastSeen, now),
+				LastActiveAt: lastSeen,
 			})
 			return nil
 		}, familyID,
@@ -1409,7 +1504,7 @@ func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) 
 	}
 	// 3. 已同意的外部家长好友放入「朋友」分组（安全边界：家长只加家长）
 	if err := tx.Query(
-		`SELECT p.id, p.display_name, pf.group_name, p.avatar_idx, (p.avatar_data != ''), p.avatar_updated_at, fm.name
+		`SELECT p.id, p.display_name, pf.group_name, p.avatar_idx, (p.avatar_data != ''), p.avatar_updated_at, fm.name, p.last_seen_at
 		 FROM parent_friendships pf
 		 JOIN parents p ON p.id = pf.friend_parent_id
 		 LEFT JOIN families fm ON fm.id = p.family_id
@@ -1426,15 +1521,18 @@ func (s *Store) buildParentFriendsListLocked(tx *Tx, familyID, parentID string) 
 			if famName != "" {
 				roleLabel = famName
 			}
+			lastSeen := r.Int64(7)
 			items = append(items, FriendItemDTO{
-				PeerType:  "parent",
-				PeerID:    pid,
-				Name:      r.String(1),
-				RoleLabel: roleLabel,
-				GroupName: grp,
-				IsFamily:  false,
-				AvatarIdx: r.Int(3),
-				AvatarURL: avatarURL("parent", pid, r.Int(4) != 0, r.Int64(5)),
+				PeerType:     "parent",
+				PeerID:       pid,
+				Name:         r.String(1),
+				RoleLabel:    roleLabel,
+				GroupName:    grp,
+				IsFamily:     false,
+				AvatarIdx:    r.Int(3),
+				AvatarURL:    avatarURL("parent", pid, r.Int(4) != 0, r.Int64(5)),
+				IsOnline:     isActorOnline(lastSeen, now),
+				LastActiveAt: lastSeen,
 			})
 			return nil
 		}, parentID,
@@ -1528,9 +1626,11 @@ func (s *Store) getGroupDetailLocked(tx *Tx, groupID, viewerType, viewerID strin
 		return nil, err
 	}
 
+	now := nowMs()
 	var names []string
 	for idx, rm := range raws {
 		nm, aIdx, aURL := s.lookupActorProfileLocked(tx, rm.mType, rm.mID)
+		lastSeen := s.lookupActorPresenceLocked(tx, rm.mType, rm.mID)
 		roleLabel := "小伙伴"
 		if rm.mType == "parent" {
 			roleLabel = "家长"
@@ -1541,13 +1641,15 @@ func (s *Store) getGroupDetailLocked(tx *Tx, groupID, viewerType, viewerID strin
 			}
 		}
 		dto.Members = append(dto.Members, ChatGroupMemberDTO{
-			MemberType: rm.mType,
-			MemberID:   rm.mID,
-			Name:       nm,
-			RoleLabel:  roleLabel,
-			AvatarIdx:  aIdx,
-			AvatarURL:  aURL,
-			Role:       rm.role,
+			MemberType:   rm.mType,
+			MemberID:     rm.mID,
+			Name:         nm,
+			RoleLabel:    roleLabel,
+			AvatarIdx:    aIdx,
+			AvatarURL:    aURL,
+			Role:         rm.role,
+			IsOnline:     isActorOnline(lastSeen, now),
+			LastActiveAt: lastSeen,
 		})
 		if idx < 4 {
 			names = append(names, nm)

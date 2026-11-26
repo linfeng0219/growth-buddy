@@ -1,5 +1,6 @@
 package com.growthbuddy.child
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -9,6 +10,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -33,18 +36,55 @@ import java.util.Locale
 
 /**
  * 好友与聊天列表中心：
- * - 同家庭成员（父母与同家庭小伙伴）直接进入「家庭」分组；
- * - 另默认拥有「朋友」分组，孩子可通过二维码扫码、好友分享码、或对方账号查找并发送申请，需对方同意后建立好友关系。
+ * - 手机 / 竖屏单栏点击进入独立 ChatActivity；平板横屏左侧显示联系人分组，右侧直接内嵌聊天窗口。
+ * - 支持点击分组名（群聊 / 家庭 / 朋友）展开或折叠组内元素，展示好友在线/离线状态。
  */
 class FriendsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityFriendsBinding
     private lateinit var api: ApiClient
     private lateinit var sound: NativeSoundEngine
+    private lateinit var chatController: ChildChatPaneController
 
     private var overview: SocialOverview? = null
-    private var groupFilter: String = "all" // all | 家庭 | 朋友
+    private val collapsedGroups = mutableMapOf<String, Boolean>()
+    private var selectedPeerType: String = ""
+    private var selectedPeerId: String = ""
+    private var isResumed = false
     private var hasChangedState = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val audioPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        chatController.onAudioPermissionResult(granted)
+    }
+
+    private val cameraPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        chatController.onCameraPermissionResult(granted)
+    }
+
+    private val galleryImgLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        chatController.onImagePicked(uri)
+    }
+
+    private val cameraPhotoLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { ok ->
+        chatController.onCameraCaptured(ok)
+    }
+
+    private val overviewPollTicker = object : Runnable {
+        override fun run() {
+            if (!isResumed) return
+            loadOverview(silent = true)
+            mainHandler.postDelayed(this, 10_000L)
+        }
+    }
 
     private val qrScanLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -66,6 +106,24 @@ class FriendsActivity : AppCompatActivity() {
         api = ApiClient(this)
         sound = NativeSoundEngine(this)
 
+        chatController = ChildChatPaneController(
+            activity = this,
+            binding = binding.friendsChatPane,
+            api = api,
+            sound = sound,
+            onRequestAudioPermission = { audioPermLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+            onRequestCameraPermission = { cameraPermLauncher.launch(Manifest.permission.CAMERA) },
+            onLaunchGallery = { galleryImgLauncher.launch("image/*") },
+            onLaunchCamera = { uri -> cameraPhotoLauncher.launch(uri) },
+            onMessagesChanged = { loadOverview(silent = true) },
+            onGroupLeft = {
+                selectedPeerType = ""
+                selectedPeerId = ""
+                loadOverview(silent = false)
+            }
+        )
+        chatController.setBackButtonVisible(false)
+
         binding.btnFriendsBack.setOnClickListener {
             if (hasChangedState) setResult(RESULT_OK)
             finish()
@@ -73,85 +131,178 @@ class FriendsActivity : AppCompatActivity() {
         binding.btnMyCard.setOnClickListener { showMyQrCardDialog() }
         binding.btnAddFriend.setOnClickListener { showAddFriendChoiceDialog() }
 
-        binding.btnGroupAll.setOnClickListener { selectGroup("all") }
-        binding.btnGroupChats.setOnClickListener { selectGroup("群聊") }
-        binding.btnGroupFamily.setOnClickListener { selectGroup("家庭") }
-        binding.btnGroupFriends.setOnClickListener { selectGroup("朋友") }
-
         applyResponsiveLayout()
-        loadOverview()
+        loadOverview(silent = false)
     }
 
     override fun onResume() {
         super.onResume()
-        loadOverview()
+        isResumed = true
+        loadOverview(silent = false)
+        chatController.setActive(ResponsiveUi.metrics(this).isDesktopSplit && selectedPeerId.isNotBlank())
+        mainHandler.removeCallbacks(overviewPollTicker)
+        mainHandler.postDelayed(overviewPollTicker, 10_000L)
+    }
+
+    override fun onPause() {
+        isResumed = false
+        mainHandler.removeCallbacks(overviewPollTicker)
+        chatController.onPause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        chatController.onDestroy()
+        super.onDestroy()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyResponsiveLayout()
+        overview?.let {
+            syncSplitSelectionAndPane(it)
+            renderFriendsList(it)
+        }
     }
 
     private fun dp(v: Int): Int = ResponsiveUi.dp(this, v)
 
     private fun applyResponsiveLayout() {
         val m = ResponsiveUi.metrics(this)
-        val maxW = if (m.isDesktopSplit) 1140 else if (m.isTablet) 740 else 1200
+        val maxW = if (m.isDesktopSplit) 1180 else if (m.isTablet) 740 else 1200
         binding.tvFriendsTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (m.isTablet) 18f else 15.5f)
         ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsTopBar, maxW, horizontalReserveDp = 28)
-        ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsScroll, maxW, horizontalReserveDp = 28)
+        ResponsiveUi.applyCenteredMaxWidth(this, binding.friendsBodySplit, maxW, horizontalReserveDp = 28)
 
-        val leftLp = binding.friendsLeftPane.layoutParams as LinearLayout.LayoutParams
-        val rightLp = binding.friendsRightPane.layoutParams as LinearLayout.LayoutParams
+        val listLp = binding.friendsListScroll.layoutParams as LinearLayout.LayoutParams
+        val chatLp = binding.friendsChatPaneWrap.layoutParams as LinearLayout.LayoutParams
         val hasReqs = !overview?.incomingRequests.isNullOrEmpty()
-        if (m.isDesktopSplit && hasReqs) {
+        binding.requestsSection.visibility = if (hasReqs) View.VISIBLE else View.GONE
+
+        if (m.isDesktopSplit) {
             binding.friendsBodySplit.orientation = LinearLayout.HORIZONTAL
-            binding.friendsLeftPane.visibility = View.VISIBLE
-            leftLp.width = 0
-            leftLp.weight = 0.85f
-            rightLp.width = 0
-            rightLp.weight = 1.15f
-            rightLp.topMargin = 0
-            rightLp.marginStart = dp(16)
+            listLp.width = 0
+            listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            listLp.weight = 0.88f
+            chatLp.width = 0
+            chatLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            chatLp.weight = 1.18f
+            chatLp.marginStart = dp(14)
+            binding.friendsChatPaneWrap.visibility = View.VISIBLE
+            chatController.setActive(isResumed && selectedPeerId.isNotBlank())
         } else {
             binding.friendsBodySplit.orientation = LinearLayout.VERTICAL
-            binding.friendsLeftPane.visibility = if (hasReqs) View.VISIBLE else View.GONE
-            leftLp.width = ViewGroup.LayoutParams.MATCH_PARENT
-            leftLp.weight = 0f
-            rightLp.width = ViewGroup.LayoutParams.MATCH_PARENT
-            rightLp.weight = 0f
-            rightLp.topMargin = 0
-            rightLp.marginStart = 0
+            listLp.width = ViewGroup.LayoutParams.MATCH_PARENT
+            listLp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            listLp.weight = 0f
+            chatLp.width = 0
+            chatLp.weight = 0f
+            chatLp.marginStart = 0
+            binding.friendsChatPaneWrap.visibility = View.GONE
+            chatController.setActive(false)
         }
-        binding.friendsLeftPane.layoutParams = leftLp
-        binding.friendsRightPane.layoutParams = rightLp
+        binding.friendsListScroll.layoutParams = listLp
+        binding.friendsChatPaneWrap.layoutParams = chatLp
     }
 
-    private fun selectGroup(g: String) {
-        groupFilter = g
-        val green = Color.parseColor("#2F6B4F")
-        val muted = Color.parseColor("#5C5347")
-        binding.btnGroupAll.setTextColor(if (g == "all") green else muted)
-        binding.btnGroupChats.setTextColor(if (g == "群聊") green else muted)
-        binding.btnGroupFamily.setTextColor(if (g == "家庭") green else muted)
-        binding.btnGroupFriends.setTextColor(if (g == "朋友") green else muted)
-        overview?.let { renderFriendsList(it) }
-    }
-
-    private fun loadOverview() {
-        binding.friendsLoading.visibility = View.VISIBLE
+    private fun loadOverview(silent: Boolean = false) {
+        if (!silent) binding.friendsLoading.visibility = View.VISIBLE
         api.request("GET", "/api/child/friends") { res ->
             binding.friendsLoading.visibility = View.GONE
             if (!res.ok || res.json == null) {
-                Toast.makeText(this, res.error ?: "读取好友列表失败", Toast.LENGTH_SHORT).show()
+                if (!silent) Toast.makeText(this, res.error ?: "读取好友列表失败", Toast.LENGTH_SHORT).show()
                 return@request
             }
             val parsed = SocialParser.parseOverview(res.json)
             overview = parsed
             renderRequests(parsed.incomingRequests)
             applyResponsiveLayout()
+            syncSplitSelectionAndPane(parsed)
             renderFriendsList(parsed)
         }
+    }
+
+    private fun syncSplitSelectionAndPane(ov: SocialOverview) {
+        val split = ResponsiveUi.metrics(this).isDesktopSplit
+        if (!split) return
+
+        val validGroup = selectedPeerType == "group" && ov.chatGroups.any { it.id == selectedPeerId }
+        val validFriend = selectedPeerType != "group" && ov.friends.any { it.peerType == selectedPeerType && it.peerId == selectedPeerId }
+
+        if (!validGroup && !validFriend) {
+            val firstGrp = ov.chatGroups.firstOrNull()
+            val firstFr = ov.friends.firstOrNull()
+            when {
+                firstGrp != null -> {
+                    openGroupInSplit(firstGrp)
+                    return
+                }
+                firstFr != null -> {
+                    openFriendInSplit(firstFr)
+                    return
+                }
+                else -> {
+                    selectedPeerType = ""
+                    selectedPeerId = ""
+                }
+            }
+        } else if (validGroup) {
+            val g = ov.chatGroups.first { it.id == selectedPeerId }
+            chatController.updatePeerPresence(
+                "group",
+                g.id,
+                g.name,
+                if (g.isFamilyDefault) "家庭群" else "群聊",
+                "${g.memberCount}位成员",
+                false
+            )
+        } else if (validFriend) {
+            val f = ov.friends.first { it.peerType == selectedPeerType && it.peerId == selectedPeerId }
+            chatController.updatePeerPresence("child".takeIf { f.peerType == "child" } ?: f.peerType, f.peerId, f.name, f.groupName, f.roleLabel, f.isOnline)
+        }
+
+        val hasSel = selectedPeerId.isNotBlank()
+        binding.friendsChatPane.root.visibility = if (hasSel) View.VISIBLE else View.GONE
+        binding.tvSplitChatPlaceholder.visibility = if (hasSel) View.GONE else View.VISIBLE
+        chatController.setActive(isResumed && hasSel)
+    }
+
+    private fun openGroupInSplit(g: ChatGroupItem) {
+        hasChangedState = true
+        selectedPeerType = "group"
+        selectedPeerId = g.id
+        binding.friendsChatPane.root.visibility = View.VISIBLE
+        binding.tvSplitChatPlaceholder.visibility = View.GONE
+        chatController.setActive(isResumed)
+        chatController.openPeer(
+            peerType = "group",
+            peerId = g.id,
+            peerName = g.name,
+            peerGroup = if (g.isFamilyDefault) "家庭群" else "群聊",
+            peerRole = "${g.memberCount}位成员",
+            isOnline = false
+        )
+        overview?.let { renderFriendsList(it) }
+    }
+
+    private fun openFriendInSplit(f: FriendItem) {
+        hasChangedState = true
+        selectedPeerType = f.peerType
+        selectedPeerId = f.peerId
+        binding.friendsChatPane.root.visibility = View.VISIBLE
+        binding.tvSplitChatPlaceholder.visibility = View.GONE
+        chatController.setActive(isResumed)
+        chatController.openPeer(
+            peerType = f.peerType,
+            peerId = f.peerId,
+            peerName = f.name,
+            peerGroup = f.groupName,
+            peerRole = f.roleLabel,
+            avatarIdx = f.avatarIdx,
+            avatarUrl = f.avatarUrl,
+            isOnline = f.isOnline
+        )
+        overview?.let { renderFriendsList(it) }
     }
 
     private fun renderRequests(reqs: List<FriendRequestItem>) {
@@ -276,43 +427,51 @@ class FriendsActivity : AppCompatActivity() {
     private fun renderFriendsList(ov: SocialOverview) {
         binding.friendsListContainer.removeAllViews()
         val fmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val isSplit = ResponsiveUi.metrics(this).isDesktopSplit
 
-        if (groupFilter == "all" || groupFilter == "群聊") {
-            val chatHeaderRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(2), dp(6), dp(2), dp(6))
+        // 1. 群聊分组（点击分组名可折叠/展开，右侧固定「➕ 建群」按钮）
+        val grpCollapsed = collapsedGroups["群聊"] == true
+        val chatHeaderRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(8), dp(2), dp(6))
+            setOnClickListener {
+                collapsedGroups["群聊"] = !grpCollapsed
+                renderFriendsList(ov)
             }
-            val chatHeader = TextView(this).apply {
-                text = "👥 群聊（${ov.chatGroups.size}） · 同家庭默认成群"
-                textSize = 13.5f
-                setTypeface(null, Typeface.BOLD)
-                setTextColor(Color.parseColor("#4B4339"))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val chatHeader = TextView(this).apply {
+            val arrow = if (grpCollapsed) "▶ " else "▼ "
+            text = "${arrow}👥 群聊（${ov.chatGroups.size}） · 同家庭默认成群"
+            textSize = 13.5f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#4B4339"))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val btnNewGroup = Button(this).apply {
+            text = "➕ 建群"
+            textSize = 11.5f
+            setAllCaps(false)
+            setTextColor(Color.parseColor("#2F6B4F"))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(99).toFloat()
+                setColor(Color.parseColor("#E3F2E8"))
             }
-            val btnNewGroup = Button(this).apply {
-                text = "➕ 建群"
-                textSize = 11.5f
-                setAllCaps(false)
-                setTextColor(Color.parseColor("#2F6B4F"))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(99).toFloat()
-                    setColor(Color.parseColor("#E3F2E8"))
-                }
-                setPadding(dp(10), 0, dp(10), 0)
-                minWidth = 0
-                minimumWidth = 0
-                minHeight = 0
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28))
-                setOnClickListener { showCreateGroupDialog() }
-            }
-            chatHeaderRow.addView(chatHeader)
-            chatHeaderRow.addView(btnNewGroup)
-            binding.friendsListContainer.addView(chatHeaderRow)
+            setPadding(dp(10), 0, dp(10), 0)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(28))
+            setOnClickListener { showCreateGroupDialog() }
+        }
+        chatHeaderRow.addView(chatHeader)
+        chatHeaderRow.addView(btnNewGroup)
+        binding.friendsListContainer.addView(chatHeaderRow)
 
+        if (!grpCollapsed) {
             if (ov.chatGroups.isEmpty()) {
                 val emptyGrp = TextView(this).apply {
-                    text = "暂无群聊，点击右上角「➕ 建群」拉上小伙伴一起聊！"
+                    text = "暂无群聊，点击右侧「➕ 建群」拉上小伙伴一起聊！"
                     textSize = 12.5f
                     setTextColor(Color.parseColor("#8A7E6E"))
                     background = GradientDrawable().apply {
@@ -329,16 +488,17 @@ class FriendsActivity : AppCompatActivity() {
                 binding.friendsListContainer.addView(emptyGrp)
             } else {
                 ov.chatGroups.forEach { g ->
+                    val isSelected = isSplit && selectedPeerType == "group" && selectedPeerId == g.id
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(12), dp(11), dp(12), dp(11))
                         background = GradientDrawable().apply {
                             cornerRadius = dp(14).toFloat()
-                            setColor(Color.WHITE)
+                            setColor(Color.parseColor(if (isSelected) "#EAF5EE" else "#FFFFFF"))
                             setStroke(
-                                dp(if (g.unreadCount > 0) 2 else 1),
-                                Color.parseColor(if (g.unreadCount > 0) "#E8913A" else "#E5DCCB")
+                                dp(if (isSelected || g.unreadCount > 0) 2 else 1),
+                                Color.parseColor(if (isSelected) "#2F6B4F" else if (g.unreadCount > 0) "#E8913A" else "#E5DCCB")
                             )
                         }
                         layoutParams = LinearLayout.LayoutParams(
@@ -449,27 +609,29 @@ class FriendsActivity : AppCompatActivity() {
             }
         }
 
-        if (groupFilter == "群聊") return
-
-        val groupsToShow = when (groupFilter) {
-            "家庭" -> listOf("家庭")
-            "朋友" -> listOf("朋友")
-            else -> listOf("家庭", "朋友")
-        }
-        for (grp in groupsToShow) {
+        // 2. 家庭分组 & 朋友分组（点击分组名展开或折叠，展示在线/离线状态）
+        for (grp in listOf("家庭", "朋友")) {
             val list = ov.friends.filter { it.groupName == grp }
+            val isCollapsed = collapsedGroups[grp] == true
+            val arrow = if (isCollapsed) "▶ " else "▼ "
             val header = TextView(this).apply {
                 text = if (grp == "家庭") {
-                    "👨‍👩‍👧 家庭分组（${list.size}） · 同家庭自动成为好友"
+                    "${arrow}👨‍👩‍👧 家庭分组（${list.size}） · 同家庭自动成为好友"
                 } else {
-                    "🧒 朋友分组（${list.size}） · 互相验证通过的小伙伴"
+                    "${arrow}🧒 朋友分组（${list.size}） · 互相验证通过的小伙伴"
                 }
                 textSize = 13.5f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.parseColor("#4B4339"))
-                setPadding(dp(2), dp(8), dp(2), dp(6))
+                setPadding(dp(4), dp(10), dp(4), dp(6))
+                setOnClickListener {
+                    collapsedGroups[grp] = !isCollapsed
+                    renderFriendsList(ov)
+                }
             }
             binding.friendsListContainer.addView(header)
+
+            if (isCollapsed) continue
 
             if (list.isEmpty()) {
                 val empty = TextView(this).apply {
@@ -496,16 +658,17 @@ class FriendsActivity : AppCompatActivity() {
             }
 
             list.forEach { f ->
+                val isSelected = isSplit && selectedPeerType == f.peerType && selectedPeerId == f.peerId
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(11), dp(12), dp(11))
                     background = GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
-                        setColor(Color.WHITE)
+                        setColor(Color.parseColor(if (isSelected) "#EAF5EE" else "#FFFFFF"))
                         setStroke(
-                            dp(if (f.unreadCount > 0) 2 else 1),
-                            Color.parseColor(if (f.unreadCount > 0) "#E8913A" else "#E5DCCB")
+                            dp(if (isSelected || f.unreadCount > 0) 2 else 1),
+                            Color.parseColor(if (isSelected) "#2F6B4F" else if (f.unreadCount > 0) "#E8913A" else "#E5DCCB")
                         )
                     }
                     layoutParams = LinearLayout.LayoutParams(
@@ -534,6 +697,8 @@ class FriendsActivity : AppCompatActivity() {
                     textSize = 15.5f
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.parseColor("#233128"))
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
                 }
                 val tagTv = TextView(this).apply {
                     text = f.roleLabel.ifBlank { grp }
@@ -549,8 +714,23 @@ class FriendsActivity : AppCompatActivity() {
                         LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply { marginStart = dp(6) }
                 }
+                val onlineTv = TextView(this).apply {
+                    text = if (f.isOnline) "🟢 在线" else "⚪ 离线"
+                    textSize = 10f
+                    setTextColor(Color.parseColor(if (f.isOnline) "#1C7C46" else "#8A8378"))
+                    setPadding(dp(6), dp(2), dp(6), dp(2))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(99).toFloat()
+                        setColor(Color.parseColor(if (f.isOnline) "#E6F6EC" else "#F1EEE8"))
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { marginStart = dp(5) }
+                }
                 nameRow.addView(nameTv)
                 nameRow.addView(tagTv)
+                nameRow.addView(onlineTv)
 
                 val subTv = TextView(this).apply {
                     text = f.lastMessage.ifBlank { "点击发送文字、语音或图片消息~" }
@@ -613,8 +793,12 @@ class FriendsActivity : AppCompatActivity() {
                                 api.request("DELETE", "/api/child/friends/${f.peerId}") { r ->
                                     if (r.ok) {
                                         hasChangedState = true
+                                        if (selectedPeerType == f.peerType && selectedPeerId == f.peerId) {
+                                            selectedPeerType = ""
+                                            selectedPeerId = ""
+                                        }
                                         Toast.makeText(this, "已移除好友", Toast.LENGTH_SHORT).show()
-                                        loadOverview()
+                                        loadOverview(silent = false)
                                     } else {
                                         Toast.makeText(this, r.error ?: "操作失败", Toast.LENGTH_SHORT).show()
                                     }
@@ -631,6 +815,10 @@ class FriendsActivity : AppCompatActivity() {
     }
 
     private fun openGroupChat(g: ChatGroupItem) {
+        if (ResponsiveUi.metrics(this).isDesktopSplit) {
+            openGroupInSplit(g)
+            return
+        }
         hasChangedState = true
         val it = Intent(this, ChatActivity::class.java).apply {
             putExtra(ChatActivity.EXTRA_PEER_TYPE, "group")
@@ -643,6 +831,10 @@ class FriendsActivity : AppCompatActivity() {
     }
 
     private fun openChat(f: FriendItem) {
+        if (ResponsiveUi.metrics(this).isDesktopSplit) {
+            openFriendInSplit(f)
+            return
+        }
         hasChangedState = true
         val it = Intent(this, ChatActivity::class.java).apply {
             putExtra(ChatActivity.EXTRA_PEER_TYPE, f.peerType)
@@ -652,6 +844,7 @@ class FriendsActivity : AppCompatActivity() {
             putExtra(ChatActivity.EXTRA_PEER_ROLE, f.roleLabel)
             putExtra(ChatActivity.EXTRA_PEER_AVATAR_IDX, f.avatarIdx)
             putExtra(ChatActivity.EXTRA_PEER_AVATAR_URL, f.avatarUrl)
+            putExtra(ChatActivity.EXTRA_PEER_ONLINE, f.isOnline)
         }
         startActivity(it)
     }
