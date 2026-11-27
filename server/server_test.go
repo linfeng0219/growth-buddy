@@ -200,6 +200,22 @@ func TestFullThreePortalAndNativeFlows(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
+	specJSONResp, err := http.Get(ts.URL + "/shared/pet-spec.json")
+	if err != nil || specJSONResp.StatusCode != 200 {
+		t.Fatalf("embedded pet-spec.json failed: %v", err)
+	}
+	_ = specJSONResp.Body.Close()
+
+	specJSResp, err := http.Get(ts.URL + "/shared/pet-spec.js")
+	if err != nil || specJSResp.StatusCode != 200 {
+		t.Fatalf("embedded pet-spec.js failed: %v", err)
+	}
+	specJSBody, _ := io.ReadAll(specJSResp.Body)
+	_ = specJSResp.Body.Close()
+	if !strings.Contains(string(specJSBody), "window.__GB_PET_SPEC") {
+		t.Fatalf("pet-spec.js missing __GB_PET_SPEC wrapper")
+	}
+
 	// Register family with first child username/password
 	st, reg := doJSON(t, ts, "POST", "/api/auth/register-family", "", map[string]any{
 		"familyName":    "林家小院",

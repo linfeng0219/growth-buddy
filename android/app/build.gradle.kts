@@ -66,6 +66,27 @@ android {
         checkReleaseBuilds = false
         abortOnError = false
     }
+
+    val generatedPetSpecDir = layout.buildDirectory.dir("generated/petSpecAssets")
+    sourceSets["main"].assets.srcDir(generatedPetSpecDir)
+    sourceSets["test"].resources.srcDir(generatedPetSpecDir)
+}
+
+val syncPetSpecAssets by tasks.registering(Copy::class) {
+    from(rootProject.file("../server/public/shared/pet-spec.json"))
+    into(layout.buildDirectory.dir("generated/petSpecAssets"))
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncPetSpecAssets)
+}
+
+tasks.configureEach {
+    if ((name.startsWith("merge") && name.endsWith("Assets")) ||
+        (name.startsWith("process") && name.endsWith("JavaRes"))
+    ) {
+        dependsOn(syncPetSpecAssets)
+    }
 }
 
 dependencies {
@@ -90,4 +111,5 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

@@ -1,0 +1,390 @@
+{
+  "version": 1,
+  "viewBox": { "w": 220, "h": 200, "originX": 110, "originY": 104 },
+  "animations": {
+    "breathe": { "durationMs": 3000, "originX": 110, "originY": 172, "maxScaleX": 1.028, "minScaleY": 0.985 },
+    "blink": { "durationMs": 4600, "holdRatio": 0.91, "closeRatio": 0.95, "minScaleY": 0.08 },
+    "eggWobble": {
+      "durationMs": 3400,
+      "pivotX": 110,
+      "pivotY": 160,
+      "keyframes": [[0.0, 0.0], [0.72, 0.0], [0.78, -3.5], [0.84, 3.5], [0.90, -1.8], [1.0, 0.0]]
+    }
+  },
+  "gradients": {
+    "mb": {
+      "cx": 0.40, "cy": 0.26, "r": 0.82,
+      "stops": [[0.0, "#ffdca8", 1.0], [0.55, "#f39d48", 1.0], [1.0, "#d87526", 1.0]]
+    },
+    "ml": {
+      "cx": 0.40, "cy": 0.24, "r": 0.85,
+      "stops": [[0.0, "#ffe1ad", 1.0], [0.55, "#ed8e32", 1.0], [1.0, "#c45f1c", 1.0]]
+    },
+    "mbel": {
+      "cx": 0.45, "cy": 0.32, "r": 0.80,
+      "stops": [[0.0, "#fff9ed", 1.0], [1.0, "#fce0b6", 1.0]]
+    },
+    "meg": {
+      "cx": 0.40, "cy": 0.28, "r": 0.82,
+      "stops": [[0.0, "#fff8eb", 1.0], [0.65, "#f3e5cb", 1.0], [1.0, "#dfd0b2", 1.0]]
+    },
+    "mglow": {
+      "cx": 0.50, "cy": 0.30, "r": 0.72,
+      "stops": [[0.0, "#fff3d9", 0.85], [1.0, "#fff3d9", 0.0]]
+    },
+    "eye": {
+      "cx": 0.38, "cy": 0.30, "r": 0.85,
+      "stops": [[0.0, "#7c5630", 1.0], [0.45, "#4a3220", 1.0], [1.0, "#281b10", 1.0]]
+    },
+    "gb": {
+      "cx": 0.40, "cy": 0.24, "r": 0.78,
+      "stops": [[0.0, "#ffffff", 0.55], [1.0, "#ffffff", 0.0]]
+    },
+    "gs": {
+      "cx": 0.50, "cy": 0.92, "r": 0.70,
+      "stops": [[0.0, "#000000", 0.16], [1.0, "#000000", 0.0]]
+    },
+    "speciesEgg": {
+      "cx": 0.40, "cy": 0.28, "r": 0.82,
+      "stops": [[0.0, "@bodyTint72", 1.0], [0.65, "@bodyTint35", 1.0], [1.0, "@bodyTint12", 1.0]]
+    }
+  },
+  "pedestals": {
+    "palettes": {
+      "grass": { "fill": "#ebe7d4", "stroke": "#b6c79a", "dot": "#cfe0b4" },
+      "snow":  { "fill": "#e8eef3", "stroke": "#c3cfd9", "dot": "#ffffff" },
+      "sand":  { "fill": "#f2e3cc", "stroke": "#d4b78c", "dot": "#e5cca6" },
+      "cloud": { "fill": "#eef1f8", "stroke": "#ccd4e6", "dot": "#ffffff" }
+    },
+    "shapes": [
+      { "type": "ellipse", "cx": 110, "cy": 176, "rx": 68, "ry": 12, "fill": "@pedFill" },
+      { "type": "path", "d": "M56 172 q4 -9 8 0 M162 172 q4 -9 8 0", "stroke": "@pedStroke", "sw": 2.2, "cap": "round" },
+      { "type": "circle", "cx": 48, "cy": 164, "r": 2.6, "fill": "@pedDot" },
+      { "type": "circle", "cx": 174, "cy": 166, "r": 2.1, "fill": "@pedDot" }
+    ]
+  },
+  "mainPetStages": {
+    "0": {
+      "base": "grass",
+      "groupAnim": "egg",
+      "shapes": [
+        { "type": "ellipse", "cx": 110, "cy": 120, "rx": 44, "ry": 54, "fill": "grad:meg", "stroke": "#d7c29e", "sw": 2 },
+        { "type": "ellipse", "cx": 100, "cy": 96, "rx": 18, "ry": 24, "fill": "#ffffff", "opacity": 0.45, "rot": [-18, 100, 96] },
+        { "type": "circle", "cx": 94, "cy": 106, "r": 4, "fill": "#e1cda9" },
+        { "type": "circle", "cx": 128, "cy": 134, "r": 3.2, "fill": "#e1cda9" },
+        { "type": "circle", "cx": 120, "cy": 94, "r": 2.4, "fill": "#e1cda9" },
+        { "type": "path", "d": "M98 118 q4 4 8 0", "stroke": "#a6906d", "sw": 1.8, "cap": "round", "opacity": 0.6, "when": "awake" }
+      ]
+    },
+    "1": {
+      "base": "grass",
+      "groupAnim": "breathe",
+      "shapes": [
+        { "type": "path", "d": "M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z", "fill": "grad:meg", "stroke": "#d7c29e", "sw": 2 },
+        { "type": "ellipse", "cx": 110, "cy": 118, "rx": 40, "ry": 38, "fill": "grad:mb" },
+        { "type": "ellipse", "cx": 110, "cy": 102, "rx": 28, "ry": 18, "fill": "grad:mglow" },
+        { "type": "path", "d": "M110 82 q-7 -13 3 -18 q8 -4 6 5", "stroke": "#eb9a45", "sw": 5, "cap": "round" },
+        { "type": "eyes", "x1": 94, "x2": 126, "y": 114 },
+        { "type": "ellipse", "cx": 78, "cy": 126, "rx": 7, "ry": 4.5, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 142, "cy": 126, "rx": 7, "ry": 4.5, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "path", "d": "M103 128 q7 5 14 0", "stroke": "#3a2f22", "sw": 2.2, "cap": "round" },
+        { "type": "path", "d": "M78 86 a36 32 0 0 1 64 0 l-10 -6 l-11 7 l-11 -8 l-11 8 l-11 -7 z", "fill": "grad:meg", "stroke": "#d7c29e", "sw": 2, "rot": [-12, 110, 74] }
+      ]
+    },
+    "2": {
+      "base": "grass",
+      "groupAnim": "breathe",
+      "shapes": [
+        { "type": "path", "d": "M66 86 L74 44 L98 74 Z", "fill": "#eb9540" },
+        { "type": "path", "d": "M72 80 L76 54 L91 72 Z", "fill": "#fbd2a2" },
+        { "type": "path", "d": "M154 86 L146 44 L122 74 Z", "fill": "#eb9540" },
+        { "type": "path", "d": "M148 80 L144 54 L129 72 Z", "fill": "#fbd2a2" },
+        { "type": "path", "d": "M110 74 q-8 -14 4 -20 q8 -4 6 5", "stroke": "#eb9540", "sw": 5.5, "cap": "round" },
+        { "type": "ellipse", "cx": 110, "cy": 124, "rx": 52, "ry": 44, "fill": "grad:mb" },
+        { "type": "ellipse", "cx": 110, "cy": 100, "rx": 38, "ry": 22, "fill": "grad:mglow" },
+        { "type": "ellipse", "cx": 76, "cy": 162, "rx": 13, "ry": 8, "fill": "#d87526" },
+        { "type": "ellipse", "cx": 144, "cy": 162, "rx": 13, "ry": 8, "fill": "#d87526" },
+        { "type": "ellipse", "cx": 110, "cy": 138, "rx": 31, "ry": 23, "fill": "grad:mbel", "opacity": 0.95 },
+        { "type": "eyes", "x1": 90, "x2": 130, "y": 115 },
+        { "type": "ellipse", "cx": 70, "cy": 130, "rx": 8.5, "ry": 5.4, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 150, "cy": 130, "rx": 8.5, "ry": 5.4, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "path", "d": "M101 130 q4.5 4.4 9 0 q4.5 4.4 9 0", "stroke": "#3a2f22", "sw": 2.3, "cap": "round" }
+      ]
+    },
+    "3": {
+      "base": "grass",
+      "halo": { "cx": 110, "cy": 108, "r": 82, "fill": "#f3c653", "opacity": 0.16 },
+      "groupAnim": "breathe",
+      "shapes": [
+        { "type": "circle", "cx": 158, "cy": 144, "r": 14, "fill": "#f8d29c" },
+        { "type": "circle", "cx": 166, "cy": 136, "r": 10, "fill": "#fce4be" },
+        { "type": "path", "d": "M60 88 L68 32 L98 70 Z", "fill": "#eb9540" },
+        { "type": "path", "d": "M68 80 L72 44 L90 68 Z", "fill": "#fbd2a2" },
+        { "type": "path", "d": "M160 88 L152 32 L122 70 Z", "fill": "#eb9540" },
+        { "type": "path", "d": "M152 80 L148 44 L130 68 Z", "fill": "#fbd2a2" },
+        { "type": "path", "d": "M110 64 q-10 -18 5 -24 q11 -5 8 7", "stroke": "#eb9540", "sw": 6, "cap": "round" },
+        { "type": "ellipse", "cx": 110, "cy": 118, "rx": 58, "ry": 48, "fill": "grad:mb" },
+        { "type": "ellipse", "cx": 110, "cy": 94, "rx": 44, "ry": 24, "fill": "grad:mglow" },
+        { "type": "ellipse", "cx": 74, "cy": 162, "rx": 14, "ry": 9, "fill": "#d87526" },
+        { "type": "ellipse", "cx": 146, "cy": 162, "rx": 14, "ry": 9, "fill": "#d87526" },
+        { "type": "path", "d": "M68 162 q3 -3 6 0 M142 162 q3 -3 6 0", "stroke": "#b85f19", "sw": 1.5, "cap": "round" },
+        { "type": "ellipse", "cx": 110, "cy": 134, "rx": 35, "ry": 26, "fill": "grad:mbel", "opacity": 0.95 },
+        { "type": "eyes", "x1": 88, "x2": 132, "y": 108 },
+        { "type": "ellipse", "cx": 66, "cy": 126, "rx": 9.5, "ry": 6, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 154, "cy": 126, "rx": 9.5, "ry": 6, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "path", "d": "M100 124 q5 4.6 10 0 q5 4.6 10 0", "stroke": "#3a2f22", "sw": 2.4, "cap": "round" },
+        { "type": "path", "d": "M150 78 l2.5 5 5.4 .7 -3.9 3.6 .9 5.3 -4.9 -2.7 -4.9 2.7 .9 -5.3 -3.9 -3.6 5.4 -.7 z", "fill": "#ffdf8e", "opacity": 0.9 }
+      ]
+    },
+    "4": {
+      "base": "sand",
+      "halo": { "cx": 110, "cy": 108, "r": 82, "fill": "#f3c653", "opacity": 0.16 },
+      "groupAnim": "breathe",
+      "shapes": [
+        { "type": "path", "d": "M162 142 q26 6 24 -16 q-2 -11 -13 -9", "stroke": "#d87526", "sw": 11, "cap": "round" },
+        { "type": "path", "d": "M58 94 L62 28 L96 68 Z", "fill": "#ec9139" },
+        { "type": "path", "d": "M66 84 L68 42 L88 66 Z", "fill": "#fbd2a2", "opacity": 0.75 },
+        { "type": "path", "d": "M162 94 L158 28 L124 68 Z", "fill": "#ec9139" },
+        { "type": "path", "d": "M154 84 L152 42 L132 66 Z", "fill": "#fbd2a2", "opacity": 0.75 },
+        { "type": "path", "d": "M86 56 L78 24 L98 48 Z", "fill": "#f0c24b" },
+        { "type": "path", "d": "M134 56 L142 24 L122 48 Z", "fill": "#f0c24b" },
+        { "type": "ellipse", "cx": 110, "cy": 116, "rx": 62, "ry": 50, "fill": "grad:mb" },
+        { "type": "ellipse", "cx": 110, "cy": 92, "rx": 48, "ry": 26, "fill": "grad:mglow" },
+        { "type": "ellipse", "cx": 76, "cy": 162, "rx": 15, "ry": 9, "fill": "#c9651d" },
+        { "type": "ellipse", "cx": 144, "cy": 162, "rx": 15, "ry": 9, "fill": "#c9651d" },
+        { "type": "ellipse", "cx": 110, "cy": 134, "rx": 38, "ry": 27, "fill": "grad:mbel", "opacity": 0.95 },
+        { "type": "eyes", "x1": 88, "x2": 132, "y": 106 },
+        { "type": "ellipse", "cx": 64, "cy": 124, "rx": 10, "ry": 6.2, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 156, "cy": 124, "rx": 10, "ry": 6.2, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "path", "d": "M100 123 q5 4.6 10 0 q5 4.6 10 0", "stroke": "#3a2f22", "sw": 2.4, "cap": "round" },
+        { "type": "path", "d": "M44 74 l3 6 6.4 .9 -4.6 4.3 1.1 6.2 -5.9 -3.2 -5.9 3.2 1.1 -6.2 -4.6 -4.3 6.4 -.9 z", "fill": "#ffdf8e" }
+      ]
+    },
+    "5": {
+      "base": "sand",
+      "halo": { "cx": 110, "cy": 108, "r": 82, "fill": "#f3c653", "opacity": 0.16 },
+      "groupAnim": "breathe",
+      "shapes": [
+        { "type": "path", "d": "M36 96 q-26 -24 -10 -44 q20 3 26 26 q3 11 -4 19 z", "fill": "#d97224" },
+        { "type": "path", "d": "M38 92 q-17 -16 -7 -32 q13 3 17 19", "fill": "#ffcf8c", "opacity": 0.7 },
+        { "type": "path", "d": "M184 96 q26 -24 10 -44 q-20 3 -26 26 q-3 11 4 19 z", "fill": "#d97224" },
+        { "type": "path", "d": "M182 92 q17 -16 7 -32 q-13 3 -17 19", "fill": "#ffcf8c", "opacity": 0.7 },
+        { "type": "path", "d": "M56 96 L60 26 L96 68 Z", "fill": "#e8892e" },
+        { "type": "path", "d": "M64 84 L66 40 L88 66 Z", "fill": "#ffcf8c", "opacity": 0.65 },
+        { "type": "path", "d": "M164 96 L160 26 L124 68 Z", "fill": "#e8892e" },
+        { "type": "path", "d": "M156 84 L154 40 L132 66 Z", "fill": "#ffcf8c", "opacity": 0.65 },
+        { "type": "path", "d": "M90 52 L100 28 L110 46 L120 28 L130 52 Z", "fill": "#f4c74e", "stroke": "#e2a929", "sw": 1.5 },
+        { "type": "ellipse", "cx": 110, "cy": 114, "rx": 64, "ry": 52, "fill": "grad:ml" },
+        { "type": "ellipse", "cx": 110, "cy": 90, "rx": 50, "ry": 26, "fill": "grad:mglow" },
+        { "type": "ellipse", "cx": 74, "cy": 162, "rx": 15, "ry": 9.5, "fill": "#b85617" },
+        { "type": "ellipse", "cx": 146, "cy": 162, "rx": 15, "ry": 9.5, "fill": "#b85617" },
+        { "type": "ellipse", "cx": 110, "cy": 134, "rx": 39, "ry": 27, "fill": "grad:mbel", "opacity": 0.95 },
+        { "type": "eyes", "x1": 88, "x2": 132, "y": 104 },
+        { "type": "ellipse", "cx": 64, "cy": 122, "rx": 10, "ry": 6.2, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 156, "cy": 122, "rx": 10, "ry": 6.2, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "path", "d": "M100 121 q5 4.8 10 0 q5 4.8 10 0", "stroke": "#3a2f22", "sw": 2.5, "cap": "round" },
+        { "type": "path", "d": "M36 52 l4 8 8.6 1.2 -6.2 5.8 1.5 8.4 -7.9 -4.3 -7.9 4.3 1.5 -8.4 -6.2 -5.8 8.6 -1.2 z", "fill": "#f4c74e" },
+        { "type": "path", "d": "M182 40 l3 6 6.4 .9 -4.6 4.3 1.1 6.2 -5.9 -3.2 -5.9 3.2 1.1 -6.2 -4.6 -4.3 6.4 -.9 z", "fill": "#f4c74e" }
+      ]
+    }
+  },
+  "speciesTemplate": {
+    "haloByLv": {
+      "3": { "cx": 110, "cy": 110, "r": 72, "fill": "#f3c653", "opacity": 0.14 },
+      "4": { "cx": 110, "cy": 110, "r": 78, "fill": "#f3c653", "opacity": 0.18 },
+      "5": { "cx": 110, "cy": 108, "r": 82, "fill": "#f4c74e", "opacity": 0.24 }
+    },
+    "stageRules": {
+      "2": { "scale": 0.86, "anchorX": 110, "anchorY": 174, "overrideAcc": "none", "wingToTail": "puff" },
+      "3": { "scale": 0.95, "anchorX": 110, "anchorY": 174 },
+      "4": { "scale": 1.00, "anchorX": 110, "anchorY": 174 },
+      "5": { "scale": 1.05, "anchorX": 110, "anchorY": 174, "crownIfNoAcc": true }
+    },
+    "stage0Shapes": [
+      { "type": "ellipse", "cx": 110, "cy": 120, "rx": 44, "ry": 54, "fill": "grad:speciesEgg", "stroke": "@bodyTint12", "sw": 2 },
+      { "type": "ellipse", "cx": 100, "cy": 96, "rx": 18, "ry": 24, "fill": "#ffffff", "opacity": 0.45, "rot": [-18, 100, 96] },
+      { "type": "circle", "cx": 94, "cy": 106, "r": 4, "fill": "#ffffff", "opacity": 0.40 },
+      { "type": "circle", "cx": 128, "cy": 134, "r": 3.2, "fill": "#ffffff", "opacity": 0.35 }
+    ],
+    "stage1": {
+      "clip": [40, 20, 140, 128],
+      "ears": {
+        "round": [
+          { "type": "circle", "cx": 80, "cy": 82, "r": 12, "fill": "@body" },
+          { "type": "circle", "cx": 140, "cy": 82, "r": 12, "fill": "@body" }
+        ],
+        "tall": [
+          { "type": "ellipse", "cx": 86, "cy": 64, "rx": 8, "ry": 20, "fill": "@body" },
+          { "type": "ellipse", "cx": 134, "cy": 64, "rx": 8, "ry": 20, "fill": "@body" }
+        ],
+        "pointy": [
+          { "type": "path", "d": "M72 86 L84 48 L100 78 Z", "fill": "@body" },
+          { "type": "path", "d": "M148 86 L136 48 L120 78 Z", "fill": "@body" }
+        ],
+        "floppy": [
+          { "type": "ellipse", "cx": 70, "cy": 108, "rx": 9, "ry": 19, "fill": "@body", "rot": [16, 70, 108] },
+          { "type": "ellipse", "cx": 70, "cy": 109, "rx": 4, "ry": 12, "fill": "#ffffff", "opacity": 0.32, "rot": [16, 70, 108] },
+          { "type": "ellipse", "cx": 150, "cy": 108, "rx": 9, "ry": 19, "fill": "@body", "rot": [-16, 150, 108] },
+          { "type": "ellipse", "cx": 150, "cy": 109, "rx": 4, "ry": 12, "fill": "#ffffff", "opacity": 0.32, "rot": [-16, 150, 108] }
+        ],
+        "horn": [
+          { "type": "path", "d": "M84 82 L76 52 L94 74 Z", "fill": "#f0c24b" },
+          { "type": "path", "d": "M136 82 L144 52 L126 74 Z", "fill": "#f0c24b" },
+          { "type": "path", "d": "M72 96 L62 80 L80 86 Z", "fill": "@body" },
+          { "type": "path", "d": "M148 96 L158 80 L140 86 Z", "fill": "@body" }
+        ],
+        "unicorn": [
+          { "type": "path", "d": "M105 68 L110 40 L115 68 Z", "fill": "#f4c74e" }
+        ],
+        "none": []
+      },
+      "ahoge": [
+        { "type": "path", "d": "M110 84 q-7 -13 3 -18 q8 -4 6 5", "stroke": "@body", "sw": 4.5, "cap": "round" }
+      ],
+      "head": [
+        { "type": "ellipse", "cx": 110, "cy": 118, "rx": 40, "ry": 36, "fill": "@body" },
+        { "type": "ellipse", "cx": 110, "cy": 102, "rx": 26, "ry": 15, "fill": "#ffffff", "opacity": 0.32 },
+        { "type": "eyes", "x1": 94, "x2": 126, "y": 114 },
+        { "type": "ellipse", "cx": 78, "cy": 126, "rx": 7, "ry": 4.5, "fill": "#f28b82", "opacity": 0.48 },
+        { "type": "ellipse", "cx": 142, "cy": 126, "rx": 7, "ry": 4.5, "fill": "#f28b82", "opacity": 0.48 }
+      ],
+      "mouths": {
+        "cat": [
+          { "type": "ellipse", "cx": 110, "cy": 121, "rx": 2.8, "ry": 2, "fill": "#e28395" },
+          { "type": "path", "d": "M102 126 q4 4 8 0 q4 4 8 0", "stroke": "#3a2f22", "sw": 2.1, "cap": "round" }
+        ],
+        "buck": [
+          { "type": "ellipse", "cx": 110, "cy": 120, "rx": 3, "ry": 2, "fill": "#f09bb0" },
+          { "type": "path", "d": "M102 125 q4 3.8 8 0 q4 3.8 8 0", "stroke": "#3a2f22", "sw": 2.1, "cap": "round" },
+          { "type": "path", "d": "M107.5 128 l2.5 3.4 l2.5 -3.4 z", "fill": "#ffffff" }
+        ],
+        "fang": [
+          { "type": "path", "d": "M102 125 q4 3.8 8 0 q4 3.8 8 0", "stroke": "#3a2f22", "sw": 2.1, "cap": "round" },
+          { "type": "path", "d": "M115 126 l2.8 4 l-4.2 .7 z", "fill": "#ffffff" }
+        ],
+        "smile": [
+          { "type": "path", "d": "M102 126 q4 3.8 8 0 q4 3.8 8 0", "stroke": "#3a2f22", "sw": 2.1, "cap": "round" }
+        ]
+      },
+      "shell": [
+        { "type": "path", "d": "M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z", "fill": "grad:meg", "stroke": "#d7c29e", "sw": 2 }
+      ]
+    },
+    "tails": {
+      "puff": [
+        { "type": "circle", "cx": 164, "cy": 142, "r": 13, "fill": "@body" },
+        { "type": "circle", "cx": 172, "cy": 134, "r": 8, "fill": "@body" },
+        { "type": "circle", "cx": 164, "cy": 142, "r": 13, "fill": "grad:gb", "when": "normal" }
+      ],
+      "fox": [
+        { "type": "path", "d": "M150 144 q38 6 34 -28 q-12 -6 -24 8 z", "fill": "@body" },
+        { "type": "path", "d": "M168 122 q12 -8 16 -6 q-2 10 -12 16 z", "fill": "#ffffff", "opacity": 0.6, "when": "normal" }
+      ],
+      "dragon": [
+        { "type": "path", "d": "M152 142 q30 8 28 -16 q-2 -11 -12 -9", "stroke": "@body", "sw": 10, "cap": "round" },
+        { "type": "path", "d": "M170 118 l14 -10 l-4 15 z", "fill": "#f0a944", "silFill": "#bfb8ac" }
+      ],
+      "wing": [
+        { "type": "path", "d": "M44 108 q-24 -22 -10 -40 q18 4 23 24 q2 10 -4 17 z", "fill": "@body" },
+        { "type": "path", "d": "M176 108 q24 -22 10 -40 q-18 4 -23 24 q-2 10 4 17 z", "fill": "@body" },
+        { "type": "path", "d": "M44 104 q-16 -16 -7 -30 q12 3 16 17 z", "fill": "#ffffff", "opacity": 0.32, "when": "normal" },
+        { "type": "path", "d": "M176 104 q16 -16 7 -30 q-12 3 -16 17 z", "fill": "#ffffff", "opacity": 0.32, "when": "normal" }
+      ],
+      "none": []
+    },
+    "ears": {
+      "round": [
+        { "type": "circle", "cx": 72, "cy": 68, "r": 16, "fill": "@body" },
+        { "type": "circle", "cx": 148, "cy": 68, "r": 16, "fill": "@body" },
+        { "type": "circle", "cx": 72, "cy": 68, "r": 15, "fill": "grad:gb", "when": "normal" },
+        { "type": "circle", "cx": 148, "cy": 68, "r": 15, "fill": "grad:gb", "when": "normal" },
+        { "type": "circle", "cx": 74, "cy": 70, "r": 7.5, "fill": "#ffffff", "opacity": 0.35, "when": "normal" },
+        { "type": "circle", "cx": 146, "cy": 70, "r": 7.5, "fill": "#ffffff", "opacity": 0.35, "when": "normal" }
+      ],
+      "tall": [
+        { "type": "ellipse", "cx": 82, "cy": 48, "rx": 11, "ry": 30, "fill": "@body", "rot": [-7, 82, 48] },
+        { "type": "ellipse", "cx": 82, "cy": 51, "rx": 5.2, "ry": 20, "fill": "#f7c2cf", "opacity": 0.75, "rot": [-7, 82, 48], "when": "normal" },
+        { "type": "ellipse", "cx": 138, "cy": 48, "rx": 11, "ry": 30, "fill": "@body", "rot": [7, 138, 48] },
+        { "type": "ellipse", "cx": 138, "cy": 51, "rx": 5.2, "ry": 20, "fill": "#f7c2cf", "opacity": 0.75, "rot": [7, 138, 48], "when": "normal" }
+      ],
+      "pointy": [
+        { "type": "path", "d": "M62 78 L78 24 L98 68 Z", "fill": "@body" },
+        { "type": "path", "d": "M158 78 L142 24 L122 68 Z", "fill": "@body" },
+        { "type": "path", "d": "M67 70 L78 34 L91 64 Z", "fill": "#ffffff", "opacity": 0.28, "when": "normal" },
+        { "type": "path", "d": "M153 70 L142 34 L129 64 Z", "fill": "#ffffff", "opacity": 0.28, "when": "normal" }
+      ],
+      "floppy": [
+        { "type": "ellipse", "cx": 58, "cy": 106, "rx": 13, "ry": 27, "fill": "@body", "rot": [18, 58, 106] },
+        { "type": "ellipse", "cx": 58, "cy": 108, "rx": 6, "ry": 17, "fill": "#ffffff", "opacity": 0.34, "rot": [18, 58, 106], "when": "normal" },
+        { "type": "ellipse", "cx": 162, "cy": 106, "rx": 13, "ry": 27, "fill": "@body", "rot": [-18, 162, 106] },
+        { "type": "ellipse", "cx": 162, "cy": 108, "rx": 6, "ry": 17, "fill": "#ffffff", "opacity": 0.34, "rot": [-18, 162, 106], "when": "normal" }
+      ],
+      "horn": [
+        { "type": "path", "d": "M74 68 L64 30 L88 56 Z", "fill": "#f0c24b", "silFill": "#bfb8ac" },
+        { "type": "path", "d": "M146 68 L156 30 L132 56 Z", "fill": "#f0c24b", "silFill": "#bfb8ac" },
+        { "type": "path", "d": "M58 88 L46 68 L70 76 Z", "fill": "@body" },
+        { "type": "path", "d": "M162 88 L174 68 L150 76 Z", "fill": "@body" }
+      ],
+      "unicorn": [
+        { "type": "path", "d": "M104 54 L110 14 L116 54 Z", "fill": "#f4c74e", "silFill": "#bfb8ac" },
+        { "type": "path", "d": "M107 40 L114 34 M106 30 L113 24", "stroke": "#ffffff", "sw": 1.6, "cap": "round", "opacity": 0.7, "when": "normal" }
+      ],
+      "none": []
+    },
+    "ahoge": [
+      { "type": "path", "d": "M110 66 q-9 -16 4 -22 q9 -4 7 6", "stroke": "@body", "sw": 5.5, "cap": "round", "when": "normal" }
+    ],
+    "body": [
+      { "type": "ellipse", "cx": 110, "cy": 122, "rx": 56, "ry": 46, "fill": "@body" },
+      { "type": "ellipse", "cx": 110, "cy": 118, "rx": 54, "ry": 43, "fill": "grad:gb", "when": "normal" },
+      { "type": "ellipse", "cx": 110, "cy": 144, "rx": 48, "ry": 26, "fill": "grad:gs", "when": "normal" },
+      { "type": "ellipse", "cx": 110, "cy": 138, "rx": 33, "ry": 24, "fill": "#ffffff", "opacity": 0.48, "when": "normal" },
+      { "type": "ellipse", "cx": 70, "cy": 162, "rx": 13, "ry": 8.5, "fill": "@body" },
+      { "type": "ellipse", "cx": 150, "cy": 162, "rx": 13, "ry": 8.5, "fill": "@body" },
+      { "type": "path", "d": "M64 162 q3 -2.4 6 0 M72 162 q3 -2.4 6 0 M144 162 q3 -2.4 6 0 M152 162 q3 -2.4 6 0", "stroke": "#000000", "sw": 1.2, "cap": "round", "opacity": 0.22, "when": "normal" }
+    ],
+    "face": [
+      { "type": "eyes", "x1": 88, "x2": 132, "y": 112, "when": "normal" },
+      { "type": "ellipse", "cx": 66, "cy": 128, "rx": 9.5, "ry": 6, "fill": "#e87968", "opacity": 0.42, "when": "normal" },
+      { "type": "ellipse", "cx": 154, "cy": 128, "rx": 9.5, "ry": 6, "fill": "#e87968", "opacity": 0.42, "when": "normal" }
+    ],
+    "mouths": {
+      "cat": [
+        { "type": "ellipse", "cx": 110, "cy": 122, "rx": 3.2, "ry": 2.2, "fill": "#e28395" },
+        { "type": "path", "d": "M100 126 q5 5 10 0 q5 5 10 0", "stroke": "#3a2f22", "sw": 2.3, "cap": "round" }
+      ],
+      "buck": [
+        { "type": "ellipse", "cx": 110, "cy": 121, "rx": 3.6, "ry": 2.4, "fill": "#f09bb0" },
+        { "type": "path", "d": "M101 126 q4.5 4.2 9 0 q4.5 4.2 9 0", "stroke": "#3a2f22", "sw": 2.2, "cap": "round" },
+        { "type": "path", "d": "M107 129 l3 4 l3 -4 z", "fill": "#ffffff", "stroke": "#d5ccbd", "sw": 0.7 }
+      ],
+      "fang": [
+        { "type": "path", "d": "M101 126 q4.5 4.2 9 0 q4.5 4.2 9 0", "stroke": "#3a2f22", "sw": 2.2, "cap": "round" },
+        { "type": "path", "d": "M116 127 l3.2 4.5 l-4.8 .8 z", "fill": "#ffffff" }
+      ],
+      "smile": [
+        { "type": "path", "d": "M101 126 q4.5 4.4 9 0 q4.5 4.4 9 0", "stroke": "#3a2f22", "sw": 2.3, "cap": "round" }
+      ]
+    },
+    "silhouetteMark": [
+      { "type": "text", "x": 110, "y": 130, "text": "?", "size": 38, "fill": "#8d8578" }
+    ],
+    "accessories": {
+      "scarf": [
+        { "type": "rect", "x": 64, "y": 148, "w": 92, "h": 15, "rx": 7.5, "fill": "@acc" },
+        { "type": "rect", "x": 122, "y": 156, "w": 14, "h": 18, "rx": 6, "fill": "@acc" }
+      ],
+      "crown": [
+        { "type": "path", "d": "M88 54 L98 34 L110 49 L122 34 L132 54 Z", "fill": "@acc" }
+      ],
+      "star": [
+        { "type": "path", "d": "M156 42 l4.5 9 10 1.4 -7.2 6.5 1.8 10 -9.1 -4.7 -9.1 4.7 1.8 -10 -7.2 -6.5 10 -1.4 z", "fill": "@acc", "when": "normal" }
+      ],
+      "bow": [
+        { "type": "path", "d": "M110 156 l-16 -8 v16 z M110 156 l16 -8 v16 z", "fill": "@acc" },
+        { "type": "circle", "cx": 110, "cy": 156, "r": 4.2, "fill": "@acc" }
+      ],
+      "none": []
+    }
+  }
+}

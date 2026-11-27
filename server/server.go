@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -375,6 +376,19 @@ func (a *AppServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.handleAPI(w, r)
 }
 
+func (a *AppServer) readPublicFile(clean string) ([]byte, error) {
+	if a.publicDir != "" {
+		full := filepath.Join(a.publicDir, filepath.FromSlash(clean))
+		absPub, _ := filepath.Abs(a.publicDir)
+		absFull, _ := filepath.Abs(full)
+		if !strings.HasPrefix(absFull, absPub) {
+			return nil, os.ErrPermission
+		}
+		return os.ReadFile(absFull)
+	}
+	return fs.ReadFile(a.publicFS, clean)
+}
+
 func (a *AppServer) serveStatic(w http.ResponseWriter, r *http.Request) {
 	rel := r.URL.Path
 	if rel == "/" || rel == "" {
@@ -386,20 +400,21 @@ func (a *AppServer) serveStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var data []byte
-	var err error
-	if a.publicDir != "" {
-		full := filepath.Join(a.publicDir, filepath.FromSlash(clean))
-		absPub, _ := filepath.Abs(a.publicDir)
-		absFull, _ := filepath.Abs(full)
-		if !strings.HasPrefix(absFull, absPub) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Forbidden"})
+	if clean == "shared/pet-spec.js" {
+		specBytes, specErr := a.readPublicFile("shared/pet-spec.json")
+		if specErr != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
 			return
 		}
-		data, err = os.ReadFile(absFull)
-	} else {
-		data, err = fs.ReadFile(a.publicFS, clean)
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("window.__GB_PET_SPEC = "))
+		_, _ = w.Write(bytes.TrimSpace(specBytes))
+		_, _ = w.Write([]byte(";\n"))
+		return
 	}
+
+	data, err := a.readPublicFile(clean)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Not Found"})
 		return

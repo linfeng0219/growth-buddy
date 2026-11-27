@@ -36,17 +36,143 @@
     return lv;
   }
 
+  function getSpec() {
+    if (global.__GB_PET_SPEC) return global.__GB_PET_SPEC;
+    if (typeof XMLHttpRequest !== "undefined") {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "/shared/pet-spec.json", false);
+        xhr.send(null);
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.responseText) {
+          global.__GB_PET_SPEC = JSON.parse(xhr.responseText);
+          return global.__GB_PET_SPEC;
+        }
+      } catch (e) {}
+    }
+    throw new Error("pet-spec.json not loaded");
+  }
+
+  function gradSVG(id, gDef, ctx) {
+    var s = '<radialGradient id="' + id + '" cx="' + Math.round(gDef.cx * 100) + '%" cy="' + Math.round(gDef.cy * 100) + '%" r="' + Math.round(gDef.r * 100) + '%">';
+    for (var i = 0; i < gDef.stops.length; i++) {
+      var st = gDef.stops[i];
+      var col = resolveTokenColor(st[1], ctx);
+      var op = st[2] != null && st[2] < 1 ? ' stop-opacity="' + st[2] + '"' : "";
+      s += '<stop offset="' + Math.round(st[0] * 100) + '%" stop-color="' + col + '"' + op + "/>";
+    }
+    return s + "</radialGradient>";
+  }
+
+  function resolveTokenColor(val, ctx) {
+    if (!val) return "";
+    if (val.charAt(0) !== "@") return val;
+    if (ctx.sil && (val === "@body" || val === "@acc" || val.indexOf("@bodyTint") === 0)) {
+      return "#bfb8ac";
+    }
+    return ctx.tokens[val] || val;
+  }
+
+  function resolvePaint(val, ctx) {
+    if (!val) return "none";
+    if (val.indexOf("grad:") === 0) {
+      var gName = val.slice(5);
+      ctx.usedGrads[gName] = true;
+      return "url(#" + gName + "_" + ctx.uid + ")";
+    }
+    return resolveTokenColor(val, ctx);
+  }
+
+  function collectGradsInShapes(list, out) {
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+      var sh = list[i];
+      if (!sh) continue;
+      if (typeof sh.fill === "string" && sh.fill.indexOf("grad:") === 0) out[sh.fill.slice(5)] = true;
+      if (typeof sh.stroke === "string" && sh.stroke.indexOf("grad:") === 0) out[sh.stroke.slice(5)] = true;
+      if (sh.type === "eyes") out.eye = true;
+      if (sh.children) collectGradsInShapes(sh.children, out);
+    }
+  }
+
+  function renderShape(sh, ctx) {
+    if (!sh) return "";
+    if (sh.when === "awake" && ctx.sleep) return "";
+    if (sh.when === "normal" && ctx.sil) return "";
+    if (sh.when === "sil" && !ctx.sil) return "";
+
+    if (sh.type === "group") {
+      var attrs = "";
+      if (sh.anim === "breathe" && !ctx.sil) attrs += ' class="breathe"';
+      else if (sh.anim === "egg" && !ctx.sil) attrs += ' class="egg-wobble"';
+      if (sh.transform) attrs += ' transform="' + sh.transform + '"';
+      if (sh.clipId) attrs += ' clip-path="url(#' + sh.clipId + ')"';
+      return "<g" + attrs + ">" + renderShapes(sh.children, ctx) + "</g>";
+    }
+    if (sh.type === "eyes") {
+      ctx.usedGrads.eye = true;
+      return eyesSVG(sh.y, sh.x1, sh.x2, ctx.sleep, ctx.uid);
+    }
+    if (sh.type === "text") {
+      return '<text x="' + sh.x + '" y="' + sh.y + '" text-anchor="middle" font-size="' + (sh.size || 38) + '" fill="' + resolvePaint(sh.fill, ctx) + '" font-family="Georgia,serif">' + esc(sh.text || "") + "</text>";
+    }
+
+    var fillVal = (ctx.sil && sh.silFill) ? sh.silFill : sh.fill;
+    var fill = fillVal ? resolvePaint(fillVal, ctx) : "none";
+    var common = ' fill="' + fill + '"';
+    if (sh.stroke) {
+      common += ' stroke="' + resolvePaint(sh.stroke, ctx) + '" stroke-width="' + (sh.sw || 2) + '"';
+      if (sh.cap) common += ' stroke-linecap="' + sh.cap + '"';
+    }
+    if (sh.opacity != null && sh.opacity < 1) {
+      common += ' opacity="' + sh.opacity + '"';
+    }
+    if (sh.rot && sh.rot.length === 3) {
+      common += ' transform="rotate(' + sh.rot[0] + " " + sh.rot[1] + " " + sh.rot[2] + ')"';
+    }
+
+    if (sh.type === "ellipse") {
+      return '<ellipse cx="' + sh.cx + '" cy="' + sh.cy + '" rx="' + sh.rx + '" ry="' + sh.ry + '"' + common + "/>";
+    }
+    if (sh.type === "circle") {
+      return '<circle cx="' + sh.cx + '" cy="' + sh.cy + '" r="' + sh.r + '"' + common + "/>";
+    }
+    if (sh.type === "rect") {
+      return '<rect x="' + sh.x + '" y="' + sh.y + '" width="' + sh.w + '" height="' + sh.h + '"' + (sh.rx ? ' rx="' + sh.rx + '"' : "") + common + "/>";
+    }
+    if (sh.type === "path") {
+      return '<path d="' + sh.d + '"' + common + "/>";
+    }
+    return "";
+  }
+
+  function renderShapes(list, ctx) {
+    if (!list) return "";
+    var out = "";
+    for (var i = 0; i < list.length; i++) out += renderShape(list[i], ctx);
+    return out;
+  }
+
+  function buildDefs(ctx, extraClips) {
+    var spec = getSpec();
+    var grads = spec.gradients || {};
+    var defs = "";
+    for (var gName in ctx.usedGrads) {
+      if (ctx.usedGrads.hasOwnProperty(gName) && grads[gName]) {
+        defs += gradSVG(gName + "_" + ctx.uid, grads[gName], ctx);
+      }
+    }
+    if (extraClips) defs += extraClips;
+    return defs ? "<defs>" + defs + "</defs>" : "";
+  }
+
   function pedestalSVG(base) {
-    var map = {
-      grass: { fill: "#ebe7d4", stroke: "#b6c79a", dot: "#cfe0b4" },
-      snow: { fill: "#e8eef3", stroke: "#c3cfd9", dot: "#ffffff" },
-      sand: { fill: "#f2e3cc", stroke: "#d4b78c", dot: "#e5cca6" },
-      cloud: { fill: "#eef1f8", stroke: "#ccd4e6", dot: "#ffffff" }
+    var spec = getSpec().pedestals;
+    var pal = (spec.palettes && spec.palettes[base || "grass"]) || spec.palettes.grass;
+    var ctx = {
+      uid: nextUid(), sleep: false, sil: false, usedGrads: {},
+      tokens: { "@pedFill": pal.fill, "@pedStroke": pal.stroke, "@pedDot": pal.dot }
     };
-    var c = map[base || "grass"] || map.grass;
-    return '<ellipse cx="110" cy="176" rx="68" ry="12" fill="' + c.fill + '"/>'
-      + '<path d="M56 172 q4 -9 8 0 M162 172 q4 -9 8 0" stroke="' + c.stroke + '" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
-      + '<circle cx="48" cy="164" r="2.6" fill="' + c.dot + '"/><circle cx="174" cy="166" r="2.1" fill="' + c.dot + '"/>';
+    return renderShapes(spec.shapes, ctx);
   }
 
   function eyesSVG(y, x1, x2, sleep, uid) {
@@ -55,8 +181,8 @@
         + '<path d="M' + (x2 - 7) + " " + y + ' q7 6 14 0" stroke="#3a2f22" stroke-width="2.6" fill="none" stroke-linecap="round"/>';
     }
     return '<g class="eyeG">'
-      + '<ellipse cx="' + x1 + '" cy="' + y + '" rx="8.2" ry="10.2" fill="url(#ge_' + uid + ')"/>'
-      + '<ellipse cx="' + x2 + '" cy="' + y + '" rx="8.2" ry="10.2" fill="url(#ge_' + uid + ')"/>'
+      + '<ellipse cx="' + x1 + '" cy="' + y + '" rx="8.2" ry="10.2" fill="url(#eye_' + uid + ')"/>'
+      + '<ellipse cx="' + x2 + '" cy="' + y + '" rx="8.2" ry="10.2" fill="url(#eye_' + uid + ')"/>'
       + '<g class="pupil"><circle cx="' + (x1 - 3.4) + '" cy="' + (y - 4.2) + '" r="3.1" fill="#fff"/><circle cx="' + (x1 + 3.4) + '" cy="' + (y + 4.2) + '" r="1.5" fill="#fff" opacity=".88"/></g>'
       + '<g class="pupil"><circle cx="' + (x2 - 3.4) + '" cy="' + (y - 4.2) + '" r="3.1" fill="#fff"/><circle cx="' + (x2 + 3.4) + '" cy="' + (y + 4.2) + '" r="1.5" fill="#fff" opacity=".88"/></g>'
       + "</g>";
@@ -64,93 +190,67 @@
 
   function mainPetSVG(lv, o) {
     o = o || {};
+    var spec = getSpec();
+    var vb = spec.viewBox;
+    var st = (spec.mainPetStages && spec.mainPetStages[String(lv)]) || spec.mainPetStages["5"];
     var uid = nextUid(), sleep = !!o.sleep, wAttr = o.w ? ' width="' + o.w + '"' : "";
-    var s = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="主宠">';
-    s += '<defs>'
-      + '<radialGradient id="mb_' + uid + '" cx="40%" cy="26%" r="82%"><stop offset="0%" stop-color="#ffdca8"/><stop offset="55%" stop-color="#f39d48"/><stop offset="100%" stop-color="#d87526"/></radialGradient>'
-      + '<radialGradient id="ml_' + uid + '" cx="40%" cy="24%" r="85%"><stop offset="0%" stop-color="#ffe1ad"/><stop offset="55%" stop-color="#ed8e32"/><stop offset="100%" stop-color="#c45f1c"/></radialGradient>'
-      + '<radialGradient id="mbel_' + uid + '" cx="45%" cy="32%" r="80%"><stop offset="0%" stop-color="#fff9ed"/><stop offset="100%" stop-color="#fce0b6"/></radialGradient>'
-      + '<radialGradient id="meg_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="#fff8eb"/><stop offset="65%" stop-color="#f3e5cb"/><stop offset="100%" stop-color="#dfd0b2"/></radialGradient>'
-      + '<radialGradient id="ge_' + uid + '" cx="38%" cy="30%" r="85%"><stop offset="0%" stop-color="#7c5630"/><stop offset="45%" stop-color="#4a3220"/><stop offset="100%" stop-color="#281b10"/></radialGradient>'
-      + '<radialGradient id="mglow_' + uid + '" cx="50%" cy="30%" r="72%"><stop offset="0%" stop-color="#fff3d9" stop-opacity=".85"/><stop offset="100%" stop-color="#fff3d9" stop-opacity="0"/></radialGradient>'
-      + "</defs>";
-    if (!o.noBase) s += pedestalSVG(lv >= 4 ? "sand" : "grass");
-    if (lv >= 3) s += '<circle cx="110" cy="108" r="82" fill="#f3c653" opacity="0.16"/>';
-    if (lv === 0) {
-      s += '<g class="egg-wobble"><ellipse cx="110" cy="120" rx="44" ry="54" fill="url(#meg_' + uid + ')" stroke="#d7c29e" stroke-width="2"/><ellipse cx="100" cy="96" rx="18" ry="24" fill="#fff" opacity=".45" transform="rotate(-18 100 96)"/><circle cx="94" cy="106" r="4" fill="#e1cda9"/><circle cx="128" cy="134" r="3.2" fill="#e1cda9"/><circle cx="120" cy="94" r="2.4" fill="#e1cda9"/>' + (sleep ? "" : '<path d="M98 118 q4 4 8 0" stroke="#a6906d" stroke-width="1.8" fill="none" stroke-linecap="round" opacity=".6"/>') + "</g>";
-    } else if (lv === 1) {
-      s += '<g class="breathe"><path d="M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z" fill="url(#meg_' + uid + ')" stroke="#d7c29e" stroke-width="2"/><ellipse cx="110" cy="118" rx="40" ry="38" fill="url(#mb_' + uid + ')"/><ellipse cx="110" cy="102" rx="28" ry="18" fill="url(#mglow_' + uid + ')"/><path d="M110 82 q-7 -13 3 -18 q8 -4 6 5" stroke="#eb9a45" stroke-width="5" fill="none" stroke-linecap="round"/>' + eyesSVG(114, 94, 126, sleep, uid) + '<ellipse cx="78" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><ellipse cx="142" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><path d="M103 128 q7 5 14 0" stroke="#3a2f22" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M78 86 a36 32 0 0 1 64 0 l-10 -6 l-11 7 l-11 -8 l-11 8 l-11 -7 z" fill="url(#meg_' + uid + ')" stroke="#d7c29e" stroke-width="2" transform="rotate(-12 110 74)"/></g>';
-    } else if (lv === 2) {
-      s += '<g class="breathe"><path d="M66 86 L74 44 L98 74 Z" fill="#eb9540"/><path d="M72 80 L76 54 L91 72 Z" fill="#fbd2a2"/><path d="M154 86 L146 44 L122 74 Z" fill="#eb9540"/><path d="M148 80 L144 54 L129 72 Z" fill="#fbd2a2"/><path d="M110 74 q-8 -14 4 -20 q8 -4 6 5" stroke="#eb9540" stroke-width="5.5" fill="none" stroke-linecap="round"/><ellipse cx="110" cy="124" rx="52" ry="44" fill="url(#mb_' + uid + ')"/><ellipse cx="110" cy="100" rx="38" ry="22" fill="url(#mglow_' + uid + ')"/><ellipse cx="76" cy="162" rx="13" ry="8" fill="#d87526"/><ellipse cx="144" cy="162" rx="13" ry="8" fill="#d87526"/><ellipse cx="110" cy="138" rx="31" ry="23" fill="url(#mbel_' + uid + ')" opacity=".95"/>' + eyesSVG(115, 90, 130, sleep, uid) + '<ellipse cx="70" cy="130" rx="8.5" ry="5.4" fill="#f28b82" opacity=".48"/><ellipse cx="150" cy="130" rx="8.5" ry="5.4" fill="#f28b82" opacity=".48"/><path d="M101 130 q4.5 4.4 9 0 q4.5 4.4 9 0" stroke="#3a2f22" stroke-width="2.3" fill="none" stroke-linecap="round"/></g>';
-    } else if (lv === 3) {
-      s += '<g class="breathe"><circle cx="158" cy="144" r="14" fill="#f8d29c"/><circle cx="166" cy="136" r="10" fill="#fce4be"/><path d="M60 88 L68 32 L98 70 Z" fill="#eb9540"/><path d="M68 80 L72 44 L90 68 Z" fill="#fbd2a2"/><path d="M160 88 L152 32 L122 70 Z" fill="#eb9540"/><path d="M152 80 L148 44 L130 68 Z" fill="#fbd2a2"/><path d="M110 64 q-10 -18 5 -24 q11 -5 8 7" stroke="#eb9540" stroke-width="6" fill="none" stroke-linecap="round"/><ellipse cx="110" cy="118" rx="58" ry="48" fill="url(#mb_' + uid + ')"/><ellipse cx="110" cy="94" rx="44" ry="24" fill="url(#mglow_' + uid + ')"/><ellipse cx="74" cy="162" rx="14" ry="9" fill="#d87526"/><ellipse cx="146" cy="162" rx="14" ry="9" fill="#d87526"/><path d="M68 162 q3 -3 6 0 M142 162 q3 -3 6 0" stroke="#b85f19" stroke-width="1.5" fill="none" stroke-linecap="round"/><ellipse cx="110" cy="134" rx="35" ry="26" fill="url(#mbel_' + uid + ')" opacity=".95"/>' + eyesSVG(108, 88, 132, sleep, uid) + '<ellipse cx="66" cy="126" rx="9.5" ry="6" fill="#f28b82" opacity=".48"/><ellipse cx="154" cy="126" rx="9.5" ry="6" fill="#f28b82" opacity=".48"/><path d="M100 124 q5 4.6 10 0 q5 4.6 10 0" stroke="#3a2f22" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M150 78 l2.5 5 5.4 .7 -3.9 3.6 .9 5.3 -4.9 -2.7 -4.9 2.7 .9 -5.3 -3.9 -3.6 5.4 -.7 z" fill="#ffdf8e" opacity=".9"/></g>';
-    } else if (lv === 4) {
-      s += '<g class="breathe"><path d="M162 142 q26 6 24 -16 q-2 -11 -13 -9" stroke="#d87526" stroke-width="11" fill="none" stroke-linecap="round"/><path d="M58 94 L62 28 L96 68 Z" fill="#ec9139"/><path d="M66 84 L68 42 L88 66 Z" fill="#fbd2a2" opacity=".75"/><path d="M162 94 L158 28 L124 68 Z" fill="#ec9139"/><path d="M154 84 L152 42 L132 66 Z" fill="#fbd2a2" opacity=".75"/><path d="M86 56 L78 24 L98 48 Z" fill="#f0c24b"/><path d="M134 56 L142 24 L122 48 Z" fill="#f0c24b"/><ellipse cx="110" cy="116" rx="62" ry="50" fill="url(#mb_' + uid + ')"/><ellipse cx="110" cy="92" rx="48" ry="26" fill="url(#mglow_' + uid + ')"/><ellipse cx="76" cy="162" rx="15" ry="9" fill="#c9651d"/><ellipse cx="144" cy="162" rx="15" ry="9" fill="#c9651d"/><ellipse cx="110" cy="134" rx="38" ry="27" fill="url(#mbel_' + uid + ')" opacity=".95"/>' + eyesSVG(106, 88, 132, sleep, uid) + '<ellipse cx="64" cy="124" rx="10" ry="6.2" fill="#f28b82" opacity=".48"/><ellipse cx="156" cy="124" rx="10" ry="6.2" fill="#f28b82" opacity=".48"/><path d="M100 123 q5 4.6 10 0 q5 4.6 10 0" stroke="#3a2f22" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M44 74 l3 6 6.4 .9 -4.6 4.3 1.1 6.2 -5.9 -3.2 -5.9 3.2 1.1 -6.2 -4.6 -4.3 6.4 -.9 z" fill="#ffdf8e"/></g>';
-    } else {
-      s += '<g class="breathe"><path d="M36 96 q-26 -24 -10 -44 q20 3 26 26 q3 11 -4 19 z" fill="#d97224"/><path d="M38 92 q-17 -16 -7 -32 q13 3 17 19" fill="#ffcf8c" opacity=".7"/><path d="M184 96 q26 -24 10 -44 q-20 3 -26 26 q-3 11 4 19 z" fill="#d97224"/><path d="M182 92 q17 -16 7 -32 q-13 3 -17 19" fill="#ffcf8c" opacity=".7"/><path d="M56 96 L60 26 L96 68 Z" fill="#e8892e"/><path d="M64 84 L66 40 L88 66 Z" fill="#ffcf8c" opacity=".65"/><path d="M164 96 L160 26 L124 68 Z" fill="#e8892e"/><path d="M156 84 L154 40 L132 66 Z" fill="#ffcf8c" opacity=".65"/><path d="M90 52 L100 28 L110 46 L120 28 L130 52 Z" fill="#f4c74e" stroke="#e2a929" stroke-width="1.5"/><ellipse cx="110" cy="114" rx="64" ry="52" fill="url(#ml_' + uid + ')"/><ellipse cx="110" cy="90" rx="50" ry="26" fill="url(#mglow_' + uid + ')"/><ellipse cx="74" cy="162" rx="15" ry="9.5" fill="#b85617"/><ellipse cx="146" cy="162" rx="15" ry="9.5" fill="#b85617"/><ellipse cx="110" cy="134" rx="39" ry="27" fill="url(#mbel_' + uid + ')" opacity=".95"/>' + eyesSVG(104, 88, 132, sleep, uid) + '<ellipse cx="64" cy="122" rx="10" ry="6.2" fill="#f28b82" opacity=".48"/><ellipse cx="156" cy="122" rx="10" ry="6.2" fill="#f28b82" opacity=".48"/><path d="M100 121 q5 4.8 10 0 q5 4.8 10 0" stroke="#3a2f22" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M36 52 l4 8 8.6 1.2 -6.2 5.8 1.5 8.4 -7.9 -4.3 -7.9 4.3 1.5 -8.4 -6.2 -5.8 8.6 -1.2 z" fill="#f4c74e"/><path d="M182 40 l3 6 6.4 .9 -4.6 4.3 1.1 6.2 -5.9 -3.2 -5.9 3.2 1.1 -6.2 -4.6 -4.3 6.4 -.9 z" fill="#f4c74e"/></g>';
+    var ctx = { uid: uid, sleep: sleep, sil: false, usedGrads: {}, tokens: {} };
+    collectGradsInShapes(st.shapes, ctx.usedGrads);
+    var defs = buildDefs(ctx, "");
+    var s = '<svg viewBox="0 0 ' + vb.w + " " + vb.h + '"' + wAttr + ' role="img" aria-label="主宠">' + defs;
+    if (!o.noBase) s += pedestalSVG(st.base || "grass");
+    if (st.halo) {
+      s += renderShape({ type: "circle", cx: st.halo.cx, cy: st.halo.cy, r: st.halo.r, fill: st.halo.fill, opacity: st.halo.opacity }, ctx);
     }
+    s += renderShape({ type: "group", anim: st.groupAnim || "breathe", children: st.shapes }, ctx);
     return s + "</svg>";
+  }
+
+  function composeSpeciesShapes(sp, tpl, sil) {
+    var ear = sp.ear || "round", acc = sp.acc || "none", tail = sp.tail || "none", mouth = sp.mouth || "smile";
+    var list = [];
+    Array.prototype.push.apply(list, (tpl.tails && tpl.tails[tail]) || []);
+    var inner = [];
+    Array.prototype.push.apply(inner, (tpl.ears && tpl.ears[ear]) || (tpl.ears && tpl.ears.round) || []);
+    if (sp.ahoge) Array.prototype.push.apply(inner, tpl.ahoge || []);
+    Array.prototype.push.apply(inner, tpl.body || []);
+    if (!sil) {
+      Array.prototype.push.apply(inner, tpl.face || []);
+      Array.prototype.push.apply(inner, (tpl.mouths && tpl.mouths[mouth]) || (tpl.mouths && tpl.mouths.smile) || []);
+    } else {
+      Array.prototype.push.apply(inner, tpl.silhouetteMark || []);
+    }
+    Array.prototype.push.apply(inner, (tpl.accessories && tpl.accessories[acc]) || []);
+    list.push({ type: "group", anim: sil ? "" : "breathe", children: inner });
+    if (sp._stageTransform) {
+      return [{ type: "group", transform: sp._stageTransform, children: list }];
+    }
+    return list;
   }
 
   function speciesSVG(sp, o) {
     o = o || {};
-    var sil = !!o.silo, uid = nextUid();
+    var sil = !!o.silo;
     if (!sil && sp && sp.id === "b0") {
       return mainPetSVG(o.lv != null ? Number(o.lv) : 3, o);
     }
-    var ear = sp.ear || "round", acc = sp.acc || "none", tail = sp.tail || "none", mouth = sp.mouth || "smile", base = sp.base || "grass";
-    var bodyC = sil ? "#bfb8ac" : sp.color;
+    var spec = getSpec(), tpl = spec.speciesTemplate, vb = spec.viewBox;
+    var acc = sp.acc || "none", base = sp.base || "grass";
+    var bodyC = sil ? "#bfb8ac" : (sp.color || "#ec9844");
     var accC = sil ? "#bfb8ac" : (acc === "scarf" ? "#c95742" : (acc === "bow" ? "#e2758e" : "#f2c44d"));
-    var wAttr = o.w ? ' width="' + o.w + '"' : "";
-    var s = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "伙伴") + '">';
-    if (!sil) {
-      s += '<defs><radialGradient id="gb_' + uid + '" cx="40%" cy="24%" r="78%"><stop offset="0%" stop-color="#ffffff" stop-opacity=".55"/><stop offset="100%" stop-color="#ffffff" stop-opacity="0"/></radialGradient><radialGradient id="gs_' + uid + '" cx="50%" cy="92%" r="70%"><stop offset="0%" stop-color="#000000" stop-opacity=".16"/><stop offset="100%" stop-color="#000000" stop-opacity="0"/></radialGradient><radialGradient id="ge_' + uid + '" cx="38%" cy="30%" r="85%"><stop offset="0%" stop-color="#7a5530"/><stop offset="45%" stop-color="#4a3220"/><stop offset="100%" stop-color="#2b1e12"/></radialGradient></defs>';
-    }
+    var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
+    var ctx = {
+      uid: uid, sleep: !!o.sleep, sil: sil, usedGrads: {},
+      tokens: { "@body": bodyC, "@acc": accC }
+    };
+    var shapes = composeSpeciesShapes(sp, tpl, sil);
+    collectGradsInShapes(shapes, ctx.usedGrads);
+    var defs = sil ? "" : buildDefs(ctx, "");
+    var s = '<svg viewBox="0 0 ' + vb.w + " " + vb.h + '"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "伙伴") + '">' + defs;
     if (!o.noBase && !sil) s += pedestalSVG(base);
-    if (tail === "puff") {
-      s += '<circle cx="164" cy="142" r="13" fill="' + bodyC + '"/><circle cx="172" cy="134" r="8" fill="' + bodyC + '"/>' + (!sil ? '<circle cx="164" cy="142" r="13" fill="url(#gb_' + uid + ')"/>' : "");
-    } else if (tail === "fox") {
-      s += '<path d="M150 144 q38 6 34 -28 q-12 -6 -24 8 z" fill="' + bodyC + '"/>' + (!sil ? '<path d="M168 122 q12 -8 16 -6 q-2 10 -12 16 z" fill="#fff" opacity=".6"/>' : "");
-    } else if (tail === "dragon") {
-      s += '<path d="M152 142 q30 8 28 -16 q-2 -11 -12 -9" stroke="' + bodyC + '" stroke-width="10" fill="none" stroke-linecap="round"/><path d="M170 118 l14 -10 l-4 15 z" fill="' + (sil ? "#bfb8ac" : "#f0a944") + '"/>';
-    } else if (tail === "wing") {
-      s += '<path d="M44 108 q-24 -22 -10 -40 q18 4 23 24 q2 10 -4 17 z" fill="' + bodyC + '"/><path d="M176 108 q24 -22 10 -40 q-18 4 -23 24 q-2 10 4 17 z" fill="' + bodyC + '"/>' + (!sil ? '<path d="M44 104 q-16 -16 -7 -30 q12 3 16 17 z" fill="#fff" opacity=".32"/><path d="M176 104 q16 -16 7 -30 q-12 3 -16 17 z" fill="#fff" opacity=".32"/>' : "");
-    }
-    s += "<g" + (sil ? "" : ' class="breathe"') + ">";
-    if (ear === "round") {
-      s += '<circle cx="72" cy="68" r="16" fill="' + bodyC + '"/><circle cx="148" cy="68" r="16" fill="' + bodyC + '"/>';
-      if (!sil) s += '<circle cx="72" cy="68" r="15" fill="url(#gb_' + uid + ')"/><circle cx="148" cy="68" r="15" fill="url(#gb_' + uid + ')"/><circle cx="74" cy="70" r="7.5" fill="#fff" opacity=".35"/><circle cx="146" cy="70" r="7.5" fill="#fff" opacity=".35"/>';
-    } else if (ear === "tall") {
-      s += '<g transform="rotate(-7 82 48)"><ellipse cx="82" cy="48" rx="11" ry="30" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="82" cy="51" rx="5.2" ry="20" fill="#f7c2cf" opacity=".75"/>' : "") + '</g><g transform="rotate(7 138 48)"><ellipse cx="138" cy="48" rx="11" ry="30" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="138" cy="51" rx="5.2" ry="20" fill="#f7c2cf" opacity=".75"/>' : "") + "</g>";
-    } else if (ear === "pointy") {
-      s += '<path d="M62 78 L78 24 L98 68 Z" fill="' + bodyC + '"/><path d="M158 78 L142 24 L122 68 Z" fill="' + bodyC + '"/>';
-      if (!sil) s += '<path d="M67 70 L78 34 L91 64 Z" fill="#fff" opacity=".28"/><path d="M153 70 L142 34 L129 64 Z" fill="#fff" opacity=".28"/>';
-    } else if (ear === "floppy") {
-      s += '<g transform="rotate(18 58 106)"><ellipse cx="58" cy="106" rx="13" ry="27" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="58" cy="108" rx="6" ry="17" fill="#fff" opacity=".34"/>' : "") + '</g><g transform="rotate(-18 162 106)"><ellipse cx="162" cy="106" rx="13" ry="27" fill="' + bodyC + '"/>' + (!sil ? '<ellipse cx="162" cy="108" rx="6" ry="17" fill="#fff" opacity=".34"/>' : "") + "</g>";
-    } else if (ear === "horn") {
-      s += '<path d="M74 68 L64 30 L88 56 Z" fill="' + (sil ? "#bfb8ac" : "#f0c24b") + '"/><path d="M146 68 L156 30 L132 56 Z" fill="' + (sil ? "#bfb8ac" : "#f0c24b") + '"/><path d="M58 88 L46 68 L70 76 Z" fill="' + bodyC + '"/><path d="M162 88 L174 68 L150 76 Z" fill="' + bodyC + '"/>';
-    } else if (ear === "unicorn") {
-      s += '<path d="M104 54 L110 14 L116 54 Z" fill="' + (sil ? "#bfb8ac" : "#f4c74e") + '"/>';
-      if (!sil) s += '<path d="M107 40 L114 34 M106 30 L113 24" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>';
-    }
-    if (sp.ahoge && !sil) s += '<path d="M110 66 q-9 -16 4 -22 q9 -4 7 6" stroke="' + bodyC + '" stroke-width="5.5" fill="none" stroke-linecap="round"/>';
-    s += '<ellipse cx="110" cy="122" rx="56" ry="46" fill="' + bodyC + '"/>';
-    if (!sil) s += '<ellipse cx="110" cy="118" rx="54" ry="43" fill="url(#gb_' + uid + ')"/><ellipse cx="110" cy="144" rx="48" ry="26" fill="url(#gs_' + uid + ')"/><ellipse cx="110" cy="138" rx="33" ry="24" fill="#ffffff" opacity=".48"/>';
-    s += '<ellipse cx="70" cy="162" rx="13" ry="8.5" fill="' + bodyC + '"/><ellipse cx="150" cy="162" rx="13" ry="8.5" fill="' + bodyC + '"/>';
-    if (!sil) {
-      s += '<path d="M64 162 q3 -2.4 6 0 M72 162 q3 -2.4 6 0 M144 162 q3 -2.4 6 0 M152 162 q3 -2.4 6 0" stroke="#000" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".22"/>' + eyesSVG(112, 88, 132, false, uid) + '<ellipse cx="66" cy="128" rx="9.5" ry="6" fill="#e87968" opacity=".42"/><ellipse cx="154" cy="128" rx="9.5" ry="6" fill="#e87968" opacity=".42"/>';
-      if (mouth === "cat") s += '<ellipse cx="110" cy="122" rx="3.2" ry="2.2" fill="#e28395"/><path d="M100 126 q5 5 10 0 q5 5 10 0" stroke="#3a2f22" stroke-width="2.3" fill="none" stroke-linecap="round"/>';
-      else if (mouth === "buck") s += '<ellipse cx="110" cy="121" rx="3.6" ry="2.4" fill="#f09bb0"/><path d="M101 126 q4.5 4.2 9 0 q4.5 4.2 9 0" stroke="#3a2f22" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M107 129 l3 4 l3 -4 z" fill="#fff" stroke="#d5ccbd" stroke-width=".7"/>';
-      else if (mouth === "fang") s += '<path d="M101 126 q4.5 4.2 9 0 q4.5 4.2 9 0" stroke="#3a2f22" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M116 127 l3.2 4.5 l-4.8 .8 z" fill="#fff"/>';
-      else s += '<path d="M101 126 q4.5 4.4 9 0 q4.5 4.4 9 0" stroke="#3a2f22" stroke-width="2.3" fill="none" stroke-linecap="round"/>';
-    } else {
-      s += '<text x="110" y="130" text-anchor="middle" font-size="38" fill="#8d8578" font-family="Georgia,serif">?</text>';
-    }
-    if (acc === "scarf") s += '<rect x="64" y="148" width="92" height="15" rx="7.5" fill="' + accC + '"/><rect x="122" y="156" width="14" height="18" rx="6" fill="' + accC + '"/>';
-    else if (acc === "crown") s += '<path d="M88 54 L98 34 L110 49 L122 34 L132 54 Z" fill="' + accC + '"/>';
-    else if (acc === "star" && !sil) s += '<path d="M156 42 l4.5 9 10 1.4 -7.2 6.5 1.8 10 -9.1 -4.7 -9.1 4.7 1.8 -10 -7.2 -6.5 10 -1.4 z" fill="' + accC + '"/>';
-    else if (acc === "bow") s += '<path d="M110 156 l-16 -8 v16 z M110 156 l16 -8 v16 z" fill="' + accC + '"/><circle cx="110" cy="156" r="4.2" fill="' + accC + '"/>';
-    return s + "</g></svg>";
+    if (o._halo) s += renderShape({ type: "circle", cx: o._halo.cx, cy: o._halo.cy, r: o._halo.r, fill: o._halo.fill, opacity: o._halo.opacity }, ctx);
+    s += renderShapes(shapes, ctx);
+    return s + "</svg>";
   }
 
   function avatarSVG(i, o) {
@@ -244,69 +344,69 @@
     o = o || {};
     lv = Number(lv) || 0;
     if (!sp || sp.id === "b0") return mainPetSVG(lv, o);
+    var spec = getSpec(), tpl = spec.speciesTemplate, vb = spec.viewBox;
     var uid = nextUid(), wAttr = o.w ? ' width="' + o.w + '"' : "";
     var base = sp.base || "grass";
     var bodyC = sp.color || "#ec9844";
-    var c0 = tintHex(bodyC, 0.72), c1 = tintHex(bodyC, 0.35), c2 = tintHex(bodyC, 0.12);
+    var tokens = {
+      "@body": bodyC,
+      "@bodyTint72": tintHex(bodyC, 0.72),
+      "@bodyTint35": tintHex(bodyC, 0.35),
+      "@bodyTint12": tintHex(bodyC, 0.12)
+    };
+    var ctx = { uid: uid, sleep: !!o.sleep, sil: false, usedGrads: {}, tokens: tokens };
 
     if (lv <= 0) {
-      var s0 = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "宠物蛋") + '">';
-      s0 += '<defs><radialGradient id="peg_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="' + c0 + '"/><stop offset="65%" stop-color="' + c1 + '"/><stop offset="100%" stop-color="' + c2 + '"/></radialGradient></defs>';
+      var st0 = tpl.stage0Shapes || [];
+      collectGradsInShapes(st0, ctx.usedGrads);
+      var s0 = '<svg viewBox="0 0 ' + vb.w + " " + vb.h + '"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "宠物蛋") + '">' + buildDefs(ctx, "");
       if (!o.noBase) s0 += pedestalSVG(base);
-      s0 += '<g class="egg-wobble"><ellipse cx="110" cy="120" rx="44" ry="54" fill="url(#peg_' + uid + ')" stroke="' + c2 + '" stroke-width="2"/><ellipse cx="100" cy="96" rx="18" ry="24" fill="#fff" opacity=".45" transform="rotate(-18 100 96)"/><circle cx="94" cy="106" r="4" fill="#fff" opacity=".4"/><circle cx="128" cy="134" r="3.2" fill="#fff" opacity=".35"/></g></svg>';
-      return s0;
+      s0 += renderShape({ type: "group", anim: "egg", children: st0 }, ctx);
+      return s0 + "</svg>";
     }
 
     if (lv === 1) {
-      // 破壳啦：从裂缝蛋壳中探出该物种小脑袋，不含完整期配饰与翅膀
+      var s1t = tpl.stage1;
       var ear = sp.ear || "round", mouth = sp.mouth || "smile";
-      var s1 = '<svg viewBox="0 0 220 200"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "破壳中") + '">';
-      s1 += '<defs>'
-        + '<radialGradient id="peg1_' + uid + '" cx="40%" cy="28%" r="82%"><stop offset="0%" stop-color="#fff8eb"/><stop offset="65%" stop-color="#f3e5cb"/><stop offset="100%" stop-color="#dfd0b2"/></radialGradient>'
-        + '<radialGradient id="ge_' + uid + '" cx="38%" cy="30%" r="85%"><stop offset="0%" stop-color="#7a5530"/><stop offset="45%" stop-color="#4a3220"/><stop offset="100%" stop-color="#2b1e12"/></radialGradient>'
-        + '<clipPath id="clip1_' + uid + '"><rect x="40" y="20" width="140" height="128"/></clipPath>'
-        + '</defs>';
+      var inner1 = [];
+      Array.prototype.push.apply(inner1, (s1t.ears && s1t.ears[ear]) || []);
+      if (sp.ahoge) Array.prototype.push.apply(inner1, s1t.ahoge || []);
+      Array.prototype.push.apply(inner1, s1t.head || []);
+      Array.prototype.push.apply(inner1, (s1t.mouths && s1t.mouths[mouth]) || (s1t.mouths && s1t.mouths.smile) || []);
+      var clipId = "clip1_" + uid;
+      var outer1 = [
+        { type: "group", clipId: clipId, children: inner1 }
+      ];
+      Array.prototype.push.apply(outer1, s1t.shell || []);
+      collectGradsInShapes(outer1, ctx.usedGrads);
+      var cRect = s1t.clip || [40, 20, 140, 128];
+      var clipXml = '<clipPath id="' + clipId + '"><rect x="' + cRect[0] + '" y="' + cRect[1] + '" width="' + cRect[2] + '" height="' + cRect[3] + '"/></clipPath>';
+      var s1 = '<svg viewBox="0 0 ' + vb.w + " " + vb.h + '"' + wAttr + ' role="img" aria-label="' + esc(sp.name || "破壳中") + '">' + buildDefs(ctx, clipXml);
       if (!o.noBase) s1 += pedestalSVG(base);
-      s1 += '<g class="breathe"><g clip-path="url(#clip1_' + uid + ')">';
-      if (ear === "round") s1 += '<circle cx="80" cy="82" r="12" fill="' + bodyC + '"/><circle cx="140" cy="82" r="12" fill="' + bodyC + '"/>';
-      else if (ear === "tall") s1 += '<ellipse cx="86" cy="64" rx="8" ry="20" fill="' + bodyC + '"/><ellipse cx="134" cy="64" rx="8" ry="20" fill="' + bodyC + '"/>';
-      else if (ear === "pointy") s1 += '<path d="M72 86 L84 48 L100 78 Z" fill="' + bodyC + '"/><path d="M148 86 L136 48 L120 78 Z" fill="' + bodyC + '"/>';
-      else if (ear === "floppy") s1 += '<g transform="rotate(16 70 108)"><ellipse cx="70" cy="108" rx="9" ry="19" fill="' + bodyC + '"/><ellipse cx="70" cy="109" rx="4" ry="12" fill="#fff" opacity=".32"/></g><g transform="rotate(-16 150 108)"><ellipse cx="150" cy="108" rx="9" ry="19" fill="' + bodyC + '"/><ellipse cx="150" cy="109" rx="4" ry="12" fill="#fff" opacity=".32"/></g>';
-      else if (ear === "horn") s1 += '<path d="M84 82 L76 52 L94 74 Z" fill="#f0c24b"/><path d="M136 82 L144 52 L126 74 Z" fill="#f0c24b"/><path d="M72 96 L62 80 L80 86 Z" fill="' + bodyC + '"/><path d="M148 96 L158 80 L140 86 Z" fill="' + bodyC + '"/>';
-      else if (ear === "unicorn") s1 += '<path d="M105 68 L110 40 L115 68 Z" fill="#f4c74e"/>';
-      if (sp.ahoge) s1 += '<path d="M110 84 q-7 -13 3 -18 q8 -4 6 5" stroke="' + bodyC + '" stroke-width="4.5" fill="none" stroke-linecap="round"/>';
-      s1 += '<ellipse cx="110" cy="118" rx="40" ry="36" fill="' + bodyC + '"/>'
-        + '<ellipse cx="110" cy="102" rx="26" ry="15" fill="#fff" opacity=".32"/>'
-        + eyesSVG(114, 94, 126, !!o.sleep, uid)
-        + '<ellipse cx="78" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/><ellipse cx="142" cy="126" rx="7" ry="4.5" fill="#f28b82" opacity=".48"/>';
-      if (mouth === "cat") s1 += '<ellipse cx="110" cy="121" rx="2.8" ry="2" fill="#e28395"/><path d="M102 126 q4 4 8 0 q4 4 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/>';
-      else if (mouth === "buck") s1 += '<ellipse cx="110" cy="120" rx="3" ry="2" fill="#f09bb0"/><path d="M102 125 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/><path d="M107.5 128 l2.5 3.4 l2.5 -3.4 z" fill="#fff"/>';
-      else if (mouth === "fang") s1 += '<path d="M102 125 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/><path d="M115 126 l2.8 4 l-4.2 .7 z" fill="#fff"/>';
-      else s1 += '<path d="M102 126 q4 3.8 8 0 q4 3.8 8 0" stroke="#3a2f22" stroke-width="2.1" fill="none" stroke-linecap="round"/>';
-      s1 += '</g>'
-        + '<path d="M68 156 a44 48 0 0 0 84 0 l-14 -12 l-14 10 l-14 -12 l-14 12 l-14 -10 z" fill="url(#peg1_' + uid + ')" stroke="#d7c29e" stroke-width="2"/>'
-        + '</g></svg>';
-      return s1;
+      s1 += renderShape({ type: "group", anim: "breathe", children: outer1 }, ctx);
+      return s1 + "</svg>";
     }
 
+    var rule = (tpl.stageRules && tpl.stageRules[String(lv >= 5 ? 5 : lv)]) || { scale: 1.0, anchorX: 110, anchorY: 174 };
     var spDraw = sp;
-    if (lv === 2) {
-      // 幼年体：展现物种轮廓但暂不佩戴配饰/翅膀
-      spDraw = Object.assign({}, sp, { acc: "none", tail: sp.tail === "wing" ? "puff" : sp.tail });
-    } else if (lv >= 5 && (!sp.acc || sp.acc === "none")) {
+    if (rule.overrideAcc || rule.wingToTail) {
+      spDraw = Object.assign({}, sp, {
+        acc: rule.overrideAcc || sp.acc,
+        tail: (rule.wingToTail && sp.tail === "wing") ? rule.wingToTail : sp.tail
+      });
+    } else if (rule.crownIfNoAcc && (!sp.acc || sp.acc === "none")) {
       spDraw = Object.assign({}, sp, { acc: "crown" });
     }
-    var stageO = Object.assign({}, o, { noBase: true });
-    var svg = speciesSVG(spDraw, stageO);
-    var stageBase = (lv >= 4 && base === "grass") ? "sand" : base;
-    var stageScale = lv === 2 ? 0.86 : (lv === 3 ? 0.95 : (lv === 4 ? 1.0 : 1.05));
-    var baseInsert = o.noBase ? "" : pedestalSVG(stageBase);
-    var haloInsert = "";
-    if (lv === 3) haloInsert = '<circle cx="110" cy="110" r="72" fill="#f3c653" opacity="0.14"/>';
-    else if (lv === 4) haloInsert = '<circle cx="110" cy="110" r="78" fill="#f3c653" opacity="0.18"/>';
-    else if (lv >= 5) haloInsert = '<circle cx="110" cy="108" r="82" fill="#f4c74e" opacity="0.24"/>';
-    svg = svg.replace('<g class="breathe">', baseInsert + haloInsert + '<g class="breathe" transform="translate(110 174) scale(' + stageScale + ') translate(-110 -174)">');
-    return svg;
+    if (lv >= 4 && base === "grass") base = "sand";
+    var halo = tpl.haloByLv && tpl.haloByLv[String(lv >= 5 ? 5 : lv)];
+    var sc = rule.scale != null ? rule.scale : 1;
+    var ax = rule.anchorX != null ? rule.anchorX : 110;
+    var ay = rule.anchorY != null ? rule.anchorY : 174;
+    spDraw = Object.assign({}, spDraw, {
+      base: base,
+      _stageTransform: "translate(" + ax + " " + ay + ") scale(" + sc + ") translate(" + (-ax) + " " + (-ay) + ")"
+    });
+    return speciesSVG(spDraw, Object.assign({}, o, { _halo: halo || null }));
   }
 
   global.GBArt = {
