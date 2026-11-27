@@ -710,11 +710,23 @@ func TestChangelogLatestDate(t *testing.T) {
 		t.Fatalf("expected at least 2 changelog entries, got %+v", res["changelog"])
 	}
 	first, ok := arr[0].(map[string]any)
-	if !ok || first["date"] != "2026-11-26" {
-		t.Fatalf("expected newest changelog entry date 2026-11-26, got %+v", arr[0])
+	if !ok || first["date"] != "2026-11-27" {
+		t.Fatalf("expected newest changelog entry date 2026-11-27, got %+v", arr[0])
 	}
-	if _, hasFish := first["fish_items"].([]any); !hasFish {
-		t.Fatalf("expected fish_items in latest changelog entry: %+v", first)
+	if _, hasApp := first["app_items"].([]any); !hasApp {
+		t.Fatalf("expected app_items in latest changelog entry: %+v", first)
+	}
+	hasFishEntry := false
+	for _, rawEntry := range arr {
+		if m, ok := rawEntry.(map[string]any); ok {
+			if _, ok2 := m["fish_items"].([]any); ok2 {
+				hasFishEntry = true
+				break
+			}
+		}
+	}
+	if !hasFishEntry {
+		t.Fatalf("expected fish_items in changelog entries: %+v", arr)
 	}
 	latestNotes, _ := res["latest_notes"].(map[string]any)
 	if latestNotes == nil || latestNotes["android"] == "" || latestNotes["fish"] == "" {
